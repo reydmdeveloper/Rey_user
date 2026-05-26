@@ -1,0 +1,192 @@
+{% extends "base.html" %}
+{% block body %}
+<button class="mobile-toggle"><i class="fa-solid fa-bars"></i></button>
+<div class="sidebar-overlay"></div>
+
+<!-- Theme Toggle (top-right) -->
+<div class="theme-toggle-wrap" id="themeToggle">
+    <button onclick="setTheme('light')" id="themeLight" title="Light">
+        <i class="fa-solid fa-sun"></i>
+    </button>
+    <button onclick="setTheme('system')" id="themeSystem" title="System">
+        <i class="fa-solid fa-desktop"></i>
+    </button>
+    <button onclick="setTheme('dark')" id="themeDark" title="Dark">
+        <i class="fa-solid fa-moon"></i>
+    </button>
+</div>
+
+<div class="app-wrapper">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <div class="sidebar-brand">
+            <div class="brand-logo-wrap">
+                <img src="{{ url_for('static', filename='Images/REYDM_LOGO.png') }}" alt="REYDM" class="brand-logo">
+            </div>
+            <small>REY Datamind Platform</small>
+        </div>
+
+        <nav class="sidebar-nav">
+            <a href="{{ url_for('dashboard') }}"
+               class="{% if request.endpoint == 'dashboard' %}active{% endif %}">
+                <span class="nav-icon"><i class="fa-solid fa-gauge-high"></i></span>
+                Dashboard
+            </a>
+
+            {% if user_tools|length > 0 %}
+            <div class="sidebar-divider"></div>
+            <div class="sidebar-section-label">Tools</div>
+            {% endif %}
+
+            {% for tool in user_tools %}
+                {% if tool.key == 'reminder' %}
+                <a href="{{ url_for('add_reminder') }}"
+                   class="{% if request.endpoint == 'add_reminder' %}active{% endif %}">
+                    <span class="nav-icon"><i class="{{ tool.icon }}"></i></span>
+                    New Reminder
+                </a>
+                {% elif tool.key == 'nightshift' %}
+                <a href="{{ url_for('nightshift') }}"
+                   class="{% if request.endpoint == 'nightshift' %}active{% endif %}">
+                    <span class="nav-icon"><i class="{{ tool.icon }}"></i></span>
+                    Night Shift
+                </a>
+                {% elif tool.key == 'charpalette' %}
+                <a href="{{ url_for('charpalette') }}"
+                   class="{% if request.endpoint == 'charpalette' %}active{% endif %}">
+                    <span class="nav-icon"><i class="{{ tool.icon }}"></i></span>
+                    Char Palette
+                </a>
+                {% elif tool.key == 'costconverter' %}
+                <a href="{{ url_for('costconverter') }}"
+                   class="{% if request.endpoint == 'costconverter' %}active{% endif %}">
+                    <span class="nav-icon"><i class="{{ tool.icon }}"></i></span>
+                    Cost Converter
+                </a>
+                {% elif tool.key == 'projectanalysis' %}
+                <a href="{{ url_for('projectanalysis') }}"
+                   class="{% if request.endpoint == 'projectanalysis' %}active{% endif %}">
+                    <span class="nav-icon"><i class="{{ tool.icon }}"></i></span>
+                    Project Analysis
+                </a>
+                {% elif tool.key == 'pdfunlocker' %}
+                <a href="{{ url_for('pdfunlocker') }}"
+                   class="{% if request.endpoint == 'pdfunlocker' %}active{% endif %}">
+                    <span class="nav-icon"><i class="{{ tool.icon }}"></i></span>
+                    PDF Unlocker
+                </a>
+                {% elif tool.key == 'attendance' %}
+                <a href="{{ url_for('attendance') }}"
+                   class="{% if request.endpoint == 'attendance' %}active{% endif %}">
+                    <span class="nav-icon"><i class="{{ tool.icon }}"></i></span>
+                    Attendance
+                </a>
+                {% elif tool.key == 'pettycash_cbe' %}
+                <a href="{{ url_for('pettycash_cbe') }}"
+                   class="{% if request.endpoint == 'pettycash_cbe' %}active{% endif %}">
+                    <span class="nav-icon"><i class="{{ tool.icon }}"></i></span>
+                    Petty Cash (CBE)
+                </a>
+                {% elif tool.key == 'pettycash_dgl' %}
+                <a href="{{ url_for('pettycash_dgl') }}"
+                   class="{% if request.endpoint == 'pettycash_dgl' %}active{% endif %}">
+                    <span class="nav-icon"><i class="{{ tool.icon }}"></i></span>
+                    Petty Cash (DGL)
+                </a>
+                {% elif tool.key == 'leavemanager' %}
+                <a href="{{ url_for('leavemanager') }}"
+                   class="{% if request.endpoint == 'leavemanager' %}active{% endif %}">
+                    <span class="nav-icon"><i class="{{ tool.icon }}"></i></span>
+                    Leave Manager
+                </a>
+                {% endif %}
+            {% endfor %}
+
+            {% if session.get('role') == 'admin' %}
+            <div class="sidebar-divider"></div>
+            <div class="sidebar-section-label">Admin</div>
+
+            <a href="{{ url_for('admin_users') }}"
+               class="{% if request.endpoint == 'admin_users' %}active{% endif %}">
+                <span class="nav-icon"><i class="fa-solid fa-users-gear"></i></span>
+                User Management
+                {% if pending_count is defined and pending_count > 0 %}
+                <span class="nav-badge">{{ pending_count }}</span>
+                {% endif %}
+            </a>
+
+            <a href="{{ url_for('admin_attendance_requests') }}"
+               class="{% if request.endpoint == 'admin_attendance_requests' %}active{% endif %}">
+                <span class="nav-icon"><i class="fa-solid fa-clipboard-check"></i></span>
+                Attendance Requests
+            </a>
+
+            <a href="{{ url_for('admin_settings') }}"
+               class="{% if request.endpoint == 'admin_settings' %}active{% endif %}">
+                <span class="nav-icon"><i class="fa-solid fa-gear"></i></span>
+                Settings &amp; Database
+            </a>
+            {% endif %}
+
+            <div class="sidebar-divider"></div>
+
+            <a href="{{ url_for('profile') }}"
+               class="{% if request.endpoint == 'profile' %}active{% endif %}">
+                <span class="nav-icon"><i class="fa-solid fa-user"></i></span>
+                Profile
+            </a>
+
+            <a href="{{ url_for('logout') }}">
+                <span class="nav-icon"><i class="fa-solid fa-right-from-bracket"></i></span>
+                Logout
+            </a>
+        </nav>
+
+        <div class="sidebar-footer">
+            <div class="sidebar-user">
+                <div class="user-avatar">
+                    {{ session.get('full_name', 'U')[0] | upper }}
+                </div>
+                <div class="user-info">
+                    <div class="user-name">{{ session.get('full_name', 'User') }}</div>
+                    <div class="user-role">{{ session.get('role', 'user') }}</div>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        {% block content %}{% endblock %}
+    </main>
+</div>
+
+<!-- Theme Switcher -->
+<script>
+function setTheme(mode) {
+    localStorage.setItem('reydm-theme', mode);
+    applyTheme(mode);
+    updateThemeButtons(mode);
+}
+function applyTheme(mode) {
+    var isDark;
+    if (mode === 'dark') isDark = true;
+    else if (mode === 'light') isDark = false;
+    else isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+}
+function updateThemeButtons(mode) {
+    document.getElementById('themeLight').classList.toggle('active', mode === 'light');
+    document.getElementById('themeSystem').classList.toggle('active', mode === 'system');
+    document.getElementById('themeDark').classList.toggle('active', mode === 'dark');
+}
+(function() {
+    var saved = localStorage.getItem('reydm-theme') || 'system';
+    applyTheme(saved);
+    updateThemeButtons(saved);
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function() {
+        if ((localStorage.getItem('reydm-theme') || 'system') === 'system') applyTheme('system');
+    });
+})();
+</script>
+{% endblock %}

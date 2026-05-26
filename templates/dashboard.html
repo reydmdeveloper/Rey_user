@@ -1,0 +1,253 @@
+{% extends "app_base.html" %}
+{% block title %}Dashboard – REYDM{% endblock %}
+
+{% block head %}
+<style>
+.dash-grid {display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;margin-bottom:20px}
+.dash-card {background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:18px}
+.dash-card h3 {font-size:14px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:8px;color:var(--text)}
+.dash-stat {display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px dashed var(--border);font-size:13px}
+.dash-stat:last-child{border-bottom:none}
+.dash-stat .l {color:var(--muted)}
+.dash-stat .v {font-weight:700;font-family:var(--mono);color:var(--text)}
+.dash-stat .v.green{color:var(--success)} .dash-stat .v.red{color:var(--danger)}
+.dash-stat .v.blue{color:var(--accent2)} .dash-stat .v.amber{color:var(--warning)}
+.dash-bigstat{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:18px}
+.dash-bigstat .lbl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:6px}
+.dash-bigstat .num{font-size:26px;font-weight:700;font-family:var(--mono)}
+.dash-bigstat .num.blue{color:var(--accent2)} .dash-bigstat .num.green{color:var(--success)}
+.dash-bigstat .num.amber{color:var(--warning)} .dash-bigstat .num.red{color:var(--danger)}
+.section-hdr{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin:24px 0 12px;padding-bottom:6px;border-bottom:1px solid var(--border)}
+.recent-tbl{width:100%;font-size:12px;border-collapse:collapse;margin-top:6px}
+.recent-tbl th{background:var(--surface2);color:var(--muted);padding:6px 8px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.5px;font-weight:500;border-bottom:1px solid var(--border)}
+.recent-tbl td{padding:6px 8px;border-bottom:1px solid var(--border);font-size:12px}
+.recent-tbl tr:last-child td{border-bottom:none}
+.recent-tbl .mono{font-family:var(--mono)}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>Dashboard</h2>
+    <p>Welcome, {{ session.get('full_name') }}{% if is_admin %} <span class="badge badge-success">Admin</span>{% endif %}</p>
+</div>
+
+<!-- ═══ COMMON SECTION (visible to all users) ═══ -->
+<!-- 1. Attendance Today  |  2. User Login info  |  3. Leave Details -->
+<div class="dash-grid">
+
+    <!-- 1. ATTENDANCE TODAY -->
+    {% if attendance_data %}
+    <div class="dash-card">
+        <h3><i class="fa-solid fa-clock"></i> Today's Attendance <span style="font-size:10px;color:var(--muted);font-weight:400">(IST)</span></h3>
+        {% if attendance_data.today_log %}
+            <div class="dash-stat">
+                <span class="l">Login</span>
+                <span class="v green">{{ attendance_data.today_log.login_time.strftime('%I:%M %p') }}</span>
+            </div>
+            <div class="dash-stat">
+                <span class="l">Logout</span>
+                <span class="v {% if attendance_data.today_log.logout_time %}red{% else %}amber{% endif %}">
+                    {% if attendance_data.today_log.logout_time %}
+                        {{ attendance_data.today_log.logout_time.strftime('%I:%M %p') }}
+                    {% else %}— pending —{% endif %}
+                </span>
+            </div>
+            <div class="dash-stat">
+                <span class="l">Hours</span>
+                <span class="v blue">
+                    {% if attendance_data.today_log.hours_spent %}{{ '%.2f'|format(attendance_data.today_log.hours_spent) }} hrs{% else %}—{% endif %}
+                </span>
+            </div>
+        {% else %}
+            <div style="color:var(--muted);font-size:13px;padding:14px 0;text-align:center">
+                <i class="fa-solid fa-circle-info"></i> No login recorded for today
+            </div>
+        {% endif %}
+        <div class="dash-stat">
+            <span class="l">This Month — Days</span>
+            <span class="v blue">{{ attendance_data.month_days }}</span>
+        </div>
+        <div class="dash-stat">
+            <span class="l">This Month — Hours</span>
+            <span class="v blue">{{ '%.2f'|format(attendance_data.month_hours) }} hrs</span>
+        </div>
+        <a href="{{ url_for('attendance') }}" class="btn btn-secondary btn-sm" style="margin-top:10px;width:100%;justify-content:center">
+            <i class="fa-solid fa-right-to-bracket"></i> Open Attendance
+        </a>
+    </div>
+    {% endif %}
+
+    <!-- 2. USER LOGIN -->
+    <div class="dash-card">
+        <h3><i class="fa-solid fa-user"></i> Your Account</h3>
+        <div class="dash-stat"><span class="l">Name</span><span class="v">{{ me.full_name }}</span></div>
+        <div class="dash-stat"><span class="l">Email</span><span class="v" style="font-size:11px">{{ me.email }}</span></div>
+        <div class="dash-stat"><span class="l">Role</span><span class="v {% if is_admin %}green{% else %}blue{% endif %}">{{ me.role|capitalize }}</span></div>
+        <div class="dash-stat">
+            <span class="l">Last Active</span>
+            <span class="v" style="font-size:11px">
+                {% if me.last_active %}{{ me.last_active.strftime('%b %d, %I:%M %p') }}{% else %}—{% endif %}
+            </span>
+        </div>
+        <div class="dash-stat"><span class="l">Tools Assigned</span><span class="v blue">{{ get_user_tools()|length }}</span></div>
+        <a href="{{ url_for('profile') }}" class="btn btn-secondary btn-sm" style="margin-top:10px;width:100%;justify-content:center">
+            <i class="fa-solid fa-user-pen"></i> Edit Profile
+        </a>
+    </div>
+
+    <!-- 3. LEAVE SUMMARY -->
+    {% if leave_summary %}
+    <div class="dash-card">
+        <h3><i class="fa-solid fa-calendar-check"></i> Leave Summary ({{ leave_summary.year }})</h3>
+        <div class="dash-stat"><span class="l">Employee ID</span><span class="v" style="font-size:12px">{{ leave_summary.emp.emp_id }}</span></div>
+        <div class="dash-stat"><span class="l">Casual taken</span><span class="v blue">{{ '%.1f'|format(leave_summary.casual_taken) }}</span></div>
+        <div class="dash-stat"><span class="l">Sick taken</span><span class="v amber">{{ '%.1f'|format(leave_summary.sick_taken) }}</span></div>
+        <div class="dash-stat"><span class="l">LOP taken</span><span class="v red">{{ leave_summary.lop_taken }}</span></div>
+        {% if 'leavemanager' in get_user_tools() %}
+        <a href="{{ url_for('leavemanager') }}" class="btn btn-secondary btn-sm" style="margin-top:10px;width:100%;justify-content:center">
+            <i class="fa-solid fa-list"></i> Open Leave Manager
+        </a>
+        {% endif %}
+    </div>
+    {% elif 'leavemanager' in get_user_tools() %}
+    <div class="dash-card">
+        <h3><i class="fa-solid fa-calendar-check"></i> Leave Summary</h3>
+        <div style="color:var(--muted);font-size:13px;padding:14px 0;text-align:center">
+            Your name isn't linked to a Leave Manager record yet.
+        </div>
+        <a href="{{ url_for('leavemanager') }}" class="btn btn-secondary btn-sm" style="margin-top:10px;width:100%;justify-content:center">
+            <i class="fa-solid fa-list"></i> Open Leave Manager
+        </a>
+    </div>
+    {% endif %}
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- ADMIN-ONLY: All-tools overview + DB Storage              -->
+<!-- ═══════════════════════════════════════════════════════ -->
+{% if is_admin %}
+<div class="section-hdr"><i class="fa-solid fa-shield-halved"></i> Admin Overview — All Tools</div>
+
+<div class="dash-grid">
+    <div class="dash-bigstat">
+        <div class="lbl"><i class="fa-solid fa-users"></i> Total Users</div>
+        <div class="num blue">{{ total_users }}</div>
+    </div>
+    <div class="dash-bigstat">
+        <div class="lbl"><i class="fa-solid fa-user-check"></i> Active Users</div>
+        <div class="num green">{{ active_users }}</div>
+    </div>
+    <div class="dash-bigstat">
+        <div class="lbl"><i class="fa-solid fa-user-clock"></i> Pending Approval</div>
+        <div class="num amber">{{ pending_count }}</div>
+    </div>
+    <div class="dash-bigstat">
+        <div class="lbl"><i class="fa-solid fa-right-to-bracket"></i> Logins Today</div>
+        <div class="num green">{{ today_logins }}</div>
+    </div>
+    <div class="dash-bigstat">
+        <div class="lbl"><i class="fa-solid fa-clipboard-check"></i> Att. Requests Pending</div>
+        <div class="num {% if pending_attendance_requests > 0 %}amber{% else %}blue{% endif %}">{{ pending_attendance_requests }}</div>
+    </div>
+    <div class="dash-bigstat">
+        <div class="lbl"><i class="fa-solid fa-bell"></i> Upcoming Reminders</div>
+        <div class="num blue">{{ upcoming_count }}</div>
+    </div>
+    <div class="dash-bigstat">
+        <div class="lbl"><i class="fa-solid fa-bell-slash"></i> Total Reminders</div>
+        <div class="num">{{ total_reminders }}</div>
+    </div>
+    <div class="dash-bigstat">
+        <div class="lbl"><i class="fa-solid fa-database"></i> DB Storage</div>
+        <div class="num amber">{{ '%.2f'|format(db_storage.size_mb) }} MB</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px">{{ db_storage.table_count }} tables</div>
+    </div>
+</div>
+
+<!-- Today's user attendance overview (admin) -->
+{% if all_users_today %}
+<div class="dash-card" style="margin-bottom:20px">
+    <h3><i class="fa-solid fa-users"></i> All Users — Today's Attendance</h3>
+    <div style="overflow-x:auto">
+        <table class="recent-tbl">
+            <thead>
+                <tr><th>User</th><th>Email</th><th>Login</th><th>Logout</th><th>Hours</th><th>Last Active</th></tr>
+            </thead>
+            <tbody>
+                {% for u in all_users_today %}
+                <tr>
+                    <td><strong>{{ u.full_name }}</strong></td>
+                    <td style="color:var(--muted);font-size:11px">{{ u.email }}</td>
+                    <td class="mono">{% if u.login_time %}{{ u.login_time.strftime('%I:%M %p') }}{% else %}<span style="color:var(--muted)">—</span>{% endif %}</td>
+                    <td class="mono">
+                        {% if u.logout_time %}{{ u.logout_time.strftime('%I:%M %p') }}
+                        {% elif u.login_time %}<span style="color:var(--warning)">Active</span>
+                        {% else %}<span style="color:var(--muted)">—</span>{% endif %}
+                    </td>
+                    <td class="mono" style="color:var(--accent2);font-weight:600">
+                        {% if u.hours_spent %}{{ '%.2f'|format(u.hours_spent) }}{% else %}—{% endif %}
+                    </td>
+                    <td class="mono" style="font-size:11px;color:var(--muted)">
+                        {% if u.last_active %}{{ u.last_active.strftime('%b %d %I:%M %p') }}{% else %}—{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<!-- Latest reminders (admin) -->
+{% if reminders %}
+<div class="dash-card" style="margin-bottom:20px">
+    <h3><i class="fa-solid fa-bell"></i> Latest Reminders</h3>
+    <div style="overflow-x:auto">
+        <table class="recent-tbl">
+            <thead><tr><th>Project</th><th>Scheduled (IST)</th><th>By</th><th>Status</th></tr></thead>
+            <tbody>
+                {% for r in reminders %}
+                <tr>
+                    <td><strong>{{ r.project_name }}</strong></td>
+                    <td class="mono">{{ r.reminder_datetime.strftime('%b %d, %Y · %I:%M %p') }}</td>
+                    <td>{{ r.creator_name }}</td>
+                    <td>
+                        {% if r.is_sent %}<span class="badge badge-success">Sent</span>
+                        {% else %}<span class="badge badge-info">Pending</span>{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <a href="{{ url_for('add_reminder') }}" class="btn btn-primary btn-sm" style="margin-top:10px">
+        <i class="fa-solid fa-plus"></i> New Reminder
+    </a>
+</div>
+{% endif %}
+
+<div class="dash-card" style="margin-bottom:20px">
+    <h3><i class="fa-solid fa-server"></i> Database & Cache</h3>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:10px">
+        Total DB size: <strong style="color:var(--accent2)">{{ '%.2f'|format(db_storage.size_mb) }} MB</strong> across {{ db_storage.table_count }} tables.
+        Detailed table sizes and cache-clearing options are on the
+        <a href="{{ url_for('admin_settings') }}" style="color:var(--accent2)">Settings</a> page.
+    </p>
+    <a href="{{ url_for('admin_settings') }}" class="btn btn-secondary btn-sm">
+        <i class="fa-solid fa-gear"></i> Settings &amp; Database
+    </a>
+</div>
+{% endif %}
+
+{% if get_user_tools()|length == 0 and not is_admin %}
+<div class="dash-card">
+    <div style="text-align:center;padding:40px 20px">
+        <i class="fa-solid fa-lock" style="font-size:40px;opacity:.5;margin-bottom:14px"></i>
+        <h4 style="margin-bottom:6px">No Tools Assigned</h4>
+        <p style="color:var(--muted);font-size:13px">Contact your administrator to get tools assigned to your account.</p>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}

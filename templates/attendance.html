@@ -1,0 +1,201 @@
+{% extends "app_base.html" %}
+{% block title %}Attendance – REYDM{% endblock %}
+
+{% block head %}
+<style>
+.att-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px}
+@media(max-width:800px){.att-grid{grid-template-columns:1fr}}
+.att-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:22px}
+.att-card h3{font-size:15px;font-weight:600;margin-bottom:16px;display:flex;align-items:center;gap:8px}
+.att-status-big{text-align:center;padding:20px 0}
+.att-status-big .status-icon{font-size:48px;margin-bottom:10px}
+.att-status-big .status-text{font-size:16px;font-weight:600;margin-bottom:4px}
+.att-status-big .status-sub{font-size:13px;color:var(--muted);font-family:var(--mono)}
+.att-btn-login{background:var(--success);color:#fff;border-color:var(--success);width:100%;padding:12px;font-size:15px;font-weight:700}
+.att-btn-login:hover{background:#2ea043;color:#fff}
+.att-btn-logout{background:var(--danger);color:#fff;border-color:var(--danger);width:100%;padding:12px;font-size:15px;font-weight:700}
+.att-btn-logout:hover{background:#d73a49;color:#fff}
+.att-table{width:100%;border-collapse:collapse;font-size:13px;margin-top:10px}
+.att-table th{background:var(--surface2);color:var(--muted);padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid var(--border);font-weight:500}
+.att-table td{padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:middle}
+.att-table tr:hover td{background:rgba(31,111,235,.04)}
+.att-table tr:last-child td{border-bottom:none}
+.att-chart-wrap{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:22px;margin-bottom:20px}
+.att-chart{display:flex;align-items:flex-end;gap:8px;height:160px;padding-bottom:28px;position:relative}
+.att-bar-wrap{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%}
+.att-bar-col{width:100%;display:flex;align-items:flex-end;flex:1}
+.att-bar{width:100%;border-radius:4px 4px 0 0;background:var(--accent);min-height:2px;transition:height .3s}
+.att-bar-val{font-size:10px;font-weight:600;font-family:var(--mono);color:var(--text)}
+.att-bar-lbl{font-size:9px;color:var(--muted);font-family:var(--mono);white-space:nowrap}
+.att-req-form{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:600px){.att-req-form{grid-template-columns:1fr}}
+.att-req-form .form-group{margin-bottom:0}
+.att-req-form .full{grid-column:1/-1}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2><i class="fa-solid fa-clock"></i> Attendance</h2>
+    <p>Track your daily login and logout times</p>
+</div>
+
+<!-- Login/Logout Card + Status -->
+<div class="att-grid">
+    <div class="att-card">
+        <h3><i class="fa-solid fa-right-to-bracket"></i> Today's Session</h3>
+        {% if active_session %}
+        <div class="att-status-big">
+            <div class="status-icon" style="color:var(--success)"><i class="fa-solid fa-circle-check"></i></div>
+            <div class="status-text" style="color:var(--success)">Currently Logged In</div>
+            <div class="status-sub">Since {{ active_session.login_time.strftime('%I:%M %p') }} on {{ active_session.login_date.strftime('%b %d, %Y') }}</div>
+        </div>
+        <form method="POST" action="{{ url_for('attendance_logout') }}">
+            <button type="submit" class="btn att-btn-logout" data-confirm="Are you sure you want to logout?">
+                <i class="fa-solid fa-right-from-bracket"></i> LOGOUT NOW
+            </button>
+        </form>
+        {% else %}
+        <div class="att-status-big">
+            <div class="status-icon" style="color:var(--muted)"><i class="fa-solid fa-circle-xmark"></i></div>
+            <div class="status-text" style="color:var(--muted)">Not Logged In</div>
+            <div class="status-sub">Click below to start your session</div>
+        </div>
+        <form method="POST" action="{{ url_for('attendance_login') }}">
+            <button type="submit" class="btn att-btn-login">
+                <i class="fa-solid fa-right-to-bracket"></i> LOGIN NOW
+            </button>
+        </form>
+        {% endif %}
+    </div>
+
+    <!-- Request Time Change -->
+    <div class="att-card">
+        <h3><i class="fa-solid fa-pen-to-square"></i> Request Time Change</h3>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.6">
+            Forgot to login/logout? Submit a request with the correct times. Admin will review and approve.
+        </p>
+        <form method="POST" action="{{ url_for('attendance_request') }}">
+            <div class="att-req-form">
+                <div class="form-group">
+                    <label>Date</label>
+                    <input type="date" name="request_date" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label>Login Time <span style="font-size:11px;color:var(--muted)">(blank if login exists)</span></label>
+                    <input type="time" name="request_login" class="form-control">
+                </div>
+                <div class="form-group">
+                    <label>Logout Time</label>
+                    <input type="time" name="request_logout" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label>Reason</label>
+                    <input type="text" name="reason" class="form-control" placeholder="e.g. Forgot to login">
+                </div>
+                <div class="full">
+                    <button type="submit" class="btn btn-primary" style="width:100%">
+                        <i class="fa-solid fa-paper-plane"></i> Submit Request
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Hours Chart (Last 30 days) -->
+<div class="att-chart-wrap">
+    <h3 style="font-size:15px;font-weight:600;margin-bottom:14px"><i class="fa-solid fa-chart-bar"></i> Daily Hours (Last 30 Days)</h3>
+    <div class="att-chart" id="att-chart">
+        <div style="color:var(--muted);font-size:13px;width:100%;text-align:center;padding:40px 0">Loading chart...</div>
+    </div>
+</div>
+
+<!-- Recent Logs -->
+<div class="att-card" style="margin-bottom:20px">
+    <h3><i class="fa-solid fa-list"></i> Recent Attendance Logs</h3>
+    {% if recent_logs | length > 0 %}
+    <div style="overflow-x:auto">
+        <table class="att-table">
+            <thead>
+                <tr><th>Date</th><th>Login</th><th>Logout</th><th>Hours</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+                {% for log in recent_logs %}
+                <tr>
+                    <td>{{ log.login_date.strftime('%b %d, %Y') }}</td>
+                    <td style="font-family:var(--mono)">{{ log.login_time.strftime('%I:%M %p') }}</td>
+                    <td style="font-family:var(--mono)">
+                        {% if log.logout_time %}{{ log.logout_time.strftime('%I:%M %p') }}{% else %}<span class="badge badge-warning">Active</span>{% endif %}
+                    </td>
+                    <td style="font-family:var(--mono);font-weight:600;color:var(--accent2)">
+                        {% if log.hours_spent %}{{ "%.2f"|format(log.hours_spent) }} hrs{% else %}—{% endif %}
+                    </td>
+                    <td>
+                        {% if log.logout_time %}
+                            <span class="badge badge-success">Complete</span>
+                        {% else %}
+                            <span class="badge badge-warning">In Progress</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div style="text-align:center;padding:30px;color:var(--muted)">No attendance logs yet. Click LOGIN to start.</div>
+    {% endif %}
+</div>
+
+<!-- My Requests -->
+{% if my_requests | length > 0 %}
+<div class="att-card">
+    <h3><i class="fa-solid fa-clipboard-list"></i> My Requests</h3>
+    <div style="overflow-x:auto">
+        <table class="att-table">
+            <thead>
+                <tr><th>Date</th><th>Login</th><th>Logout</th><th>Reason</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+                {% for req in my_requests %}
+                <tr>
+                    <td>{{ req.request_date.strftime('%b %d, %Y') }}</td>
+                    <td style="font-family:var(--mono)">{{ req.requested_login.strftime('%I:%M %p') }}</td>
+                    <td style="font-family:var(--mono)">{{ req.requested_logout.strftime('%I:%M %p') }}</td>
+                    <td style="color:var(--muted)">{{ req.reason or '—' }}</td>
+                    <td>
+                        {% if req.status == 'pending' %}<span class="badge badge-warning">Pending</span>
+                        {% elif req.status == 'approved' %}<span class="badge badge-success">Approved</span>
+                        {% else %}<span class="badge badge-danger">Declined</span>{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Fetch chart data and render
+fetch('/api/attendance/chart')
+    .then(r=>r.json())
+    .then(data=>{
+        const chart=document.getElementById('att-chart');
+        if(!data.length){chart.innerHTML='<div style="color:var(--muted);font-size:13px;width:100%;text-align:center;padding:40px 0">No data yet</div>';return}
+        const maxH=Math.max(...data.map(d=>d.hours),1);
+        chart.innerHTML=data.map(d=>{
+            const h=Math.max(4,Math.round((d.hours/maxH)*120));
+            const dt=new Date(d.date);
+            const lbl=`${dt.getDate()}/${dt.getMonth()+1}`;
+            return`<div class="att-bar-wrap"><div class="att-bar-val">${d.hours.toFixed(1)}</div><div class="att-bar-col"><div class="att-bar" style="height:${h}px" title="${d.date}: ${d.hours.toFixed(2)} hrs"></div></div><div class="att-bar-lbl">${lbl}</div></div>`;
+        }).join('');
+    })
+    .catch(()=>{
+        document.getElementById('att-chart').innerHTML='<div style="color:var(--muted);font-size:13px;width:100%;text-align:center;padding:40px 0">Failed to load chart</div>';
+    });
+</script>
+{% endblock %}

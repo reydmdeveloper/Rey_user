@@ -1,0 +1,196 @@
+{% extends "app_base.html" %}
+{% block title %}User Management – REYDM{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>User Management</h2>
+    <p>Manage users, roles, tool access, and passwords</p>
+</div>
+
+<!-- Pending Approvals -->
+{% set pending_users = users | selectattr('is_approved', 'equalto', 0) | list %}
+{% if pending_users | length > 0 %}
+<div class="card" style="border-color: var(--warning); border-left: 3px solid var(--warning);">
+    <div class="card-header">
+        <h3><i class="fa-solid fa-user-clock" style="color:var(--warning)"></i>&nbsp; Pending Approvals ({{ pending_users | length }})</h3>
+    </div>
+    <div class="table-wrapper">
+        <table>
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Registered</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for u in pending_users %}
+                <tr>
+                    <td><strong>{{ u.full_name }}</strong></td>
+                    <td>{{ u.email }}</td>
+                    <td class="text-muted text-sm">{{ u.created_at.strftime('%b %d, %Y %I:%M %p') }}</td>
+                    <td>
+                        <div class="btn-group">
+                            <form method="POST" action="{{ url_for('approve_user', user_id=u.id) }}">
+                                <button type="submit" class="btn btn-success btn-sm">
+                                    <i class="fa-solid fa-check"></i> Approve
+                                </button>
+                            </form>
+                            <form method="POST" action="{{ url_for('reject_user', user_id=u.id) }}">
+                                <button type="submit" class="btn btn-danger btn-sm" data-confirm="Reject and remove this user?">
+                                    <i class="fa-solid fa-xmark"></i> Reject
+                                </button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<!-- All Users -->
+<div class="card">
+    <div class="card-header">
+        <h3><i class="fa-solid fa-users"></i>&nbsp; All Users ({{ users | length }})</h3>
+    </div>
+    <div class="table-wrapper">
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Role</th>
+                    <th>Assigned Tools</th>
+                    <th>Mail</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for u in users %}
+                <tr>
+                    <td class="text-muted">{{ loop.index }}</td>
+                    <td>
+                        <strong>{{ u.full_name }}</strong>
+                        {% if u.id == session.get('user_id') %}
+                            <span class="badge badge-info" style="margin-left:4px;">You</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-sm">{{ u.email }}</td>
+                    <td>
+                        {% if u.role == 'admin' %}
+                            <span class="badge badge-warning">Admin</span>
+                        {% else %}
+                            <span class="badge badge-info">User</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <!-- Tool On/Off Toggles for EVERY user -->
+                        <div class="tool-toggle-group">
+                            {% for tool_key, tool_info in all_tools.items() %}
+                                {% set has_tool = tool_key in u.allowed_tools %}
+                                <form method="POST" action="{{ url_for('toggle_tool', user_id=u.id, tool_key=tool_key) }}" style="display:inline;">
+                                    {% if has_tool %}
+                                    <button type="submit" class="btn btn-tool-on btn-sm" title="{{ tool_info.name }} — Click to Disable">
+                                        <i class="{{ tool_info.icon }}"></i> {{ tool_info.name }} <span class="tool-status-label on">On</span>
+                                    </button>
+                                    {% else %}
+                                    <button type="submit" class="btn btn-tool-off btn-sm" title="{{ tool_info.name }} — Click to Enable">
+                                        <i class="{{ tool_info.icon }}"></i> {{ tool_info.name }} <span class="tool-status-label off">Off</span>
+                                    </button>
+                                    {% endif %}
+                                </form>
+                            {% endfor %}
+                        </div>
+                    </td>
+                    <td>
+                        {% if u.mail_enabled %}
+                            <form method="POST" action="{{ url_for('toggle_mail', user_id=u.id) }}" style="display:inline;">
+                                <button type="submit" class="btn btn-success btn-sm" title="Mail Enabled – Click to Disable">
+                                    <i class="fa-solid fa-envelope"></i> On
+                                </button>
+                            </form>
+                        {% else %}
+                            <form method="POST" action="{{ url_for('toggle_mail', user_id=u.id) }}" style="display:inline;">
+                                <button type="submit" class="btn btn-danger btn-sm" title="Mail Disabled – Click to Enable">
+                                    <i class="fa-solid fa-envelope-circle-xmark"></i> Off
+                                </button>
+                            </form>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if not u.is_approved %}
+                            <span class="status-dot pending"></span><span class="text-sm">Pending</span>
+                        {% elif u.is_active %}
+                            <span class="status-dot active"></span><span class="text-sm">Active</span>
+                        {% else %}
+                            <span class="status-dot inactive"></span><span class="text-sm">Inactive</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if u.id != session.get('user_id') %}
+                        <div class="btn-group">
+                            <!-- Change Role -->
+                            <form method="POST" action="{{ url_for('change_role', user_id=u.id) }}" style="display:inline;">
+                                {% if u.role == 'user' %}
+                                <input type="hidden" name="role" value="admin">
+                                <button type="submit" class="btn btn-secondary btn-sm" title="Promote to Admin">
+                                    <i class="fa-solid fa-arrow-up"></i>
+                                </button>
+                                {% else %}
+                                <input type="hidden" name="role" value="user">
+                                <button type="submit" class="btn btn-secondary btn-sm" title="Demote to User">
+                                    <i class="fa-solid fa-arrow-down"></i>
+                                </button>
+                                {% endif %}
+                            </form>
+
+                            <!-- Toggle Active -->
+                            {% if u.is_approved %}
+                            <form method="POST" action="{{ url_for('toggle_user_active', user_id=u.id) }}" style="display:inline;">
+                                <button type="submit" class="btn btn-secondary btn-sm"
+                                        title="{{ 'Deactivate' if u.is_active else 'Activate' }}">
+                                    <i class="fa-solid {{ 'fa-ban' if u.is_active else 'fa-circle-check' }}"></i>
+                                </button>
+                            </form>
+                            {% endif %}
+
+                            <!-- Reset Password -->
+                            <button class="btn btn-secondary btn-sm" data-modal="modal-pwd-{{ u.id }}" title="Reset Password">
+                                <i class="fa-solid fa-key"></i>
+                            </button>
+                        </div>
+
+                        <!-- Password Reset Modal -->
+                        <div class="modal-backdrop" id="modal-pwd-{{ u.id }}">
+                            <div class="modal-content">
+                                <h3>Reset Password for {{ u.full_name }}</h3>
+                                <form method="POST" action="{{ url_for('reset_password', user_id=u.id) }}">
+                                    <div class="form-group">
+                                        <label>New Password</label>
+                                        <input type="password" name="new_password" class="form-control"
+                                               placeholder="Minimum 6 characters" required minlength="6">
+                                    </div>
+                                    <div class="btn-group">
+                                        <button type="submit" class="btn btn-primary btn-sm">
+                                            <i class="fa-solid fa-save"></i> Reset Password
+                                        </button>
+                                        <button type="button" class="btn btn-secondary btn-sm modal-close">Cancel</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

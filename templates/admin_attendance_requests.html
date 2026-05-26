@@ -1,0 +1,89 @@
+{% extends "app_base.html" %}
+{% block title %}Attendance Requests – REYDM{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2><i class="fa-solid fa-clipboard-check"></i> Attendance Requests</h2>
+    <p>Review and approve/decline attendance time change requests from users</p>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3><i class="fa-solid fa-inbox"></i>&nbsp; All Requests ({{ requests | length }})</h3>
+    </div>
+
+    {% if requests | length > 0 %}
+    <div class="table-wrapper">
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>User</th>
+                    <th>Date</th>
+                    <th>Login Time</th>
+                    <th>Logout Time</th>
+                    <th>Hours</th>
+                    <th>Reason</th>
+                    <th>Status</th>
+                    <th>Submitted</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for req in requests %}
+                <tr>
+                    <td class="text-muted">{{ loop.index }}</td>
+                    <td>
+                        <strong>{{ req.full_name }}</strong>
+                        <div class="text-sm text-muted">{{ req.email }}</div>
+                    </td>
+                    <td>{{ req.request_date.strftime('%b %d, %Y') }}</td>
+                    <td style="font-family:var(--mono)">{{ req.requested_login.strftime('%I:%M %p') }}</td>
+                    <td style="font-family:var(--mono)">{{ req.requested_logout.strftime('%I:%M %p') }}</td>
+                    <td style="font-family:var(--mono);font-weight:600;color:var(--accent2)">
+                        {% set diff_secs = (req.requested_logout - req.requested_login).total_seconds() %}
+                        {{ "%.2f"|format(diff_secs / 3600) }} hrs
+                    </td>
+                    <td style="max-width:200px;color:var(--muted)">{{ req.reason or '—' }}</td>
+                    <td>
+                        {% if req.status == 'pending' %}
+                            <span class="badge badge-warning">Pending</span>
+                        {% elif req.status == 'approved' %}
+                            <span class="badge badge-success">Approved</span>
+                        {% else %}
+                            <span class="badge badge-danger">Declined</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-muted text-sm">{{ req.created_at.strftime('%b %d, %I:%M %p') }}</td>
+                    <td>
+                        {% if req.status == 'pending' %}
+                        <div class="btn-group">
+                            <form method="POST" action="{{ url_for('handle_attendance_request', req_id=req.id, action='approve') }}">
+                                <button type="submit" class="btn btn-success btn-sm" title="Approve & create attendance log">
+                                    <i class="fa-solid fa-check"></i> Approve
+                                </button>
+                            </form>
+                            <form method="POST" action="{{ url_for('handle_attendance_request', req_id=req.id, action='decline') }}">
+                                <button type="submit" class="btn btn-danger btn-sm" data-confirm="Decline this request?">
+                                    <i class="fa-solid fa-xmark"></i> Decline
+                                </button>
+                            </form>
+                        </div>
+                        {% else %}
+                            <span class="text-sm text-muted">{{ req.status | capitalize }}</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-icon"><i class="fa-solid fa-inbox"></i></div>
+        <h4>No Requests</h4>
+        <p>No attendance change requests from users yet.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

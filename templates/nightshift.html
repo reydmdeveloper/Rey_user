@@ -1,0 +1,344 @@
+{% extends "app_base.html" %}
+{% block title %}Night Shift Attendance – REYDM{% endblock %}
+
+{% block head %}
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+/* ── Night Shift Specific Styles (scoped) ── */
+.ns-header{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px 18px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+.ns-title{font-size:16px;font-weight:600;display:flex;align-items:center;gap:10px}
+.ns-title .ns-logo{width:32px;height:32px;border-radius:50%;border:1px solid var(--border);background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:16px}
+.ns-sub{font-size:11px;color:var(--muted);font-family:var(--mono);margin-top:2px}
+.ns-right{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+
+.ns-tabs{display:flex;gap:2px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-md);padding:3px}
+.ns-tab{padding:5px 14px;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;border:none;background:transparent;color:var(--muted);font-family:var(--font);transition:all .15s}
+.ns-tab.active{background:var(--surface);color:var(--text);border:1px solid var(--border)}
+
+.month-nav{display:flex;align-items:center;gap:6px}
+.nav-btn-ns{background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:5px 11px;border-radius:var(--radius-md);cursor:pointer;font-size:13px;transition:all .15s}
+.nav-btn-ns:hover{border-color:var(--accent)}
+.mlabel-ns{font-size:13px;font-weight:600;min-width:148px;text-align:center;font-family:var(--mono)}
+.yr-sel{background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:var(--radius-md);font-size:12px;font-family:var(--font);cursor:pointer}
+
+/* STATS */
+.ns-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:10px;margin-bottom:14px}
+.ns-stat{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);padding:11px 13px}
+.ns-stat .lbl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
+.ns-stat .val{font-size:20px;font-weight:600;font-family:var(--mono)}
+.ns-stat .val.blue{color:var(--accent2)}.ns-stat .val.green{color:var(--success)}.ns-stat .val.red{color:var(--danger)}.ns-stat .val.sm{font-size:13px;padding-top:3px;font-weight:500}
+
+/* TOOLBAR */
+.ns-toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);padding:10px 13px;margin-bottom:13px}
+.ns-toolbar input{background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:6px 9px;border-radius:var(--radius-md);font-size:13px;font-family:var(--font);transition:border-color .15s;outline:none}
+.ns-toolbar input:focus{border-color:var(--accent)}
+.ns-toolbar input::placeholder{color:var(--muted)}
+.ns-spacer{flex:1}
+
+.filter-chip{padding:4px 10px;border-radius:20px;font-size:11px;font-weight:500;cursor:pointer;border:1px solid var(--border);background:var(--surface2);color:var(--muted);font-family:var(--font);transition:all .15s}
+.filter-chip.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+
+/* TABLE */
+.sheet-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius-md)}
+.ns-table{border-collapse:collapse;font-size:12px;width:100%}
+.ns-table thead th{background:var(--surface2);color:var(--muted);padding:6px 5px;text-align:center;white-space:nowrap;border:1px solid var(--border);position:sticky;top:0;z-index:2;font-weight:500}
+.ns-table thead th.nc{text-align:left;min-width:130px;padding-left:11px;position:sticky;left:0;z-index:4;background:var(--surface2);color:var(--text);font-size:11px;letter-spacing:.4px;text-transform:uppercase}
+.ns-table thead th.ic{min-width:66px;position:sticky;left:130px;z-index:4;background:var(--surface2);font-family:var(--mono);text-transform:uppercase;font-size:11px}
+.ns-table thead th.sc{min-width:76px;position:sticky;left:196px;z-index:4;background:var(--surface2);font-size:11px}
+.ns-table thead th.wday{font-size:10px;font-weight:400}
+.ns-table thead th.wday.wknd{color:rgba(139,148,158,0.4)}
+.ns-table thead th.th-total{position:sticky;right:0;z-index:3;background:rgba(31,111,235,0.15);color:var(--accent2);font-weight:600;min-width:50px;border-left:2px solid rgba(31,111,235,0.3)}
+.ns-table tbody tr{transition:background .1s}
+.ns-table tbody tr:hover{background:rgba(31,111,235,0.04)}
+.ns-table tbody tr.resigned-row{opacity:.55}
+.ns-table tbody tr.resigned-row td.nc .emp-name{text-decoration:line-through;color:var(--muted)}
+.ns-table tbody td{padding:0;border:1px solid var(--border);text-align:center;vertical-align:middle}
+.ns-table tbody td.nc{text-align:left;font-weight:500;font-size:12px;padding:4px 4px 4px 11px;position:sticky;left:0;background:var(--surface);z-index:1;min-width:130px;white-space:nowrap}
+.ns-table tbody td.ic{position:sticky;left:130px;background:var(--surface);z-index:1;font-family:var(--mono);font-size:11px;color:var(--muted);min-width:66px;padding:4px}
+.ns-table tbody td.sc{position:sticky;left:196px;background:var(--surface);z-index:1;min-width:76px;padding:2px 4px}
+.ns-table tbody tr:hover td.nc,.ns-table tbody tr:hover td.ic,.ns-table tbody tr:hover td.sc{background:rgba(31,111,235,0.04)}
+
+/* STATUS BADGE */
+.status-badge-ns{display:inline-flex;align-items:center;gap:4px;padding:2px 7px;border-radius:20px;font-size:10px;font-weight:600;font-family:var(--mono);white-space:nowrap;cursor:pointer;transition:all .15s;border:1px solid transparent;user-select:none}
+.status-active-ns{background:rgba(63,185,80,0.1);color:var(--success);border-color:rgba(63,185,80,0.2)}
+.status-resigned-ns{background:rgba(248,81,73,0.1);color:var(--danger);border-color:rgba(248,81,73,0.2)}
+
+/* TICK CELLS */
+.dc{width:28px;min-width:28px;max-width:28px;height:28px;min-height:28px;cursor:pointer;user-select:none;transition:background .1s;padding:0 !important;position:relative}
+.dc::after{content:'';display:block;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(45deg) scale(0);width:5px;height:9px;border-right:2px solid var(--success);border-bottom:2px solid var(--success);transition:transform .12s ease}
+.dc.present{background:rgba(63,185,80,0.12)}
+.dc.present::after{transform:translate(-50%,-60%) rotate(45deg) scale(1)}
+.dc.wknd{background:rgba(139,148,158,0.06)}
+.dc.wknd.present{background:rgba(63,185,80,0.08)}
+.dc:hover{background:var(--surface2) !important}
+.dc.disabled{cursor:not-allowed;opacity:.3;pointer-events:none}
+
+.tc{background:rgba(31,111,235,0.15);color:var(--accent2);font-weight:700;font-size:13px;position:sticky;right:0;border-left:2px solid rgba(31,111,235,0.3);font-family:var(--mono);padding:4px 6px}
+.empty-r td{text-align:center;padding:28px;color:var(--muted);font-size:13px}
+
+/* ── EMPLOYEE MANAGE TAB ── */
+.emp-table-wrap{border:1px solid var(--border);border-radius:var(--radius-md);overflow:hidden;margin-top:13px}
+.emp-table-ns{width:100%;border-collapse:collapse;font-size:13px}
+.emp-table-ns th{background:var(--surface2);padding:8px 12px;text-align:left;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid var(--border);font-weight:500}
+.emp-table-ns td{padding:9px 12px;border-bottom:1px solid var(--border);vertical-align:middle}
+.emp-table-ns tr:last-child td{border-bottom:none}
+.emp-table-ns tr:hover td{background:rgba(31,111,235,0.04)}
+.emp-table-ns .mono{font-family:var(--mono);font-size:12px}
+.emp-table-ns .actions{display:flex;gap:6px;align-items:center}
+.icon-btn-ns{background:none;border:none;cursor:pointer;color:var(--muted);font-size:14px;padding:3px 6px;border-radius:5px;transition:all .15s;font-family:var(--font)}
+.icon-btn-ns:hover{background:var(--surface2);color:var(--text)}
+.icon-btn-ns.red:hover{background:var(--danger-soft);color:var(--danger)}
+
+/* ── DASHBOARD TAB ── */
+.dash-section{margin-bottom:24px}
+.dash-title-ns{font-size:13px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)}
+.emp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.emp-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);padding:13px 15px;cursor:pointer;transition:border-color .15s;position:relative}
+.emp-card:hover{border-color:var(--accent)}
+.emp-card.selected{border-color:var(--accent);background:rgba(31,111,235,0.04)}
+.emp-card.resigned-card{opacity:.55}
+.emp-card .resigned-tag{position:absolute;top:10px;right:10px;font-size:9px;font-weight:600;font-family:var(--mono);padding:2px 6px;border-radius:20px;background:var(--danger-soft);color:var(--danger);border:1px solid rgba(248,81,73,0.2)}
+.ec-top{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.ec-avatar{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;flex-shrink:0}
+.ec-name{font-weight:600;font-size:13px}
+.ec-id{font-size:11px;color:var(--muted);font-family:var(--mono)}
+.ec-bar-wrap{background:var(--surface2);border-radius:4px;height:6px;overflow:hidden;margin-bottom:6px}
+.ec-bar{height:6px;border-radius:4px;background:var(--success);transition:width .3s}
+.ec-stats{display:flex;justify-content:space-between;font-size:11px;color:var(--muted)}
+.ec-pct{font-weight:600;color:var(--success);font-family:var(--mono)}
+
+/* Bar chart */
+.bar-chart-ns{display:flex;align-items:flex-end;gap:6px;height:120px;padding:0 0 24px;position:relative}
+.bar-wrap-ns{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%}
+.bar-col-ns{width:100%;display:flex;align-items:flex-end;flex:1}
+.bar-ns{width:100%;border-radius:4px 4px 0 0;background:var(--accent);transition:height .3s;min-height:2px}
+.bar-ns.cur{background:var(--success)}
+.bar-lbl-ns{font-size:10px;color:var(--muted);font-family:var(--mono);white-space:nowrap}
+.bar-val-ns{font-size:10px;font-weight:600;font-family:var(--mono);color:var(--text)}
+
+/* Year heatmap */
+.heatmap-wrap-ns{overflow-x:auto}
+.heatmap-ns{display:grid;grid-template-columns:40px repeat(12,1fr);gap:6px;min-width:600px}
+.hm-month-label{font-size:11px;font-weight:600;color:var(--muted);text-align:center;padding:4px 0;text-transform:uppercase;letter-spacing:.4px}
+.hm-row-label{font-size:11px;color:var(--muted);display:flex;align-items:center;font-family:var(--mono)}
+.hm-cell{height:32px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;font-family:var(--mono);border:1px solid var(--border);transition:all .15s;cursor:default}
+.hm-cell:hover{border-color:var(--accent)}
+.hm-0{background:var(--surface2);color:var(--muted)}
+.hm-1{background:#0d2e1a;color:#3fb950}.hm-2{background:#0d4429;color:#56d364}
+.hm-3{background:#196127;color:#7ee787}.hm-4{background:#26a641;color:#acf4bf}
+
+/* Detail panel */
+.detail-panel-ns{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);padding:16px;margin-top:14px}
+.dp-head{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.dp-avatar{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:600;flex-shrink:0}
+.dp-name{font-size:15px;font-weight:600}
+.dp-meta{font-size:12px;color:var(--muted);font-family:var(--mono)}
+.dp-stats-ns{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px;margin-bottom:14px}
+.dp-stat{background:var(--surface2);border-radius:var(--radius-md);padding:9px 11px}
+.dp-stat .l{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px}
+.dp-stat .v{font-size:16px;font-weight:600;font-family:var(--mono)}
+
+/* Modal */
+.ns-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:500;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .18s;backdrop-filter:blur(2px)}
+.ns-modal-overlay.open{opacity:1;pointer-events:all}
+.ns-modal{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;width:min(480px,96vw);box-shadow:var(--shadow-lg);transform:translateY(12px);transition:transform .18s}
+.ns-modal-overlay.open .ns-modal{transform:translateY(0)}
+.ns-modal-title{font-size:15px;font-weight:600;margin-bottom:6px;display:flex;align-items:center;gap:8px}
+.ns-modal-sub{font-size:12px;color:var(--muted);margin-bottom:20px}
+.ns-modal-close{margin-left:auto;background:none;border:none;color:var(--muted);cursor:pointer;font-size:18px;line-height:1;padding:0 2px;transition:color .15s}
+.ns-modal-close:hover{color:var(--danger)}
+.ns-form-row{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+.ns-form-row label{font-size:11px;color:var(--muted);font-weight:500;text-transform:uppercase;letter-spacing:.4px}
+.ns-form-row input,.ns-form-row select{background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:var(--radius-md);font-size:13px;font-family:var(--font);transition:border-color .15s;width:100%;outline:none}
+.ns-form-row input:focus,.ns-form-row select:focus{border-color:var(--accent)}
+.ns-form-row input::placeholder{color:var(--muted)}
+.ns-form-row .hint{font-size:11px;color:var(--muted);margin-top:2px}
+.ns-modal-footer{display:flex;gap:8px;justify-content:flex-end;margin-top:20px;padding-top:16px;border-top:1px solid var(--border)}
+
+/* Import */
+.drop-zone{border:2px dashed var(--border);border-radius:var(--radius-md);padding:32px 20px;text-align:center;cursor:pointer;transition:all .18s;background:var(--surface2);position:relative}
+.drop-zone:hover,.drop-zone.over{border-color:var(--accent);background:rgba(31,111,235,.06)}
+.drop-zone input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.drop-icon{font-size:32px;margin-bottom:8px}
+.drop-text{font-size:13px;font-weight:500;margin-bottom:4px}
+.drop-hint{font-size:11px;color:var(--muted)}
+.import-preview-ns{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-md);padding:12px;margin-top:14px;max-height:200px;overflow-y:auto;display:none}
+.import-preview-ns table{width:100%;font-size:11px;font-family:var(--mono);border-collapse:collapse}
+.import-preview-ns th{color:var(--muted);text-align:left;padding:3px 8px;border-bottom:1px solid var(--border);font-weight:500;text-transform:uppercase;letter-spacing:.3px}
+.import-preview-ns td{padding:4px 8px;border-bottom:1px solid var(--border)}
+.import-count-ns{font-size:12px;color:var(--success);font-weight:500;margin-top:8px;display:none}
+.import-err-ns{font-size:12px;color:var(--danger);margin-top:8px;display:none}
+.col-map{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+.col-map label{font-size:11px;color:var(--muted);margin-bottom:4px;display:block;text-transform:uppercase;letter-spacing:.3px}
+.col-map select{font-size:12px;padding:6px 8px;width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:var(--radius-md);font-family:var(--font)}
+
+/* Toast */
+.ns-toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(8px);background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);padding:9px 18px;font-size:13px;font-weight:500;z-index:600;box-shadow:var(--shadow-lg);opacity:0;transition:all .22s;pointer-events:none;white-space:nowrap}
+.ns-toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.ns-toast.ok{border-color:rgba(63,185,80,0.3);color:var(--success)}
+.ns-toast.err{border-color:rgba(248,81,73,0.3);color:var(--danger)}
+
+.btn-export-ns{background:rgba(63,185,80,0.1);color:var(--success);border-color:rgba(63,185,80,0.2)}
+.btn-export-ns:hover{opacity:.85;color:var(--success)}
+.btn-import-ns{background:rgba(210,153,34,0.1);color:var(--warning);border-color:rgba(210,153,34,0.2)}
+.btn-import-ns:hover{opacity:.85;color:var(--warning)}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2><i class="fa-solid fa-moon"></i> Night Shift Attendance</h2>
+    <p>Track and manage night shift employee attendance</p>
+</div>
+
+<!-- NS Header -->
+<div class="ns-header">
+    <div style="display:flex;align-items:center;gap:10px">
+        <div class="ns-title">
+            <div class="ns-logo">🌙</div>
+            <div>
+                <div>Attendance Tracker</div>
+                <div class="ns-sub" id="ns-sub-lbl"></div>
+            </div>
+        </div>
+    </div>
+    <div class="ns-right">
+        <div class="ns-tabs">
+            <button class="ns-tab active" onclick="nsSwitchPage('attendance')">📋 Attendance</button>
+            <button class="ns-tab" onclick="nsSwitchPage('employees')">👥 Employees</button>
+            <button class="ns-tab" onclick="nsSwitchPage('dashboard')">📊 Dashboard</button>
+        </div>
+        <div class="month-nav" id="ns-month-nav">
+            <button class="nav-btn-ns" id="ns-prev-m">&#8592;</button>
+            <span class="mlabel-ns" id="ns-m-disp"></span>
+            <button class="nav-btn-ns" id="ns-next-m">&#8594;</button>
+            <select class="yr-sel" id="ns-yr-sel"></select>
+        </div>
+    </div>
+</div>
+
+<!-- ATTENDANCE PAGE -->
+<div class="ns-page active" id="ns-page-attendance">
+    <div class="ns-stats" id="ns-stats-row"></div>
+    <div class="ns-toolbar">
+        <input type="text" id="ns-search-inp" placeholder="🔍  Search employee…" style="width:180px"/>
+        <div style="display:flex;gap:5px">
+            <span class="filter-chip on" id="ns-fc-all" onclick="nsSetFilter('all')">All</span>
+            <span class="filter-chip" id="ns-fc-active" onclick="nsSetFilter('active')">Active</span>
+            <span class="filter-chip" id="ns-fc-resigned" onclick="nsSetFilter('resigned')">Resigned</span>
+        </div>
+        <div class="ns-spacer"></div>
+        <button class="btn btn-export-ns btn-sm" id="ns-exp-btn">⬇ Export CSV</button>
+    </div>
+    <div class="sheet-wrap">
+        <table class="ns-table"><thead id="ns-thead"></thead><tbody id="ns-tbody"></tbody></table>
+    </div>
+</div>
+
+<!-- EMPLOYEES PAGE -->
+<div class="ns-page" id="ns-page-employees" style="display:none">
+    <div class="ns-toolbar">
+        <button class="btn btn-primary btn-sm" onclick="nsOpenAddModal()">＋ Add Employee</button>
+        <button class="btn btn-import-ns btn-sm" onclick="nsOpenImportModal()">📥 Import from Excel</button>
+        <div class="ns-spacer"></div>
+        <input type="text" id="ns-emp-search" placeholder="🔍  Search…" style="width:200px"/>
+    </div>
+    <div class="emp-table-wrap">
+        <table class="emp-table-ns">
+            <thead><tr><th>Name</th><th>Employee ID</th><th>Department</th><th>Status</th><th>Actions</th></tr></thead>
+            <tbody id="ns-emp-tbody"></tbody>
+        </table>
+    </div>
+</div>
+
+<!-- DASHBOARD PAGE -->
+<div class="ns-page" id="ns-page-dashboard" style="display:none">
+    <div class="dash-section">
+        <div class="dash-title-ns" id="ns-dash-year-title"></div>
+        <div class="ns-stats" id="ns-dash-stats"></div>
+    </div>
+    <div class="dash-section">
+        <div class="dash-title-ns">Monthly Attendance Overview</div>
+        <div class="bar-chart-ns" id="ns-bar-chart"></div>
+    </div>
+    <div class="dash-section">
+        <div class="dash-title-ns">Year Heatmap (Present Days per Month per Employee)</div>
+        <div class="heatmap-wrap-ns"><div class="heatmap-ns" id="ns-heatmap"></div></div>
+    </div>
+    <div class="dash-section">
+        <div class="dash-title-ns">Employee Details — click a card for breakdown</div>
+        <div class="emp-grid" id="ns-emp-grid"></div>
+        <div id="ns-detail-panel"></div>
+    </div>
+</div>
+
+<!-- ADD EMPLOYEE MODAL -->
+<div class="ns-modal-overlay" id="ns-modal-add">
+    <div class="ns-modal">
+        <div class="ns-modal-title">＋ Add Employee <button class="ns-modal-close" onclick="nsCloseModal('ns-modal-add')">✕</button></div>
+        <div class="ns-modal-sub">Add a single employee to the tracker</div>
+        <div class="ns-form-row"><label>Employee ID *</label><input type="text" id="ns-add-id" placeholder="E009" maxlength="20"/></div>
+        <div class="ns-form-row"><label>Full Name *</label><input type="text" id="ns-add-name" placeholder="Employee Full Name" maxlength="60"/></div>
+        <div class="ns-form-row"><label>Department</label><input type="text" id="ns-add-dept" placeholder="e.g. Operations, Security…" maxlength="40"/></div>
+        <div class="ns-form-row"><label>Status</label><select id="ns-add-status"><option value="active">Active</option><option value="resigned">Resigned</option></select></div>
+        <div class="ns-modal-footer">
+            <button class="btn btn-sm" onclick="nsCloseModal('ns-modal-add')">Cancel</button>
+            <button class="btn btn-primary btn-sm" onclick="nsAddEmployee()">Add Employee</button>
+        </div>
+    </div>
+</div>
+
+<!-- EDIT EMPLOYEE MODAL -->
+<div class="ns-modal-overlay" id="ns-modal-edit">
+    <div class="ns-modal">
+        <div class="ns-modal-title">✏️ Edit Employee <button class="ns-modal-close" onclick="nsCloseModal('ns-modal-edit')">✕</button></div>
+        <div class="ns-modal-sub">Update employee details</div>
+        <input type="hidden" id="ns-edit-orig-id"/>
+        <div class="ns-form-row"><label>Employee ID *</label><input type="text" id="ns-edit-id" maxlength="20"/></div>
+        <div class="ns-form-row"><label>Full Name *</label><input type="text" id="ns-edit-name" maxlength="60"/></div>
+        <div class="ns-form-row"><label>Department</label><input type="text" id="ns-edit-dept" maxlength="40"/></div>
+        <div class="ns-form-row"><label>Status</label><select id="ns-edit-status"><option value="active">Active</option><option value="resigned">Resigned</option></select><div class="hint">Resigned employees are greyed out.</div></div>
+        <div class="ns-modal-footer">
+            <button class="btn btn-sm" onclick="nsCloseModal('ns-modal-edit')">Cancel</button>
+            <button class="btn btn-primary btn-sm" onclick="nsSaveEdit()">Save Changes</button>
+        </div>
+    </div>
+</div>
+
+<!-- IMPORT EXCEL MODAL -->
+<div class="ns-modal-overlay" id="ns-modal-import">
+    <div class="ns-modal" style="width:min(560px,96vw)">
+        <div class="ns-modal-title">📥 Import Employees <button class="ns-modal-close" onclick="nsCloseModal('ns-modal-import')">✕</button></div>
+        <div class="ns-modal-sub">Upload .xlsx or .csv file. Map columns below.</div>
+        <div class="drop-zone" id="ns-drop-zone">
+            <input type="file" id="ns-xl-file" accept=".xlsx,.xls,.csv" onchange="nsHandleFileSelect(this)"/>
+            <div class="drop-icon">📊</div>
+            <div class="drop-text">Drop Excel / CSV file here</div>
+            <div class="drop-hint">or click to browse</div>
+        </div>
+        <div id="ns-col-map-wrap" style="display:none">
+            <div style="font-size:12px;font-weight:600;margin:14px 0 6px;color:var(--text)">Map Columns</div>
+            <div class="col-map">
+                <div><label>Employee ID *</label><select id="ns-map-id"></select></div>
+                <div><label>Name *</label><select id="ns-map-name"></select></div>
+                <div><label>Department</label><select id="ns-map-dept"><option value="">— none —</option></select></div>
+                <div><label>Status</label><select id="ns-map-status"><option value="">— none —</option></select></div>
+            </div>
+        </div>
+        <div class="import-preview-ns" id="ns-import-preview"><table id="ns-preview-tbl"></table></div>
+        <div class="import-count-ns" id="ns-import-count"></div>
+        <div class="import-err-ns" id="ns-import-err"></div>
+        <div class="ns-modal-footer">
+            <button class="btn btn-sm" onclick="nsCloseModal('ns-modal-import')">Cancel</button>
+            <button class="btn btn-import-ns btn-sm" id="ns-do-import-btn" disabled onclick="nsDoImport()">📥 Import</button>
+        </div>
+    </div>
+</div>
+
+<div class="ns-toast" id="ns-toast"></div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/nightshift.js') }}"></script>
+{% endblock %}

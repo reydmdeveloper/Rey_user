@@ -1,0 +1,146 @@
+{% extends "app_base.html" %}
+{% block title %}Character Palette – REYDM{% endblock %}
+
+{% block head %}
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans&family=Noto+Sans+Symbols+2&family=Noto+Emoji&display=swap" rel="stylesheet">
+<style>
+/* ── Character Palette Scoped Styles ── */
+.cp-header{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:12px 16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+.cp-header input{flex:1;min-width:180px;padding:8px 12px;font-size:14px;border-radius:var(--radius-md);border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:var(--font);outline:none;transition:border-color .15s}
+.cp-header input:focus{border-color:var(--accent)}
+.cp-header input::placeholder{color:var(--muted)}
+.cp-header select{padding:7px 10px;border-radius:var(--radius-md);border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:var(--font);font-size:13px;cursor:pointer;outline:none}
+.cp-header select:focus{border-color:var(--accent)}
+
+.cp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--cp-tile,42px),1fr));gap:5px;margin-bottom:14px}
+.cp-tile{height:var(--cp-tile,42px);background:var(--surface);display:flex;align-items:center;justify-content:center;font-size:calc(var(--cp-tile,42px)/2);cursor:pointer;border:1px solid var(--border);border-radius:var(--radius-sm);transition:all .1s;user-select:none}
+.cp-tile:hover{background:var(--surface2);border-color:var(--accent)}
+.cp-tile.selected{outline:2px solid var(--accent);background:var(--accent-soft)}
+.cp-tile .glyph{font-family:"Noto Emoji","Noto Sans Symbols 2","Noto Sans","Segoe UI Symbol","Segoe UI Emoji","Arial Unicode MS",sans-serif;line-height:1}
+
+.cp-sidebar{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px;display:flex;flex-direction:column;gap:10px}
+.cp-copy-box{padding:14px;border-radius:var(--radius-md);background:var(--bg);border:1px solid var(--border);font-size:28px;text-align:center;min-height:60px;display:flex;align-items:center;justify-content:center}
+.cp-char-info{font-size:12px;font-family:var(--mono);color:var(--muted);line-height:1.8}
+.cp-char-info b{color:var(--accent2)}
+
+.cp-slider-box{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:12px 16px;margin-top:14px;display:flex;align-items:center;gap:12px}
+.cp-slider-box label{font-size:12px;color:var(--muted);white-space:nowrap}
+.cp-slider-box input[type=range]{flex:1;accent-color:var(--accent)}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2><i class="fa-solid fa-font"></i> Character Palette</h2>
+    <p>Browse, search, and copy Unicode characters</p>
+</div>
+
+<div class="cp-header">
+    <select id="cp-categorySelect">
+        <option value="all">Display All</option>
+        <option value="recent">Recently Used ⭐</option>
+        <option value="fav">Favourites ❤️</option>
+        <option value="latin">Latin</option>
+        <option value="latin-ext">Latin Extended</option>
+        <option value="greek">Greek</option>
+        <option value="cyrillic">Cyrillic</option>
+        <option value="arabic">Arabic</option>
+        <option value="hebrew">Hebrew</option>
+        <option value="devanagari">Devanagari</option>
+        <option value="thai">Thai</option>
+        <option value="hiragana">Hiragana</option>
+        <option value="katakana">Katakana</option>
+        <option value="hangul">Hangul</option>
+        <option value="braille">Braille</option>
+        <option value="arrows">Arrows</option>
+        <option value="math">Math Operators</option>
+        <option value="box">Box Drawing</option>
+        <option value="block">Block Elements</option>
+        <option value="shapes">Geometric Shapes</option>
+        <option value="currency">Currency</option>
+        <option value="punct">Punctuation</option>
+        <option value="emoji-faces">Emoji Faces</option>
+        <option value="emoji-symbols">Emoji Symbols</option>
+        <option value="emoji-misc">Emoji Misc</option>
+        <option value="misc">Misc Symbols</option>
+    </select>
+    <input id="cp-searchBox" placeholder="🔍 Search by name, code, emoji…" />
+</div>
+
+<div class="cp-grid" id="cp-grid"></div>
+
+<div class="cp-sidebar">
+    <div class="cp-copy-box" id="cp-copyBox">Click a character…</div>
+    <div class="cp-char-info" id="cp-charInfo"></div>
+    <button class="btn btn-primary btn-sm" onclick="cpAddFav()"><i class="fa-solid fa-heart"></i> Add to Favourites</button>
+</div>
+
+<div class="cp-slider-box">
+    <label>Grid Size</label>
+    <input type="range" min="36" max="100" value="42" id="cp-gridSlider">
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const CP_BLOCKS={"latin":[0x20,0x7F],"latin-ext":[0x100,0x24F],"greek":[0x370,0x3FF],"cyrillic":[0x400,0x4FF],"arabic":[0x600,0x6FF],"hebrew":[0x590,0x5FF],"devanagari":[0x900,0x97F],"thai":[0xE00,0xE7F],"hiragana":[0x3040,0x309F],"katakana":[0x30A0,0x30FF],"hangul":[0xAC00,0xD7A3],"braille":[0x2800,0x28FF],"arrows":[0x2190,0x21FF],"math":[0x2200,0x22FF],"box":[0x2500,0x257F],"block":[0x2580,0x259F],"shapes":[0x25A0,0x25FF],"currency":[0x20A0,0x20CF],"punct":[0x2000,0x206F],"emoji-faces":[0x1F600,0x1F64F],"emoji-symbols":[0x1F300,0x1F5FF],"emoji-misc":[0x1F900,0x1F9FF],"misc":[0x2600,0x26FF]};
+const cpGrid=document.getElementById("cp-grid"),cpCopyBox=document.getElementById("cp-copyBox");
+let cpSelectedChar=null;
+
+function cpGenerate(block){
+    cpGrid.innerHTML="";let chars=[];
+    if(block==="all"){for(let i=32;i<65535;i++)chars.push(i)}
+    else if(block==="recent"){chars=JSON.parse(localStorage.getItem("cp_recent")||"[]")}
+    else if(block==="fav"){chars=JSON.parse(localStorage.getItem("cp_fav")||"[]")}
+    else{let[s,e]=CP_BLOCKS[block];for(let i=s;i<=e;i++)chars.push(i)}
+    chars.forEach(code=>{
+        let d=document.createElement("div");d.className="cp-tile";
+        d.onclick=ev=>cpSelectChar(code,ev);
+        let sp=document.createElement("span");sp.className="glyph";
+        sp.textContent=String.fromCodePoint(code);
+        d.appendChild(sp);cpGrid.appendChild(d);
+    });
+}
+
+function cpSelectChar(code,ev){
+    cpSelectedChar=code;const ch=String.fromCodePoint(code);
+    cpCopyBox.textContent=ch;
+    document.querySelectorAll(".cp-tile").forEach(t=>t.classList.remove("selected"));
+    ev.currentTarget.classList.add("selected");
+    const hex=code.toString(16).toUpperCase();
+    document.getElementById("cp-charInfo").innerHTML=`<b>U+${hex}</b> &nbsp;·&nbsp; UTF-8: &#${code}; &nbsp;·&nbsp; HTML: &amp;#${code}; &nbsp;·&nbsp; CSS: \\${hex}`;
+    navigator.clipboard.writeText(ch);
+    let r=JSON.parse(localStorage.getItem("cp_recent")||"[]");
+    r=r.filter(c=>c!==code);r.unshift(code);if(r.length>30)r.pop();
+    localStorage.setItem("cp_recent",JSON.stringify(r));
+}
+
+function cpAddFav(){
+    if(!cpSelectedChar)return;
+    let f=JSON.parse(localStorage.getItem("cp_fav")||"[]");
+    if(!f.includes(cpSelectedChar))f.unshift(cpSelectedChar);
+    localStorage.setItem("cp_fav",JSON.stringify(f));
+}
+
+document.getElementById("cp-searchBox").addEventListener("input",e=>{
+    let q=e.target.value.toLowerCase();
+    if(!q){cpGenerate(document.getElementById("cp-categorySelect").value);return}
+    cpGrid.innerHTML="";
+    for(let code=32;code<65535;code++){
+        let ch=String.fromCodePoint(code);
+        if(ch.toLowerCase().includes(q)||("u+"+code.toString(16)).includes(q)||ch===q){
+            let d=document.createElement("div");d.className="cp-tile";
+            d.onclick=ev=>cpSelectChar(code,ev);
+            let sp=document.createElement("span");sp.className="glyph";
+            sp.textContent=ch;d.appendChild(sp);cpGrid.appendChild(d);
+        }
+    }
+});
+
+document.getElementById("cp-categorySelect").addEventListener("change",e=>cpGenerate(e.target.value));
+document.getElementById("cp-gridSlider").addEventListener("input",e=>{
+    document.documentElement.style.setProperty("--cp-tile",e.target.value+"px");
+});
+cpGenerate("latin");
+</script>
+{% endblock %}

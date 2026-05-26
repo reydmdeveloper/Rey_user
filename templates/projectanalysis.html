@@ -1,0 +1,267 @@
+{% extends "app_base.html" %}
+{% block title %}Project Analysis – REYDM{% endblock %}
+
+{% block head %}
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+<script>pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+/* Force dark mode for the PA content area */
+.pa-wrap{color:#e2e8f0}
+.pa-wrap .table-input,.pa-wrap .table-select{background-color:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 8px;width:100%;font-size:13px;font-family:var(--font);outline:none;transition:border-color .15s}
+.pa-wrap .table-input:focus,.pa-wrap .table-select:focus{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
+.pa-wrap .pa-btn{display:inline-flex;align-items:center;gap:6px;padding:7px 16px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;border:1px solid var(--border);transition:all .15s;background:var(--accent);color:#fff;border-color:var(--accent);font-family:var(--font)}
+.pa-wrap .pa-btn:hover{background:var(--accent2)}
+.pa-wrap .pa-btn-sec{background:var(--surface2);color:var(--text);border-color:var(--border)}
+.pa-wrap .pa-btn-sec:hover{border-color:var(--accent);color:var(--accent2)}
+.pa-wrap .pa-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px;margin-bottom:16px}
+.pa-wrap .pa-label{font-size:12px;font-weight:500;color:var(--muted);margin-bottom:5px;display:block;text-transform:uppercase;letter-spacing:.4px}
+.pa-wrap .pa-status{text-align:center;color:var(--muted);margin-bottom:14px;font-size:13px;font-weight:500}
+.pa-wrap .pa-table-wrap{overflow-x:auto;overflow-y:auto;max-height:60vh;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg)}
+.pa-wrap table{width:100%;border-collapse:collapse;font-size:12px}
+.pa-wrap thead th{background:var(--surface2);color:var(--muted);padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:2;font-weight:500;white-space:nowrap}
+.pa-wrap tbody td{padding:4px 8px;border-bottom:1px solid var(--border);vertical-align:middle;font-size:13px}
+.pa-wrap tbody tr:hover td{background:rgba(31,111,235,.04)}
+.pa-wrap .pa-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+@media(max-width:900px){.pa-wrap .pa-grid{grid-template-columns:1fr}}
+.pa-wrap .pa-flex{display:flex;gap:8px;align-items:center}
+.pa-wrap .pa-space-y>*+*{margin-top:14px}
+/* Loading overlay */
+.pa-loading{position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:600;color:#fff}
+.pa-loading.hidden{display:none}
+.pa-spinner{width:40px;height:40px;border:4px solid rgba(255,255,255,.2);border-top-color:var(--accent);border-radius:50%;animation:pa-spin 1s linear infinite}
+@keyframes pa-spin{to{transform:rotate(360deg)}}
+/* Toast */
+.pa-toast-container{position:fixed;bottom:20px;right:20px;display:flex;flex-direction:column;gap:8px;z-index:700}
+.pa-toast{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);padding:10px 16px;font-size:13px;box-shadow:var(--shadow-lg);display:flex;align-items:center;gap:10px;animation:flash-in .3s ease}
+.pa-toast.success{border-color:rgba(63,185,80,.3);color:var(--success)}
+.pa-toast.warning{border-color:rgba(210,153,34,.3);color:var(--warning)}
+.pa-toast.error{border-color:rgba(248,81,73,.3);color:var(--danger)}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="pa-wrap">
+
+<div class="page-header">
+    <h2><i class="fa-solid fa-file-pdf"></i> PDF Project Analyzer</h2>
+    <p>Analyze PDF folders, count pages, and export to Excel/TSV</p>
+</div>
+
+<!-- Loading -->
+<div class="pa-loading hidden" id="pa-loading">
+    <div class="pa-spinner"></div>
+    <p style="margin-top:14px;font-size:15px" id="pa-loading-status">Processing PDFs...</p>
+</div>
+
+<div class="pa-toast-container" id="pa-toast-container"></div>
+
+<!-- Controls -->
+<div class="pa-card">
+    <div class="pa-grid">
+        <div class="pa-space-y">
+            <div>
+                <label class="pa-label">Project Name</label>
+                <input type="text" id="pa-project-name" class="table-input" placeholder="Project name">
+            </div>
+            <div>
+                <label class="pa-label">Source Language</label>
+                <div class="pa-flex">
+                    <input type="text" id="pa-source-language" class="table-input" value="English">
+                    <button id="pa-apply-src" class="pa-btn pa-btn-sec" style="white-space:nowrap">Apply</button>
+                </div>
+            </div>
+            <div>
+                <label class="pa-label">Target Language</label>
+                <div class="pa-flex">
+                    <input type="text" id="pa-target-language" class="table-input" value="English">
+                    <button id="pa-apply-tgt" class="pa-btn pa-btn-sec" style="white-space:nowrap">Apply</button>
+                </div>
+            </div>
+        </div>
+        <div class="pa-space-y">
+            <div>
+                <label class="pa-label">Application</label>
+                <div class="pa-flex">
+                    <select id="pa-application" class="table-select">
+                        <option>Word</option><option>INDD</option><option>Excel</option><option>PPT</option><option>FM</option><option>PSD</option><option>AI</option><option>Other</option>
+                    </select>
+                    <button id="pa-apply-app" class="pa-btn pa-btn-sec" style="white-space:nowrap">Apply</button>
+                </div>
+            </div>
+            <div>
+                <label class="pa-label">Task</label>
+                <div class="pa-flex">
+                    <input type="text" id="pa-task" class="table-input" value="Source Creation">
+                    <button id="pa-apply-task" class="pa-btn pa-btn-sec" style="white-space:nowrap">Apply</button>
+                </div>
+            </div>
+            <div>
+                <label class="pa-label">File Type</label>
+                <div class="pa-flex">
+                    <select id="pa-file-type" class="table-select">
+                        <option>Informational</option><option>Official</option><option>NA</option>
+                    </select>
+                    <button id="pa-apply-ftype" class="pa-btn pa-btn-sec" style="white-space:nowrap">Apply</button>
+                </div>
+            </div>
+            <div>
+                <label class="pa-label">Estimation Hours</label>
+                <div class="pa-flex">
+                    <input type="number" id="pa-effort-estimate" class="table-input" value="1.0" step="0.1">
+                    <button id="pa-reset-efforts" class="pa-btn pa-btn-sec" style="white-space:nowrap">Reset</button>
+                </div>
+            </div>
+        </div>
+        <div class="pa-space-y">
+            <label for="pa-folder-picker" class="pa-btn" style="text-align:center;cursor:pointer;display:block">
+                <i class="fa-solid fa-folder-open"></i> Select PDF Folder & Analyze
+            </label>
+            <input type="file" id="pa-folder-picker" webkitdirectory directory multiple style="display:none">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+                <button id="pa-export-excel" class="pa-btn pa-btn-sec"><i class="fa-solid fa-file-excel"></i> Excel</button>
+                <button id="pa-export-tsv" class="pa-btn pa-btn-sec"><i class="fa-solid fa-file-lines"></i> TSV</button>
+            </div>
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);cursor:pointer">
+                <input type="checkbox" id="pa-hide-ext" checked style="accent-color:var(--accent)"> Hide .pdf extension
+            </label>
+        </div>
+    </div>
+</div>
+
+<div class="pa-status" id="pa-status-bar">Select a folder to begin analysis.</div>
+
+<div class="pa-table-wrap">
+    <table>
+        <thead>
+            <tr>
+                <th>Effort (hrs)</th><th>Invoice</th><th>Project</th><th>File Name</th><th>Application</th><th>Task</th><th>File Type</th><th>Source Lang</th><th>Target Lang</th><th>Pages</th>
+            </tr>
+        </thead>
+        <tbody id="pa-table-body">
+            <tr><td colspan="10" style="padding:30px;text-align:center;color:var(--muted)">No data loaded</td></tr>
+        </tbody>
+    </table>
+</div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let paData=[];
+const paTableBody=document.getElementById('pa-table-body');
+const paLoading=document.getElementById('pa-loading');
+const paLoadingStatus=document.getElementById('pa-loading-status');
+const paStatusBar=document.getElementById('pa-status-bar');
+const paProjectName=document.getElementById('pa-project-name');
+const paSrcLang=document.getElementById('pa-source-language');
+const paTgtLang=document.getElementById('pa-target-language');
+const paApp=document.getElementById('pa-application');
+const paTask=document.getElementById('pa-task');
+const paEffort=document.getElementById('pa-effort-estimate');
+const paHideExt=document.getElementById('pa-hide-ext');
+const paToastC=document.getElementById('pa-toast-container');
+
+function paSF(v){try{const n=parseFloat(v);return isNaN(n)?0:Math.round(n*100)/100}catch(e){return 0}}
+function paShowLoading(s,m='Processing PDFs...'){paLoadingStatus.textContent=m;s?paLoading.classList.remove('hidden'):paLoading.classList.add('hidden')}
+function paToast(msg,type='success'){
+    const t=document.createElement('div');t.className='pa-toast '+type;
+    t.textContent=msg;paToastC.appendChild(t);
+    setTimeout(()=>t.remove(),4000);
+}
+
+async function paHandleFolder(e){
+    const files=e.target.files;if(!files||!files.length){paToast('No files','warning');return}
+    const pdfs=Array.from(files).filter(f=>f.name.toLowerCase().endsWith('.pdf'));
+    if(!pdfs.length){paToast('No PDFs found','warning');return}
+    paShowLoading(true,`Found ${pdfs.length} PDF(s)...`);paData=[];
+    for(let i=0;i<pdfs.length;i+=10){
+        const chunk=pdfs.slice(i,i+10);
+        paShowLoading(true,`Processing ${i+1}-${Math.min(i+10,pdfs.length)} of ${pdfs.length}`);
+        const results=await Promise.all(chunk.map(f=>paProcessPdf(f)));
+        paData.push(...results.filter(r=>r));
+    }
+    paShowLoading(false);
+    paData.length?paToast(`Analyzed ${paData.length} PDF(s)`,'success'):paToast('Failed to process','error');
+    paRender();
+}
+
+function paProcessPdf(file){
+    return new Promise(resolve=>{
+        const reader=new FileReader();
+        reader.onload=async e=>{
+            try{
+                const doc=await pdfjsLib.getDocument({data:e.target.result}).promise;
+                resolve({effort:0,invoice:"",project:paProjectName.value.trim()||'Project',file:file.name,application:paApp.value,task:paTask.value,file_type:"Informational",source_language:paSrcLang.value,language:paTgtLang.value,page_count:doc.numPages,path:file.webkitRelativePath||file.name});
+            }catch(err){console.error(file.name,err);resolve(null)}
+        };
+        reader.onerror=()=>resolve(null);
+        reader.readAsArrayBuffer(file);
+    });
+}
+
+function paRender(){
+    paTableBody.innerHTML='';
+    if(!paData.length){paTableBody.innerHTML='<tr><td colspan="10" style="padding:30px;text-align:center;color:var(--muted)">No data loaded</td></tr>';paStatusBar.textContent='Select a folder to begin analysis.';return}
+    let totalPages=paData.reduce((s,i)=>s+(typeof i.page_count==='number'?i.page_count:0),0);
+    const estH=paSF(paEffort.value);let totalEff=0;
+    paData.forEach((item,idx)=>{
+        let auto=0;if(totalPages>0&&typeof item.page_count==='number')auto=paSF((estH/totalPages)*item.page_count);
+        if(!item.effort)item.effort=auto;totalEff+=paSF(item.effort);
+        const tr=document.createElement('tr');
+        tr.innerHTML=`
+            <td>${paCell(item.effort,idx,'effort','number')}</td>
+            <td>${paCell(item.invoice,idx,'invoice','text')}</td>
+            <td>${paCell(item.project,idx,'project','text')}</td>
+            <td style="color:var(--muted)">${paHideExt.checked&&item.file.toLowerCase().endsWith('.pdf')?item.file.slice(0,-4):item.file}</td>
+            <td>${paSelCell(item.application,idx,'application',["Word","INDD","Excel","PPT","FM","PSD","AI","Other"])}</td>
+            <td>${paCell(item.task,idx,'task','text')}</td>
+            <td>${paSelCell(item.file_type,idx,'file_type',["Informational","Official","NA"])}</td>
+            <td>${paCell(item.source_language,idx,'source_language','text')}</td>
+            <td>${paCell(item.language,idx,'language','text')}</td>
+            <td style="color:var(--muted);font-family:var(--mono)">${item.page_count}</td>`;
+        paTableBody.appendChild(tr);
+    });
+    paStatusBar.textContent=`Files: ${paData.length} | Pages: ${totalPages} | Effort: ${paSF(totalEff)} hrs`;
+    paTableBody.querySelectorAll('[data-pa-field]').forEach(el=>{
+        el.addEventListener('change',e=>{
+            const i=+e.target.dataset.paIdx,f=e.target.dataset.paField;let v=e.target.value;
+            if(f==='effort')v=paSF(v);paData[i][f]=v;if(f==='effort')paRender();
+        });
+    });
+}
+
+function paCell(val,idx,field,type){
+    return `<input type="${type}" class="table-input" value="${val||''}" data-pa-idx="${idx}" data-pa-field="${field}"${type==='number'?' step="0.1"':''}>`
+}
+function paSelCell(val,idx,field,opts){
+    return `<select class="table-select" data-pa-idx="${idx}" data-pa-field="${field}">${opts.map(o=>`<option${o===val?' selected':''}>${o}</option>`).join('')}</select>`
+}
+
+function paApplyAll(field,val){if(!paData.length)return;paData.forEach(i=>i[field]=val);paRender();}
+
+function paGetExport(){
+    if(!paData.length){paToast('No data','warning');return null}
+    const h=["Effort","Invoice","Project","File Name","Application","Task","File Type","Source Language","Target Language","Page Count"];
+    const d=paData.map(i=>{let fn=i.file;if(paHideExt.checked&&fn.toLowerCase().endsWith('.pdf'))fn=fn.slice(0,-4);return[i.effort||0,i.invoice||"",i.project||"",fn,i.application||"",i.task||"",i.file_type||"",i.source_language||"",i.language||"",i.page_count||""]});
+    return{headers:h,data:d}
+}
+
+function paExportExcel(){const e=paGetExport();if(!e)return;const ws=XLSX.utils.aoa_to_sheet([e.headers,...e.data]);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"Project Data");const fn=`${paProjectName.value.trim()||'Project'}_PAR.xlsx`;XLSX.writeFile(wb,fn);paToast('Exported '+fn)}
+function paExportTsv(){const e=paGetExport();if(!e)return;const tsv=[e.headers.join('\t'),...e.data.map(r=>r.join('\t'))].join('\n');const fn=`${paProjectName.value.trim()||'Project'}_PAR.tsv`;const b=new Blob([tsv],{type:'text/tab-separated-values'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=fn;a.click();paToast('Exported '+fn)}
+
+document.getElementById('pa-folder-picker').addEventListener('change',paHandleFolder);
+document.getElementById('pa-apply-src').addEventListener('click',()=>paApplyAll('source_language',paSrcLang.value));
+document.getElementById('pa-apply-tgt').addEventListener('click',()=>paApplyAll('language',paTgtLang.value));
+document.getElementById('pa-apply-app').addEventListener('click',()=>paApplyAll('application',paApp.value));
+document.getElementById('pa-apply-task').addEventListener('click',()=>paApplyAll('task',paTask.value));
+document.getElementById('pa-apply-ftype').addEventListener('click',()=>paApplyAll('file_type',document.getElementById('pa-file-type').value));
+document.getElementById('pa-reset-efforts').addEventListener('click',()=>{if(!paData.length)return;const tp=paData.reduce((s,i)=>s+(typeof i.page_count==='number'?i.page_count:0),0);const est=paSF(paEffort.value);paData.forEach(i=>{i.effort=tp>0&&typeof i.page_count==='number'?paSF((est/tp)*i.page_count):0});paRender()});
+document.getElementById('pa-export-excel').addEventListener('click',paExportExcel);
+document.getElementById('pa-export-tsv').addEventListener('click',paExportTsv);
+paHideExt.addEventListener('change',paRender);
+paProjectName.addEventListener('input',()=>{if(paData.length)paApplyAll('project',paProjectName.value.trim()||'Project')});
+</script>
+{% endblock %}

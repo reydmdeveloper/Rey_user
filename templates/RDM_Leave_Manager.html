@@ -1,0 +1,1361 @@
+{% extends "app_base.html" %}
+{% block title %}Leave Manager – REYDM{% endblock %}
+
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+/* ── Leave Manager overrides using REYDM CSS variables ── */
+
+/* NAV TABS */
+.lm-nav-tabs {
+    display: flex; gap: 2px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md); padding: 3px;
+}
+.lm-ntab {
+    padding: 5px 15px; border-radius: var(--radius-sm);
+    font-size: 12px; font-weight: 600; cursor: pointer;
+    border: none; background: transparent; color: var(--muted);
+    transition: all var(--transition); font-family: var(--font);
+    display: flex; align-items: center; gap: 5px;
+}
+.lm-ntab.active { background: var(--accent); color: #fff; box-shadow: var(--shadow-sm); }
+.lm-ntab:hover:not(.active) { color: var(--accent2); background: var(--accent-soft); }
+
+/* BUTTONS */
+.lm-btn {
+    padding: 6px 14px; border-radius: var(--radius-sm);
+    font-size: 12px; font-weight: 600; cursor: pointer;
+    border: 1px solid transparent; transition: all var(--transition);
+    display: inline-flex; align-items: center; gap: 6px; font-family: var(--font);
+}
+.lm-btn-primary  { background: var(--accent); color: #fff; }
+.lm-btn-primary:hover { background: var(--accent2); }
+.lm-btn-ghost    { background: transparent; color: var(--text-secondary); border: 1px solid var(--border); }
+.lm-btn-ghost:hover { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.lm-btn-danger   { background: var(--danger-soft); color: var(--danger); border-color: var(--danger); }
+.lm-btn-danger:hover { background: var(--danger); color: #fff; }
+.lm-btn-sm { padding: 4px 10px; font-size: 11px; }
+
+/* FORM INPUTS */
+.lm-input {
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--text); padding: 7px 11px;
+    border-radius: var(--radius-sm); font-size: 13px; outline: none;
+    transition: border-color var(--transition); width: 100%; font-family: var(--font);
+}
+.lm-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.lm-input::placeholder { color: var(--muted); }
+select.lm-input {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%238b949e' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 10px center; padding-right: 28px;
+}
+select.lm-input option { background: var(--surface); }
+.lm-flabel { font-size: 10px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 4px; display: block; }
+.lm-fgroup { display: flex; flex-direction: column; gap: 4px; }
+.lm-fgrid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+
+/* VIEW PAGES */
+.lm-page { display: none; }
+.lm-page.active { display: block; }
+
+/* MONTH ROW */
+.month-row {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center;
+    overflow-x: auto; padding: 0 16px;
+    gap: 0; margin-bottom: 18px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
+}
+.mtab {
+    padding: 9px 14px; font-size: 12px; font-weight: 600; cursor: pointer;
+    border: none; background: transparent; color: var(--muted);
+    border-bottom: 3px solid transparent; transition: all var(--transition);
+    white-space: nowrap; font-family: var(--font);
+}
+.mtab.active { color: var(--accent2); border-bottom-color: var(--accent2); font-weight: 700; }
+.mtab:hover:not(.active) { color: var(--accent2); background: var(--accent-soft); }
+.ytd-sep { border-right: 1px solid var(--border); margin: 6px 4px; }
+
+/* TRACKER TOP */
+.tracker-top {
+    display: flex; align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 14px; flex-wrap: wrap; gap: 10px;
+}
+.month-big { font-size: 22px; font-weight: 700; color: var(--text); letter-spacing: -.5px; }
+.month-big small { font-size: 13px; color: var(--muted); font-weight: 400; margin-left: 8px; }
+.legend { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 5px; }
+.leg { display: flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 500; color: var(--muted); }
+.leg-box {
+    width: 20px; height: 14px; border-radius: 3px;
+    font-size: 9px; display: flex; align-items: center; justify-content: center;
+    font-weight: 700; border: 1px solid rgba(255,255,255,.1);
+}
+
+/* GRID */
+.grid-wrap {
+    overflow-x: auto;
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-md);
+    border: 1px solid var(--border);
+}
+table.tracker { border-collapse: collapse; background: var(--surface); table-layout: fixed; }
+table.tracker th, table.tracker td { padding: 0; vertical-align: middle; }
+.th-main {
+    background: var(--accent); color: #fff;
+    font-size: 10px; font-weight: 700; text-align: center;
+    padding: 5px 0; letter-spacing: .4px; white-space: nowrap;
+    width: 26px; overflow: hidden; font-family: var(--font);
+}
+.th-sub { background: var(--accent2); color: #fff; font-family: var(--mono); font-size: 9px; font-weight: 500; text-align: center; padding: 3px 0; width: 26px; overflow: hidden; }
+.th-sub.wk { filter: brightness(.7); }
+.th-n { background: var(--accent2); color: #fff; font-family: var(--mono); font-size: 9px; text-align: center; padding: 3px 0; width: 26px; overflow: hidden; }
+.th-n.wk { filter: brightness(.7); }
+.th-taken { background: var(--warning); color: #fff; font-size: 9px; font-weight: 700; text-align: center; padding: 4px 2px; }
+.th-avail { background: var(--accent2); color: #fff; font-size: 9px; font-weight: 700; text-align: center; padding: 4px 2px; }
+
+tbody tr:nth-child(odd)  { background: var(--surface); }
+tbody tr:nth-child(even) { background: var(--surface2); }
+tbody tr:hover { background: var(--accent-soft); }
+tbody tr.empty-row { background: var(--surface) !important; }
+
+.td-sno  { font-family: var(--mono); font-size: 10px; color: var(--muted); text-align: center; padding: 4px 0; border-right: 1px solid var(--border); width: 36px; }
+.td-name { font-weight: 600; font-size: 12px; padding: 4px 7px; border-right: 2px solid var(--border); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 148px; cursor: pointer; }
+.td-name:hover { color: var(--accent2); text-decoration: underline; }
+.td-day {
+    width: 26px; text-align: center; border-right: 1px solid var(--border);
+    cursor: pointer; font-family: var(--mono); font-size: 10px; font-weight: 700;
+    height: 30px; transition: background .1s; overflow: hidden; padding: 0;
+}
+.td-day.wk { background: var(--surface2) !important; }
+.td-day:hover { outline: 2px solid var(--accent); outline-offset: -2px; z-index: 2; position: relative; }
+.td-day.kbd-focus { outline: 3px solid var(--accent2); outline-offset: -3px; z-index: 3; position: relative; box-shadow: 0 0 0 1px var(--accent2) inset; }
+
+/* Leave type cell colours */
+.td-day.v-C  { background: rgba(56,139,253,.25) !important; color: var(--accent2); }
+.td-day.v-S  { background: rgba(210,153,34,.22) !important; color: var(--warning); }
+.td-day.v-L  { background: rgba(248,81,73,.2)  !important; color: var(--danger);  }
+.td-day.v-HC { background: rgba(56,139,253,.15) !important; color: var(--info);    }
+.td-day.v-HS { background: rgba(210,153,34,.15) !important; color: var(--warning); }
+
+[data-theme="dark"] .td-day.v-C  { color: #79b8ff; }
+[data-theme="dark"] .td-day.v-S  { color: #e3b341; }
+[data-theme="dark"] .td-day.v-L  { color: #ff7b72; }
+[data-theme="dark"] .td-day.v-HC { color: #79b8ff; }
+[data-theme="dark"] .td-day.v-HS { color: #e3b341; }
+
+.td-taken { background: var(--warning-soft); font-family: var(--mono); font-size: 11px; font-weight: 600; text-align: center; padding: 4px 0; border-right: 1px solid var(--border); width: 26px; }
+.td-avail { background: var(--success-soft); font-family: var(--mono); font-size: 11px; font-weight: 600; text-align: center; padding: 4px 0; border-right: 1px solid var(--success); width: 26px; }
+.td-avail.lo { color: var(--danger) !important; }
+.td-lop { background: var(--danger-soft); font-family: var(--mono); font-size: 11px; font-weight: 700; text-align: center; padding: 4px 0; color: var(--danger); border-right: 1px solid var(--danger); width: 26px; }
+.dash-v { font-size: 11px; color: var(--muted); text-align: center; padding: 4px 0; }
+
+/* YTD TABLE */
+.ytd-wrap { overflow-x: auto; border-radius: var(--radius-md); border: 1px solid var(--border); box-shadow: var(--shadow-md); }
+table.ytd { border-collapse: collapse; background: var(--surface); width: 100%; }
+table.ytd th { background: var(--accent); color: #fff; padding: 7px 10px; font-size: 10px; font-weight: 700; text-align: center; letter-spacing: .4px; border-right: 1px solid rgba(255,255,255,.15); white-space: nowrap; }
+table.ytd th.left { text-align: left; }
+table.ytd td { padding: 7px 8px; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); font-size: 11px; text-align: center; font-family: var(--mono); }
+table.ytd td.nm { text-align: left; font-family: var(--font); font-weight: 600; font-size: 12px; cursor: pointer; color: var(--text); }
+table.ytd td.nm:hover { color: var(--accent2); text-decoration: underline; }
+table.ytd tr:hover td { background: var(--accent-soft); }
+table.ytd tr:last-child td { border-bottom: none; }
+
+/* CELL POPUP */
+.popup-bg { position: fixed; inset: 0; z-index: 500; display: none; }
+.popup-bg.open { display: block; }
+.popup {
+    position: fixed; background: var(--surface); border: 1.5px solid var(--border);
+    border-radius: var(--radius-lg); box-shadow: var(--shadow-lg);
+    padding: 14px 14px 12px; z-index: 501; min-width: 210px; display: none;
+}
+.popup-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+.popup-ttl { font-size: 11px; font-weight: 700; color: var(--text); }
+.popup-x { background: none; border: none; font-size: 16px; cursor: pointer; color: var(--muted); line-height: 1; }
+.type-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-bottom: 6px; }
+.type-btn {
+    padding: 8px 4px; border-radius: var(--radius-sm);
+    font-size: 11px; font-weight: 700; cursor: pointer;
+    border: 1px solid transparent; text-align: center; font-family: var(--font);
+    transition: transform .1s;
+}
+.type-btn:hover { transform: scale(1.05); }
+.tb-C  { background: rgba(56,139,253,.2);  color: var(--accent2); border-color: var(--accent2); }
+.tb-S  { background: rgba(210,153,34,.18); color: var(--warning); border-color: var(--warning); }
+.tb-L  { background: rgba(248,81,73,.15);  color: var(--danger);  border-color: var(--danger);  }
+.tb-HC { background: rgba(88,166,255,.15); color: var(--info);    border-color: var(--info);    }
+.tb-HS { background: rgba(210,153,34,.12); color: var(--warning); border-color: var(--warning); }
+.tb-clr{ background: var(--surface2); color: var(--muted); border-color: var(--border); grid-column: span 3; font-size: 10px; }
+.popup-bal { font-size: 10px; color: var(--muted); margin-top: 6px; padding: 6px 8px; background: var(--surface2); border-radius: var(--radius-sm); line-height: 1.6; }
+
+/* MODAL */
+.lm-modal-bg {
+    position: fixed; inset: 0; background: rgba(0,0,0,.6);
+    z-index: 600; display: none; align-items: center; justify-content: center;
+    backdrop-filter: blur(4px);
+}
+.lm-modal-bg.open { display: flex; }
+.lm-modal {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-xl); padding: 24px; width: min(480px, 94vw);
+    box-shadow: var(--shadow-lg);
+}
+.lm-modal-title { font-size: 18px; font-weight: 700; color: var(--text); margin-bottom: 3px; }
+.lm-modal-sub   { font-size: 12px; color: var(--muted); margin-bottom: 18px; }
+.lm-modal-btns  { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); }
+
+/* DASHBOARD */
+.lm-dash-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); gap: 14px; margin-bottom: 20px; }
+.lm-sc { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 16px 18px; border-left: 4px solid var(--accent); }
+.lm-sc-lbl { font-size: 10px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .7px; margin-bottom: 5px; }
+.lm-sc-val { font-family: var(--mono); font-size: 26px; font-weight: 600; line-height: 1; }
+.lm-sc-sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
+.lm-dash-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+.lm-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden; }
+.lm-phdr { background: var(--accent); color: #fff; padding: 10px 15px; font-size: 12px; font-weight: 700; letter-spacing: .3px; }
+.lm-pbody { max-height: 300px; overflow-y: auto; }
+table.lm-dt { width: 100%; border-collapse: collapse; }
+table.lm-dt th { background: var(--surface2); padding: 7px 11px; text-align: left; font-size: 10px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; border-bottom: 1px solid var(--border); }
+table.lm-dt th.r { text-align: right; }
+table.lm-dt td { padding: 8px 11px; border-bottom: 1px solid var(--border); font-size: 12px; }
+table.lm-dt td.r { text-align: right; font-family: var(--mono); }
+table.lm-dt tr:last-child td { border-bottom: none; }
+table.lm-dt tr:hover td { background: var(--accent-soft); }
+.lm-prog-bar { height: 6px; background: var(--surface2); border-radius: 3px; overflow: hidden; margin-top: 3px; }
+.lm-prog-fill { height: 100%; border-radius: 3px; transition: width .3s; }
+.lm-badge { display: inline-flex; padding: 2px 8px; border-radius: 20px; font-size: 10px; font-weight: 700; }
+.bqc  { background: var(--info-soft);    color: var(--info);    border: 1px solid var(--info);    }
+.bpro { background: rgba(139,92,246,.12); color: #a78bfa;        border: 1px solid #a78bfa;        }
+.blop { background: var(--danger-soft);  color: var(--danger);  border: 1px solid var(--danger);  }
+
+/* IMPORT */
+.imp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.dzone {
+    border: 2px dashed var(--border); border-radius: var(--radius-md);
+    padding: 24px; text-align: center; cursor: pointer;
+    transition: all var(--transition); background: var(--surface2);
+}
+.dzone:hover, .dzone.over { border-color: var(--accent); background: var(--accent-soft); }
+.dz-i { font-size: 30px; margin-bottom: 6px; }
+.dz-t { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 2px; }
+.dz-s { font-size: 11px; color: var(--muted); }
+.lm-code {
+    background: var(--surface2); border-radius: var(--radius-sm);
+    padding: 9px 11px; font-family: var(--mono); font-size: 11px;
+    color: var(--accent2); margin-top: 10px; border: 1px solid var(--border);
+}
+
+/* TOAST */
+.lm-toast {
+    position: fixed; bottom: 22px; right: 22px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-md); padding: 10px 16px;
+    font-size: 13px; font-weight: 500; z-index: 700;
+    box-shadow: var(--shadow-lg); opacity: 0; transform: translateY(6px);
+    transition: all .22s; pointer-events: none;
+    display: flex; align-items: center; gap: 8px; min-width: 210px;
+}
+.lm-toast.show { opacity: 1; transform: translateY(0); }
+.lm-toast.ok   { border-color: var(--success); color: var(--success); }
+.lm-toast.err  { border-color: var(--danger);  color: var(--danger);  }
+.lm-toast.info { border-color: var(--info);    color: var(--info);    }
+
+/* STATUS FILTER CHIPS */
+.sf-chip {
+    padding: 4px 12px; border-radius: var(--radius-sm);
+    font-size: 12px; font-weight: 600; cursor: pointer;
+    border: 1px solid transparent; transition: all var(--transition); font-family: var(--font);
+}
+
+@media (max-width: 700px) {
+    .lm-dash-row, .imp-grid, .lm-fgrid-2 { grid-template-columns: 1fr; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px">
+    <div>
+        <h2><i class="fa-solid fa-calendar-check"></i>&nbsp; Leave Manager</h2>
+        <p>REY Datamind &mdash; Employee Leave Tracker · <span id="tb-year-sub-inner">2026</span></p>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <div class="lm-nav-tabs">
+            <button class="lm-ntab active" onclick="goView('tracker')"><i class="fa-solid fa-table"></i> Tracker</button>
+            <button class="lm-ntab" onclick="goView('dashboard')"><i class="fa-solid fa-chart-bar"></i> Dashboard</button>
+            <button class="lm-ntab" onclick="goView('import')"><i class="fa-solid fa-upload"></i> Import</button>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="openAddEmp()"><i class="fa-solid fa-plus"></i> Employee</button>
+        <button class="btn btn-secondary btn-sm" onclick="exportXLSX()"><i class="fa-solid fa-file-excel"></i> Export Excel</button>
+    </div>
+</div>
+
+<!-- ═══ TRACKER ═══ -->
+<div id="view-tracker" class="lm-page active">
+    <div class="month-row">
+        <div class="ytd-sep"></div>
+        <button class="mtab" data-m="YTD" onclick="goMonth(this)">YearToDate</button>
+        <div class="ytd-sep"></div>
+        <button class="mtab" data-m="Jan" onclick="goMonth(this)">Jan</button>
+        <button class="mtab" data-m="Feb" onclick="goMonth(this)">Feb</button>
+        <button class="mtab" data-m="Mar" onclick="goMonth(this)">Mar</button>
+        <button class="mtab" data-m="Apr" onclick="goMonth(this)">Apr</button>
+        <button class="mtab" data-m="May" onclick="goMonth(this)">May</button>
+        <button class="mtab" data-m="Jun" onclick="goMonth(this)">Jun</button>
+        <button class="mtab" data-m="Jul" onclick="goMonth(this)">Jul</button>
+        <button class="mtab" data-m="Aug" onclick="goMonth(this)">Aug</button>
+        <button class="mtab" data-m="Sep" onclick="goMonth(this)">Sep</button>
+        <button class="mtab" data-m="Oct" onclick="goMonth(this)">Oct</button>
+        <button class="mtab" data-m="Nov" onclick="goMonth(this)">Nov</button>
+        <button class="mtab" data-m="Dec" onclick="goMonth(this)">Dec</button>
+    </div>
+
+    <div class="tracker-top">
+        <div>
+            <div class="month-big" id="mlabel">Year To Date <small id="mlabel-year">2026</small></div>
+            <div class="legend">
+                <div class="leg"><div class="leg-box" style="background:rgba(56,139,253,.3);color:var(--accent2)">C</div>Casual</div>
+                <div class="leg"><div class="leg-box" style="background:rgba(210,153,34,.3);color:var(--warning)">S</div>Sick</div>
+                <div class="leg"><div class="leg-box" style="background:rgba(248,81,73,.25);color:var(--danger)">L</div>Loss of Pay</div>
+                <div class="leg"><div class="leg-box" style="background:rgba(56,139,253,.18);color:var(--info)">HC</div>½ Casual</div>
+                <div class="leg"><div class="leg-box" style="background:rgba(210,153,34,.18);color:var(--warning)">HS</div>½ Sick</div>
+                <span style="font-size:11px;color:var(--muted)">· Click any day to enter leave · Double-click name to edit</span>
+            </div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <div style="display:flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);padding:4px 10px">
+                <span style="font-size:11px;color:var(--muted);font-weight:600">YEAR</span>
+                <select id="year-sel" onchange="changeYear(this.value)" style="border:none;background:transparent;color:var(--accent2);font-family:var(--mono);font-size:13px;font-weight:600;outline:none;cursor:pointer;padding:0 4px">
+                    <option>2024</option><option>2025</option><option selected>2026</option>
+                    <option>2027</option><option>2028</option><option>2029</option><option>2030</option>
+                </select>
+            </div>
+            <!-- Status filter chips -->
+            <div style="display:flex;gap:4px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:3px">
+                <button id="sf-active"   class="sf-chip lm-btn-sm" onclick="setEmpFilter('Active')"   style="background:var(--accent);color:#fff;border-color:var(--accent)"><i class="fa-solid fa-check"></i> Active</button>
+                <button id="sf-inactive" class="sf-chip lm-btn-sm" onclick="setEmpFilter('Inactive')" style="background:transparent;color:var(--muted);border:none"><i class="fa-solid fa-ban"></i> Inactive</button>
+                <button id="sf-all"      class="sf-chip lm-btn-sm" onclick="setEmpFilter('All')"      style="background:transparent;color:var(--muted);border:none">All</button>
+            </div>
+            <button class="lm-btn lm-btn-ghost lm-btn-sm" onclick="openAddEmp()"><i class="fa-solid fa-plus"></i> Add Employee</button>
+        </div>
+    </div>
+    <div class="grid-wrap" id="grid-wrap"></div>
+</div><!-- /tracker -->
+
+<!-- ═══ DASHBOARD ═══ -->
+<div id="view-dashboard" class="lm-page">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px">
+        <h3 style="font-size:18px;font-weight:700">Dashboard
+            <span style="font-size:13px;font-weight:400;color:var(--muted)" id="dash-year-lbl"> Leave Overview</span>
+        </h3>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <select class="lm-input" style="width:90px" id="d-year" onchange="changeYear(this.value);renderDash()">
+                <option>2024</option><option>2025</option><option>2026</option>
+                <option>2027</option><option>2028</option><option>2029</option><option>2030</option>
+            </select>
+            <select class="lm-input" style="width:120px" id="d-dept" onchange="renderDash()">
+                <option value="">All Depts</option><option>QC</option><option>Process</option>
+            </select>
+            <select class="lm-input" style="width:110px" id="d-month" onchange="renderDash()">
+                <option value="">All Months</option>
+                <option>Jan</option><option>Feb</option><option>Mar</option><option>Apr</option>
+                <option>May</option><option>Jun</option><option>Jul</option><option>Aug</option>
+                <option>Sep</option><option>Oct</option><option>Nov</option><option>Dec</option>
+            </select>
+        </div>
+    </div>
+    <div class="lm-dash-stats" id="d-stats"></div>
+    <div class="lm-dash-row">
+        <div class="lm-panel">
+            <div class="lm-phdr"><i class="fa-solid fa-circle-minus"></i> Loss of Pay — Employee List</div>
+            <div class="lm-pbody"><table class="lm-dt"><thead><tr><th>Employee</th><th>Dept</th><th class="r">LOP Days</th></tr></thead><tbody id="d-lop"></tbody></table></div>
+        </div>
+        <div class="lm-panel">
+            <div class="lm-phdr"><i class="fa-solid fa-chart-column"></i> Leave Balance (Available)</div>
+            <div class="lm-pbody"><table class="lm-dt"><thead><tr><th>Employee</th><th class="r">CL</th><th class="r">SL</th><th class="r">Total Taken</th></tr></thead><tbody id="d-bal"></tbody></table></div>
+        </div>
+    </div>
+    <div class="lm-dash-row">
+        <div class="lm-panel">
+            <div class="lm-phdr"><i class="fa-solid fa-calendar-days"></i> Month-wise Summary</div>
+            <div class="lm-pbody"><table class="lm-dt"><thead><tr><th>Month</th><th class="r">Casual</th><th class="r">Sick</th><th class="r">LOP</th><th class="r">Total</th></tr></thead><tbody id="d-mth"></tbody></table></div>
+        </div>
+        <div class="lm-panel">
+            <div class="lm-phdr"><i class="fa-solid fa-tags"></i> Leave Type Breakdown</div>
+            <div class="lm-pbody" style="padding:16px" id="d-type"></div>
+        </div>
+    </div>
+</div><!-- /dashboard -->
+
+<!-- ═══ IMPORT ═══ -->
+<div id="view-import" class="lm-page">
+    <h3 style="font-size:18px;font-weight:700;margin-bottom:18px">Import Data</h3>
+    <div class="imp-grid">
+        <div class="lm-panel">
+            <div class="lm-phdr"><i class="fa-solid fa-users"></i> Import Employees (Excel/CSV)</div>
+            <div style="padding:16px">
+                <div class="dzone" id="dz-emp" onclick="document.getElementById('f-emp').click()" ondragover="dzO(event,'dz-emp')" ondragleave="dzL('dz-emp')" ondrop="dzD(event,'emp')">
+                    <div class="dz-i"><i class="fa-solid fa-folder-open"></i></div>
+                    <div class="dz-t">Drop Excel/CSV or click to browse</div>
+                    <div class="dz-s">Employees will be added</div>
+                </div>
+                <input type="file" id="f-emp" accept=".xlsx,.xls,.csv" style="display:none" onchange="fEmp(this)"/>
+                <div class="lm-code">S.No, Name, Emp ID, Department</div>
+                <div style="margin-top:10px;display:flex;gap:8px">
+                    <button class="lm-btn lm-btn-ghost lm-btn-sm" onclick="dlEmpTpl()"><i class="fa-solid fa-download"></i> Template</button>
+                </div>
+                <textarea class="lm-input" id="p-emp" rows="3" placeholder="Or paste data here (comma/tab separated)…" style="margin-top:10px;resize:vertical"></textarea>
+                <button class="lm-btn lm-btn-primary lm-btn-sm" style="margin-top:6px" onclick="pPaste('emp')"><i class="fa-solid fa-play"></i> Parse &amp; Import</button>
+                <div id="r-emp" style="margin-top:8px;font-size:12px"></div>
+            </div>
+        </div>
+        <div class="lm-panel">
+            <div class="lm-phdr"><i class="fa-solid fa-clipboard-list"></i> Import Leave Records (Excel/CSV)</div>
+            <div style="padding:16px">
+                <div class="dzone" id="dz-lv" onclick="document.getElementById('f-lv').click()" ondragover="dzO(event,'dz-lv')" ondragleave="dzL('dz-lv')" ondrop="dzD(event,'lv')">
+                    <div class="dz-i"><i class="fa-solid fa-file-csv"></i></div>
+                    <div class="dz-t">Drop Excel/CSV or click to browse</div>
+                    <div class="dz-s">Leave records will be merged</div>
+                </div>
+                <input type="file" id="f-lv" accept=".xlsx,.xls,.csv" style="display:none" onchange="fLv(this)"/>
+                <div class="lm-code">Emp ID, Month, Day, Type<br><span style="color:var(--muted);font-size:10px">Type: C / S / L / HC / HS</span></div>
+                <div style="margin-top:10px;display:flex;gap:8px">
+                    <button class="lm-btn lm-btn-ghost lm-btn-sm" onclick="dlLvTpl()"><i class="fa-solid fa-download"></i> Template</button>
+                </div>
+                <textarea class="lm-input" id="p-lv" rows="3" placeholder="Or paste data here…" style="margin-top:10px;resize:vertical"></textarea>
+                <button class="lm-btn lm-btn-primary lm-btn-sm" style="margin-top:6px" onclick="pPaste('lv')"><i class="fa-solid fa-play"></i> Parse &amp; Import</button>
+                <div id="r-lv" style="margin-top:8px;font-size:12px"></div>
+            </div>
+        </div>
+    </div>
+    <div class="lm-panel" style="margin-top:16px">
+        <div class="lm-phdr"><i class="fa-solid fa-triangle-exclamation"></i> Danger Zone</div>
+        <div style="padding:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <button class="lm-btn lm-btn-danger" onclick="clrLeaves()"><i class="fa-solid fa-trash"></i> Clear All Leave Data</button>
+            <button class="lm-btn lm-btn-danger" onclick="clrAll()"><i class="fa-solid fa-bomb"></i> Reset Everything</button>
+            <span style="font-size:11px;color:var(--muted)">These actions cannot be undone.</span>
+        </div>
+    </div>
+</div><!-- /import -->
+
+<!-- Cell Popup -->
+<div class="popup-bg" id="pbg" onclick="closePopup()"></div>
+<div class="popup" id="cpop">
+    <div class="popup-hdr">
+        <div class="popup-ttl" id="ptitle">Select Leave Type</div>
+        <button class="popup-x" onclick="closePopup()">×</button>
+    </div>
+    <div class="type-grid">
+        <button class="type-btn tb-C"  onclick="setLv('C')">C<br><span style="font-size:8px;font-weight:400">Casual</span></button>
+        <button class="type-btn tb-S"  onclick="setLv('S')">S<br><span style="font-size:8px;font-weight:400">Sick</span></button>
+        <button class="type-btn tb-L"  onclick="setLv('L')">L<br><span style="font-size:8px;font-weight:400">LOP</span></button>
+        <button class="type-btn tb-HC" onclick="setLv('HC')">HC<br><span style="font-size:8px;font-weight:400">½ Casual</span></button>
+        <button class="type-btn tb-HS" onclick="setLv('HS')">HS<br><span style="font-size:8px;font-weight:400">½ Sick</span></button>
+        <button class="type-btn tb-clr" onclick="setLv('')"><i class="fa-solid fa-xmark"></i> Clear</button>
+    </div>
+    <div class="popup-bal" id="pbal"></div>
+</div>
+
+<!-- Add/Edit Employee Modal -->
+<div class="lm-modal-bg" id="emp-modal">
+    <div class="lm-modal">
+        <div class="lm-modal-title" id="em-title">Add Employee</div>
+        <div class="lm-modal-sub">Fill in the employee details</div>
+        <input type="hidden" id="em-eid"/>
+        <div class="lm-fgrid-2">
+            <div class="lm-fgroup"><label class="lm-flabel">Full Name *</label><input class="lm-input" id="em-name" placeholder="e.g. NANDHINI M"/></div>
+            <div class="lm-fgroup"><label class="lm-flabel">Employee ID *</label><input class="lm-input" id="em-id" placeholder="e.g. RDM1026"/></div>
+        </div>
+        <div class="lm-fgrid-2">
+            <div class="lm-fgroup"><label class="lm-flabel">Department *</label>
+                <select class="lm-input" id="em-dept"><option value="">— Select —</option><option>QC</option><option>Process</option></select>
+            </div>
+            <div class="lm-fgroup"><label class="lm-flabel">Status</label>
+                <select class="lm-input" id="em-stat"><option>Active</option><option>Inactive</option></select>
+            </div>
+        </div>
+        <div class="lm-fgrid-2">
+            <div class="lm-fgroup">
+                <label class="lm-flabel">Joining Date <span style="font-weight:400;color:var(--muted)">(leave quota starts here)</span></label>
+                <input type="date" class="lm-input" id="em-join" placeholder="YYYY-MM-DD" onchange="updateJoinHint()"/>
+            </div>
+            <div class="lm-fgroup" style="justify-content:center">
+                <label class="lm-flabel">Joining Month Quota</label>
+                <div id="em-join-hint" style="font-size:12px;color:var(--accent2);font-family:var(--mono);font-weight:700;padding:8px 10px;background:var(--surface2);border-radius:var(--radius-sm);border:1px solid var(--border);text-align:center">
+                    — select joining date —
+                </div>
+            </div>
+        </div>
+        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-md);padding:14px;margin-top:4px">
+            <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">
+                <i class="fa-solid fa-plus"></i> Extra Leave Balance (Manual Adjustment)
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:8px">
+                <div class="lm-fgroup">
+                    <label class="lm-flabel">Extra CL Days</label>
+                    <input type="number" class="lm-input" id="em-extra-cl" value="0" min="0" step="0.5" placeholder="0"/>
+                </div>
+                <div class="lm-fgroup">
+                    <label class="lm-flabel">Extra SL Days</label>
+                    <input type="number" class="lm-input" id="em-extra-sl" value="0" min="0" step="0.5" placeholder="0"/>
+                </div>
+            </div>
+            <div class="lm-fgroup">
+                <label class="lm-flabel">Reason for Adjustment</label>
+                <input class="lm-input" id="em-extra-note" placeholder="e.g. Carried from previous company, bonus leave…"/>
+            </div>
+            <div style="font-size:10px;color:var(--muted);margin-top:7px">These days are added on top of the monthly accrual quota.</div>
+        </div>
+        <div id="em-err" style="font-size:12px;color:var(--danger);margin-top:8px;display:none"></div>
+        <div id="em-inactive-warn" style="display:none;margin-top:10px;padding:10px 12px;background:var(--danger-soft);border:1px solid var(--danger);border-radius:var(--radius-sm);font-size:12px;color:var(--danger)">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+            <strong style="margin-left:6px">This employee is currently Inactive</strong>
+            <div style="margin-top:3px">Change Status to <b>Active</b> and save to reactivate, or click the button below.</div>
+        </div>
+        <div class="lm-modal-btns">
+            <button class="lm-btn lm-btn-ghost" onclick="closeModal()">Cancel</button>
+            <button class="lm-btn lm-btn-danger lm-btn-sm" id="em-del" onclick="delEmp()" style="display:none"><i class="fa-solid fa-trash"></i> Delete</button>
+            <button class="lm-btn lm-btn-sm" id="em-reactivate" onclick="reactivateEmp()" style="display:none;background:var(--success-soft);color:var(--success);border:1px solid var(--success)"><i class="fa-solid fa-check"></i> Reactivate</button>
+            <button class="lm-btn lm-btn-primary" onclick="saveEmp()"><i class="fa-solid fa-check"></i> Save</button>
+        </div>
+    </div>
+</div>
+
+<div class="lm-toast" id="lm-toast"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ════════════════════════════════════════
+// DATA  (server-backed via /api/lm/*)
+// ════════════════════════════════════════
+const IS_ADMIN = {{ 'true' if session.get('role') == 'admin' else 'false' }};
+const MNS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+function getDIM(year) {
+    const leap = (year%4===0 && year%100!==0)||(year%400===0);
+    return [31,leap?29:28,31,30,31,30,31,31,30,31,30,31];
+}
+let DIM = getDIM(2026);
+const DN = ['Su','M','Tu','W','Th','F','Sa'];
+
+// DB.leaves is keyed by year → empId → month → day → type
+let DB = { employees:[], leaves:{} };
+let curYear = new Date().getFullYear();
+
+// API helper — always returns parsed JSON or an error object
+async function lmApi(url, opts) {
+    try {
+        const res = await fetch(url, opts);
+        const text = await res.text();
+        if (!text) return { success: false, message: 'Empty response' };
+        try { return JSON.parse(text); }
+        catch (e) { return { success: false, message: 'Server error (' + res.status + ')' }; }
+    } catch (err) {
+        return { success: false, message: 'Network error: ' + (err.message || 'unknown') };
+    }
+}
+
+async function loadEmployees() {
+    const data = await lmApi('/api/lm/employees');
+    DB.employees = Array.isArray(data) ? data : [];
+}
+
+async function loadLeaves(year) {
+    const data = await lmApi('/api/lm/leaves/' + year);
+    DB.leaves[year] = (data && typeof data === 'object' && !Array.isArray(data) && !(data.success === false)) ? data : {};
+}
+
+// save() is now a no-op — persistence happens through the API on each mutation
+function save() { /* persisted server-side */ }
+
+async function changeYear(yr) {
+    curYear = parseInt(yr); DIM = getDIM(curYear);
+    await loadLeaves(curYear);
+    ['year-sel','d-year'].forEach(id => { const el=document.getElementById(id); if(el) el.value=curYear; });
+    const sub = document.getElementById('tb-year-sub-inner'); if(sub) sub.textContent=curYear;
+    const yl = document.getElementById('mlabel-year'); if(yl) yl.textContent = curYear;
+    const lbl = document.getElementById('dash-year-lbl'); if(lbl) lbl.textContent = ` ${curYear} Leave Overview`;
+    renderGrid();
+    if (curView === 'dashboard') renderDash();
+}
+
+// ════════════════════════════════════════
+// LEAVE LOGIC
+// ════════════════════════════════════════
+function getLv(empId,month,day) { return (((DB.leaves[curYear]||{})[empId]||{})[month]||{})[day]||''; }
+
+async function setLvDB(empId,month,day,val) {
+    // Optimistic local update
+    if (!DB.leaves[curYear]) DB.leaves[curYear]={};
+    if (!DB.leaves[curYear][empId]) DB.leaves[curYear][empId]={};
+    if (!DB.leaves[curYear][empId][month]) DB.leaves[curYear][empId][month]={};
+    if (val==='') delete DB.leaves[curYear][empId][month][day];
+    else DB.leaves[curYear][empId][month][day]=val;
+
+    // Persist to server
+    const res = await lmApi('/api/lm/leaves', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ empId, year: curYear, month, day, type: val })
+    });
+    if (!res.success) {
+        lmToast(res.message || 'Could not save leave', 'err');
+        await loadLeaves(curYear); // re-sync on failure
+    }
+}
+
+function mTaken(empId,month) {
+    const md = (((DB.leaves[curYear]||{})[empId])||{})[month]||{};
+    let C=0,S=0,L=0;
+    for (const d in md) {
+        const v = (md[d]||'').toUpperCase();
+        if (v==='C') C+=1; else if (v==='S') S+=1; else if (v==='L') L+=1;
+        else if (v==='HC'||v==='CH') C+=0.5; else if (v==='HS'||v==='SH') S+=0.5;
+    }
+    return {C,S,L};
+}
+
+function joinStartMonth(emp) {
+    if (!emp||!emp.joinDate) return 0;
+    const jd=new Date(emp.joinDate); const jy=jd.getFullYear(); const jm=jd.getMonth();
+    if (jy>curYear) return 999;
+    if (jy<curYear) return 0;
+    return jm;
+}
+
+function availUpTo(empId,upToMi) {
+    const emp = DB.employees.find(e=>e.empId===empId)||{};
+    const startM = joinStartMonth(emp);
+    const extraCL = parseFloat(emp.extraCL)||0;
+    const extraSL = parseFloat(emp.extraSL)||0;
+    let aC=extraCL, aS=extraSL;
+    for (let m=0; m<=upToMi; m++) {
+        if (m>=startM) { aC+=1; aS+=1; }
+        const tk = mTaken(empId,MNS[m]);
+        aC-=tk.C; aS-=tk.S;
+        if (aC<0) aC=0; if (aS<0) aS=0;
+    }
+    return {aC,aS};
+}
+
+function updateJoinHint() {
+    const val = document.getElementById('em-join').value;
+    const hint = document.getElementById('em-join-hint');
+    if (!hint) return;
+    if (!val) { hint.textContent='— select joining date —'; hint.style.color='var(--muted)'; return; }
+    const jd=new Date(val); const jm=jd.getMonth(); const jy=jd.getFullYear();
+    const months=12-jm;
+    hint.style.color='var(--accent2)';
+    hint.innerHTML=`<b>${MNS[jm]} ${jy}</b> → <b>${months} CL + ${months} SL</b> max`;
+}
+
+function yrStats(empId) {
+    let totC=0,totS=0,totL=0;
+    MNS.forEach(m => { const tk=mTaken(empId,m); totC+=tk.C; totS+=tk.S; totL+=tk.L; });
+    const {aC,aS} = availUpTo(empId,11);
+    const emp = DB.employees.find(e=>e.empId===empId)||{};
+    const startM = joinStartMonth(emp);
+    const months = startM>=999 ? 0 : 12-startM;
+    const extraCL = parseFloat(emp.extraCL)||0;
+    const extraSL = parseFloat(emp.extraSL)||0;
+    return {totC,totS,totL,aC,aS,totalCQuota:months+extraCL,totalSQuota:months+extraSL};
+}
+
+// ════════════════════════════════════════
+// VIEW / MONTH ROUTING
+// ════════════════════════════════════════
+let curView='tracker', curMonth='YTD';
+let empStatusFilter='Active';
+
+function setEmpFilter(f) {
+    empStatusFilter = f;
+    const styles = {
+        Active:   {bg:'var(--accent)',color:'#fff',border:'var(--accent)'},
+        Inactive: {bg:'var(--danger-soft)',color:'var(--danger)',border:'var(--danger)'},
+        All:      {bg:'var(--surface2)',color:'var(--text-secondary)',border:'var(--border)'}
+    };
+    ['Active','Inactive','All'].forEach(k => {
+        const el = document.getElementById('sf-'+k.toLowerCase());
+        if (!el) return;
+        const s = styles[k]; const isOn = k===f;
+        el.style.background  = isOn ? s.bg    : 'transparent';
+        el.style.color       = isOn ? s.color : 'var(--muted)';
+        el.style.border      = isOn ? `1px solid ${s.border}` : 'none';
+        el.style.fontWeight  = isOn ? '700' : '500';
+    });
+    renderGrid();
+}
+
+function goView(v) {
+    curView = v;
+    ['tracker','dashboard','import'].forEach(x => {
+        const el = document.getElementById('view-'+x);
+        if (el) el.classList.toggle('active', x===v);
+    });
+    document.querySelectorAll('.lm-ntab').forEach((t,i) => t.classList.toggle('active', ['tracker','dashboard','import'][i]===v));
+    if (v==='dashboard') {
+        const lbl = document.getElementById('dash-year-lbl');
+        if (lbl) lbl.textContent = ` ${curYear} Leave Overview`;
+        renderDash();
+    }
+}
+
+function goMonth(el) {
+    curMonth = el.dataset.m;
+    document.querySelectorAll('.mtab').forEach(t => t.classList.remove('active'));
+    el.classList.add('active');
+    renderGrid();
+}
+
+// ════════════════════════════════════════
+// RENDER GRID
+// ════════════════════════════════════════
+function renderGrid() { if (curMonth==='YTD') renderYTD(); else renderMonth(curMonth); }
+function wknd(mi,d) { const dw=new Date(curYear,mi,d).getDay(); return dw===0||dw===6; }
+
+function renderMonth(mn) {
+    const mi = MNS.indexOf(mn);
+    const dim = getDIM(curYear)[mi];
+    document.getElementById('mlabel').innerHTML = `${mn} ${curYear} <small id="mlabel-year">${curYear}</small>`;
+    const emps = DB.employees.filter(e => empStatusFilter==='All'?true:e.status===empStatusFilter);
+    const rows = Math.max(emps.length, 25);
+
+    let h = `<table class="tracker"><thead>
+    <tr>
+      <th class="th-main col-sno" rowspan="3" style="width:36px">SNo</th>
+      <th class="th-main col-name" rowspan="3" style="text-align:left;padding-left:8px;font-size:11px;width:148px">
+        C = Casual &nbsp;·&nbsp; S = Sick &nbsp;·&nbsp; L = Loss of pay
+      </th>`;
+    for (let d=1; d<=dim; d++) h += `<th class="th-main col-day" style="padding:0"></th>`;
+    h += `<th class="th-taken" colspan="3">Taken</th><th class="th-avail" colspan="2">Avail</th></tr>
+    <tr>`;
+    for (let d=1; d<=dim; d++) h += `<th class="th-sub${wknd(mi,d)?' wk':''}">${DN[new Date(curYear,mi,d).getDay()]}</th>`;
+    h += `<th class="th-taken" style="font-size:9px">C</th><th class="th-taken" style="font-size:9px">S</th>
+          <th class="th-taken" style="font-size:9px">L</th>
+          <th class="th-avail" style="font-size:9px">C</th><th class="th-avail" style="font-size:9px">S</th></tr>
+    <tr>`;
+    for (let d=1; d<=dim; d++) h += `<th class="th-n${wknd(mi,d)?' wk':''}">${d}</th>`;
+    h += `<th class="th-taken" colspan="3"></th><th class="th-avail" colspan="2"></th></tr>
+    </thead><tbody>`;
+
+    for (let r=0; r<rows; r++) {
+        const emp = emps[r];
+        if (!emp) {
+            h += `<tr class="empty-row"><td class="td-sno">${r+1}</td><td class="td-name"></td>`;
+            for (let d=1; d<=dim; d++) h += `<td class="td-day${wknd(mi,d)?' wk':''}"></td>`;
+            h += `<td class="dash-v">-</td><td class="dash-v">-</td><td class="dash-v">-</td>
+                  <td class="dash-v">-</td><td class="dash-v">-</td></tr>`;
+            continue;
+        }
+        const tk = mTaken(emp.empId,mn);
+        const {aC,aS} = availUpTo(emp.empId,mi);
+        const isInactive = emp.status !== 'Active';
+        h += `<tr style="${isInactive?'opacity:.45;':''}">
+          <td class="td-sno">${emp.sno}</td>
+          <td class="td-name" title="${emp.empId} · ${emp.dept}${isInactive?' · INACTIVE':''}" ondblclick="openEditEmp('${emp.empId}')" style="${isInactive?'text-decoration:line-through;color:var(--muted);':''}">
+            ${emp.name}${isInactive?'<span style="font-size:9px;margin-left:4px;color:var(--danger);font-family:var(--mono)">INACTIVE</span>':''}
+          </td>`;
+        for (let d=1; d<=dim; d++) {
+            const v = getLv(emp.empId,mn,d);
+            const vc = v ? `v-${v.toUpperCase()}` : '';
+            const isFocus = (focusedCell.empId===emp.empId && focusedCell.month===mn && focusedCell.day===d) ? ' kbd-focus' : '';
+            h += `<td class="td-day${wknd(mi,d)?' wk':''} ${vc}${isFocus}" data-eid="${emp.empId}" data-day="${d}" onclick="openPop(event,'${emp.empId}','${mn}',${d},${mi})">${v||''}</td>`;
+        }
+        h += `<td class="td-taken">${tk.C||'-'}</td>
+              <td class="td-taken">${tk.S||'-'}</td>
+              <td class="${tk.L>0?'td-lop':'td-taken'}">${tk.L||'-'}</td>
+              <td class="td-avail${aC<=0?' lo':''}">${aC>0?aC:'-'}</td>
+              <td class="td-avail${aS<=0?' lo':''}">${aS>0?aS:'-'}</td>
+        </tr>`;
+    }
+    h += `</tbody></table>`;
+    document.getElementById('grid-wrap').innerHTML = h;
+}
+
+function renderYTD() {
+    document.getElementById('mlabel').innerHTML = `Year To Date <small id="mlabel-year">${curYear}</small>`;
+    const emps = DB.employees.filter(e => empStatusFilter==='All'?true:e.status===empStatusFilter);
+    let h = `<table class="ytd"><thead><tr>
+      <th class="left" style="width:36px">SNo</th>
+      <th class="left" style="min-width:150px">Name</th>
+      <th style="width:80px">Emp ID</th>
+      <th style="width:70px">Dept</th>`;
+    MNS.forEach(m => h += `<th style="width:40px">${m}</th>`);
+    h += `<th colspan="3" style="background:var(--warning)">Year Taken</th>
+          <th colspan="2" style="background:var(--accent2)">Available</th></tr>
+    <tr>
+      <th></th><th class="left"></th><th></th><th></th>`;
+    MNS.forEach(() => h += `<th></th>`);
+    h += `<th style="background:var(--warning);font-size:9px">C</th>
+          <th style="background:var(--warning);font-size:9px">S</th>
+          <th style="background:var(--warning);font-size:9px">L</th>
+          <th style="background:var(--accent2);font-size:9px">C</th>
+          <th style="background:var(--accent2);font-size:9px">S</th>
+    </tr></thead><tbody>`;
+
+    emps.forEach(emp => {
+        const ys = yrStats(emp.empId);
+        h += `<tr>
+          <td style="font-family:var(--mono);font-size:10px;color:var(--muted)">${emp.sno}</td>
+          <td class="nm" ondblclick="openEditEmp('${emp.empId}')">${emp.name}</td>
+          <td style="font-family:var(--mono);font-size:10px;color:var(--text-secondary)">${emp.empId}</td>
+          <td><span class="lm-badge ${emp.dept==='QC'?'bqc':'bpro'}">${emp.dept}</span></td>`;
+        MNS.forEach((m,mi) => {
+            const tk = mTaken(emp.empId,m);
+            const bits = [];
+            if (tk.C) bits.push(`<span style="color:var(--accent2);font-weight:700">C${tk.C!==1?tk.C:''}</span>`);
+            if (tk.S) bits.push(`<span style="color:var(--warning);font-weight:700">S${tk.S!==1?tk.S:''}</span>`);
+            if (tk.L) bits.push(`<span style="color:var(--danger);font-weight:700">L${tk.L!==1?tk.L:''}</span>`);
+            h += `<td>${bits.join(' ')||'<span style="color:var(--muted)">-</span>'}</td>`;
+        });
+        h += `
+          <td style="background:var(--warning-soft);color:var(--accent2);font-weight:700">${ys.totC||'-'}</td>
+          <td style="background:var(--warning-soft);color:var(--warning);font-weight:700">${ys.totS||'-'}</td>
+          <td style="background:${ys.totL>0?'var(--danger-soft)':'var(--warning-soft)'};color:${ys.totL>0?'var(--danger)':'var(--muted)'};font-weight:${ys.totL>0?700:400}">${ys.totL||'-'}</td>
+          <td style="background:var(--success-soft);font-weight:700;color:${ys.aC<=0?'var(--danger)':'var(--success)'}">${ys.aC>0?ys.aC:'-'}</td>
+          <td style="background:var(--success-soft);font-weight:700;color:${ys.aS<=0?'var(--danger)':'var(--success)'}">${ys.aS>0?ys.aS:'-'}</td>
+        </tr>`;
+    });
+    h += `</tbody></table>`;
+    document.getElementById('grid-wrap').innerHTML = h;
+}
+
+// ════════════════════════════════════════
+// CELL POPUP
+// ════════════════════════════════════════
+let PS = { empId:'', month:'', day:0, mi:0 };
+
+function openPop(e,empId,month,day,mi) {
+    e.stopPropagation(); PS = {empId,month,day,mi};
+    const emp = DB.employees.find(x=>x.empId===empId);
+    document.getElementById('ptitle').textContent = `${emp?.name||empId} · ${month} ${day}`;
+    const {aC,aS} = availUpTo(empId,mi);
+    const tk = mTaken(empId,month);
+    const extraCL = parseFloat(emp?.extraCL)||0;
+    const extraSL = parseFloat(emp?.extraSL)||0;
+    const extraLine = (extraCL||extraSL) ? `<br><span style="color:var(--success)">➕ Extra granted: CL +${extraCL} · SL +${extraSL}</span>` : '';
+    document.getElementById('pbal').innerHTML =
+        `<b>This month taken:</b> C=${tk.C} &nbsp;S=${tk.S} &nbsp;L=${tk.L}<br>
+         <b>Available (incl. carry-fwd):</b> <span style="color:var(--accent2)">CL = ${aC}</span> &nbsp;·&nbsp; <span style="color:var(--warning)">SL = ${aS}</span>${extraLine}`;
+    const pop = document.getElementById('cpop');
+    pop.style.display = 'block';
+    document.getElementById('pbg').classList.add('open');
+    const px = Math.min(e.clientX, window.innerWidth-230);
+    const py = Math.min(e.clientY+8, window.innerHeight-210);
+    pop.style.left = px+'px'; pop.style.top = py+'px';
+}
+function closePopup() {
+    document.getElementById('cpop').style.display = 'none';
+    document.getElementById('pbg').classList.remove('open');
+}
+async function setLv(val) {
+    await setLvDB(PS.empId, PS.month, PS.day, val);
+    closePopup(); renderGrid();
+    lmToast(val ? `Set: ${val} for ${PS.month} ${PS.day}` : 'Cleared', 'ok');
+}
+
+// ════════════════════════════════════════
+// DASHBOARD
+// ════════════════════════════════════════
+function renderDash() {
+    const dept = document.getElementById('d-dept').value;
+    const mf   = document.getElementById('d-month').value;
+    const emps = DB.employees.filter(e => e.status==='Active' && (!dept||e.dept===dept));
+    const months = mf ? [mf] : MNS;
+    let tC=0,tS=0,tL=0;
+    emps.forEach(emp => months.forEach(m => { const tk=mTaken(emp.empId,m); tC+=tk.C; tS+=tk.S; tL+=tk.L; }));
+    const lopN = emps.filter(emp=>months.some(m=>mTaken(emp.empId,m).L>0)).length;
+    const curMi = mf ? MNS.indexOf(mf) : new Date().getMonth();
+
+    document.getElementById('d-stats').innerHTML = `
+        <div class="lm-sc" style="border-left-color:var(--accent)"><div class="lm-sc-lbl">Total Employees</div><div class="lm-sc-val" style="color:var(--accent2)">${emps.length}</div><div class="lm-sc-sub">${dept||'All departments'}</div></div>
+        <div class="lm-sc" style="border-left-color:var(--accent2)"><div class="lm-sc-lbl">Casual Taken</div><div class="lm-sc-val" style="color:var(--accent2)">${tC}</div><div class="lm-sc-sub">${mf||'All months'}</div></div>
+        <div class="lm-sc" style="border-left-color:var(--warning)"><div class="lm-sc-lbl">Sick Taken</div><div class="lm-sc-val" style="color:var(--warning)">${tS}</div><div class="lm-sc-sub">${mf||'All months'}</div></div>
+        <div class="lm-sc" style="border-left-color:var(--danger)"><div class="lm-sc-lbl">Loss of Pay</div><div class="lm-sc-val" style="color:var(--danger)">${tL}</div><div class="lm-sc-sub">${lopN} employee(s)</div></div>
+        <div class="lm-sc" style="border-left-color:var(--warning)"><div class="lm-sc-lbl">Total Leaves</div><div class="lm-sc-val" style="color:var(--warning)">${tC+tS+tL}</div><div class="lm-sc-sub">C + S + L</div></div>
+        <div class="lm-sc" style="border-left-color:var(--success)"><div class="lm-sc-lbl">Policy: Per Month</div><div class="lm-sc-val" style="color:var(--success);font-size:20px">1C + 1S</div><div class="lm-sc-sub">Unused carries forward</div></div>
+    `;
+
+    // LOP table
+    const lopList = emps.map(emp => { let l=0; months.forEach(m => l+=mTaken(emp.empId,m).L); return {emp,l}; }).filter(x=>x.l>0).sort((a,b)=>b.l-a.l);
+    document.getElementById('d-lop').innerHTML = lopList.length
+        ? lopList.map(x=>`<tr>
+            <td><div style="font-weight:600;font-size:12px">${x.emp.name}</div><div style="font-size:10px;color:var(--muted);font-family:var(--mono)">${x.emp.empId}</div></td>
+            <td><span class="lm-badge ${x.emp.dept==='QC'?'bqc':'bpro'}">${x.emp.dept}</span></td>
+            <td class="r"><span class="lm-badge blop">${x.l} days</span></td>
+          </tr>`).join('')
+        : `<tr><td colspan="3" style="text-align:center;color:var(--muted);padding:20px">No LOP records 🎉</td></tr>`;
+
+    // Balance table
+    document.getElementById('d-bal').innerHTML = emps.map(emp => {
+        let tot=0; months.forEach(m => { const tk=mTaken(emp.empId,m); tot+=tk.C+tk.S+tk.L; });
+        const {aC,aS} = availUpTo(emp.empId,Math.max(0,curMi));
+        return `<tr>
+          <td>
+            <div style="font-weight:600;font-size:12px">${emp.name}</div>
+            <div style="display:flex;gap:6px;margin-top:3px">
+              <div style="flex:1"><div style="font-size:9px;color:var(--accent2)">CL</div>
+                <div class="lm-prog-bar"><div class="lm-prog-fill" style="width:${Math.min(100,aC*10)}%;background:var(--accent2)"></div></div>
+              </div>
+              <div style="flex:1"><div style="font-size:9px;color:var(--warning)">SL</div>
+                <div class="lm-prog-bar"><div class="lm-prog-fill" style="width:${Math.min(100,aS*10)}%;background:var(--warning)"></div></div>
+              </div>
+            </div>
+          </td>
+          <td class="r" style="color:var(--accent2);font-weight:700">${aC}</td>
+          <td class="r" style="color:var(--warning);font-weight:700">${aS}</td>
+          <td class="r">${tot||'-'}</td>
+        </tr>`;
+    }).join('');
+
+    // Month summary
+    const mRows = months.map(m => { let C=0,S=0,L=0; emps.forEach(emp => { const tk=mTaken(emp.empId,m); C+=tk.C; S+=tk.S; L+=tk.L; }); return {m,C,S,L}; }).filter(x=>x.C||x.S||x.L);
+    document.getElementById('d-mth').innerHTML = mRows.length
+        ? mRows.map(x=>`<tr>
+            <td style="font-weight:600">${x.m}</td>
+            <td class="r" style="color:var(--accent2)">${x.C||'-'}</td>
+            <td class="r" style="color:var(--warning)">${x.S||'-'}</td>
+            <td class="r" style="color:var(--danger)">${x.L||'-'}</td>
+            <td class="r" style="font-weight:700">${x.C+x.S+x.L}</td>
+          </tr>`).join('')
+        : `<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:20px">No records yet</td></tr>`;
+
+    // Type breakdown
+    const tot2 = tC+tS+tL||1;
+    document.getElementById('d-type').innerHTML = `
+        ${[['Casual Leave (C)',tC,'var(--accent2)'],['Sick Leave (S)',tS,'var(--warning)'],['Loss of Pay (L)',tL,'var(--danger)']].map(([lbl,val,col])=>`
+          <div style="margin-bottom:14px">
+            <div style="display:flex;justify-content:space-between;margin-bottom:5px">
+              <span style="font-weight:600;font-size:12px">${lbl}</span>
+              <span style="font-family:var(--mono);font-size:12px;color:${col};font-weight:700">${val} days</span>
+            </div>
+            <div class="lm-prog-bar" style="height:10px">
+              <div class="lm-prog-fill" style="width:${(val/tot2)*100}%;background:${col}"></div>
+            </div>
+            <div style="font-size:10px;color:var(--muted);margin-top:2px">${Math.round((val/tot2)*100)}% of total</div>
+          </div>`).join('')}
+        <div style="margin-top:12px;padding:10px;background:var(--surface2);border-radius:var(--radius-sm);font-size:11px;color:var(--muted);line-height:1.8">
+          📌 <b>Policy:</b> 1 CL + 1 SL per month<br>
+          🔄 Unused leaves carry forward to next month<br>
+          ⚠ Leaves beyond quota = Loss of Pay (L)
+        </div>
+    `;
+}
+
+// ════════════════════════════════════════
+// EMPLOYEE CRUD
+// ════════════════════════════════════════
+function openAddEmp() {
+    document.getElementById('em-title').textContent = 'Add Employee';
+    ['em-eid','em-name','em-id','em-dept','em-join','em-extra-note'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
+    document.getElementById('em-stat').value = 'Active';
+    document.getElementById('em-extra-cl').value = '0';
+    document.getElementById('em-extra-sl').value = '0';
+    document.getElementById('em-join-hint').textContent = '— select joining date —';
+    document.getElementById('em-err').style.display = 'none';
+    document.getElementById('em-del').style.display = 'none';
+    document.getElementById('em-inactive-warn').style.display = 'none';
+    document.getElementById('em-reactivate').style.display = 'none';
+    document.getElementById('emp-modal').classList.add('open');
+    setTimeout(() => document.getElementById('em-name').focus(), 80);
+}
+function openEditEmp(empId) {
+    const e = DB.employees.find(x=>x.empId===empId); if (!e) return;
+    document.getElementById('em-title').textContent = 'Edit Employee';
+    document.getElementById('em-eid').value   = e.empId;
+    document.getElementById('em-name').value  = e.name;
+    document.getElementById('em-id').value    = e.empId;
+    document.getElementById('em-dept').value  = e.dept;
+    document.getElementById('em-stat').value  = e.status||'Active';
+    document.getElementById('em-join').value  = e.joinDate||'';
+    document.getElementById('em-extra-cl').value   = e.extraCL||0;
+    document.getElementById('em-extra-sl').value   = e.extraSL||0;
+    document.getElementById('em-extra-note').value = e.extraNote||'';
+    updateJoinHint();
+    document.getElementById('em-err').style.display = 'none';
+    document.getElementById('em-del').style.display = 'inline-flex';
+    const isInactive = (e.status==='Inactive');
+    document.getElementById('em-inactive-warn').style.display = isInactive ? 'block' : 'none';
+    document.getElementById('em-reactivate').style.display    = isInactive ? 'inline-flex' : 'none';
+    document.getElementById('emp-modal').classList.add('open');
+}
+function closeModal() { document.getElementById('emp-modal').classList.remove('open'); }
+document.getElementById('emp-modal').addEventListener('click', e => { if(e.target===document.getElementById('emp-modal')) closeModal(); });
+
+async function saveEmp() {
+    const name     = document.getElementById('em-name').value.trim().toUpperCase();
+    const empId    = document.getElementById('em-id').value.trim().toUpperCase();
+    const dept     = document.getElementById('em-dept').value;
+    const status   = document.getElementById('em-stat').value;
+    const joinDate = document.getElementById('em-join').value||'';
+    const extraCL  = parseFloat(document.getElementById('em-extra-cl').value)||0;
+    const extraSL  = parseFloat(document.getElementById('em-extra-sl').value)||0;
+    const extraNote= document.getElementById('em-extra-note').value.trim();
+    const editId   = document.getElementById('em-eid').value;
+    const errEl    = document.getElementById('em-err');
+    if (!name||!empId||!dept) { errEl.textContent='All fields required.'; errEl.style.display='block'; return; }
+    if (!/^[A-Za-z0-9_\-]+$/.test(empId)) { errEl.textContent='Emp ID: letters, digits, _ and - only.'; errEl.style.display='block'; return; }
+    const dup = DB.employees.find(e=>e.empId===empId && e.empId!==editId);
+    if (dup) { errEl.textContent='Employee ID already exists.'; errEl.style.display='block'; return; }
+
+    const payload = { empId, name, dept, status, joinDate, extraCL, extraSL, extraNote };
+    let res;
+    if (editId) {
+        res = await lmApi('/api/lm/employees/' + encodeURIComponent(editId), {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+    } else {
+        res = await lmApi('/api/lm/employees', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+    }
+    if (!res.success) { errEl.textContent = res.message || 'Could not save.'; errEl.style.display='block'; return; }
+    await loadEmployees();
+    await loadLeaves(curYear);
+    closeModal(); renderGrid();
+    lmToast(editId ? 'Employee updated' : 'Employee added','ok');
+}
+
+async function delEmp() {
+    const empId = document.getElementById('em-eid').value;
+    if (!empId) return;
+    if (!confirm('Delete this employee and all their leave data?')) return;
+    const res = await lmApi('/api/lm/employees/' + encodeURIComponent(empId), { method: 'DELETE' });
+    if (!res.success) { lmToast(res.message || 'Could not delete','err'); return; }
+    await loadEmployees();
+    await loadLeaves(curYear);
+    closeModal(); renderGrid(); lmToast('Employee deleted','err');
+}
+
+async function reactivateEmp() {
+    const empId = document.getElementById('em-eid').value; if (!empId) return;
+    const e = DB.employees.find(x=>x.empId===empId); if (!e) return;
+    const res = await lmApi('/api/lm/employees/' + encodeURIComponent(empId), {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...e, status: 'Active' })
+    });
+    if (!res.success) { lmToast(res.message || 'Could not reactivate','err'); return; }
+    await loadEmployees();
+    document.getElementById('em-stat').value = 'Active';
+    document.getElementById('em-inactive-warn').style.display = 'none';
+    document.getElementById('em-reactivate').style.display = 'none';
+    renderGrid();
+    lmToast(`${e.name} reactivated ✅`,'ok');
+    closeModal();
+}
+
+// ════════════════════════════════════════
+// EXPORT / IMPORT
+// ════════════════════════════════════════
+function exportXLSX() {
+    const rows = [['Year','Name','Emp ID','Department','Month','Day','Leave Type']];
+    DB.employees.forEach(emp => {
+        MNS.forEach(m => {
+            const md = (((DB.leaves[curYear]||{})[emp.empId])||{})[m]||{};
+            Object.keys(md).sort((a,b)=>+a-+b).forEach(d => {
+                if (md[d]) rows.push([curYear, emp.name, emp.empId, emp.dept, m, +d, md[d]]);
+            });
+        });
+    });
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [{wch:6},{wch:26},{wch:10},{wch:12},{wch:7},{wch:5},{wch:10}];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, `Leaves ${curYear}`);
+    const fname = `RDM_Leave_${curYear}_` + new Date().toISOString().slice(0,10) + '.xlsx';
+    XLSX.writeFile(wb, fname);
+    lmToast(`Excel exported for ${curYear}`,'ok');
+}
+// Back-compat alias (button may still call exportCSV)
+function exportCSV() { exportXLSX(); }
+
+function dzO(e,id) { e.preventDefault(); document.getElementById(id).classList.add('over'); }
+function dzL(id)   { document.getElementById(id).classList.remove('over'); }
+function dzD(e,t)  { e.preventDefault(); dzL(t==='emp'?'dz-emp':'dz-lv'); const f=e.dataTransfer.files[0]; if(f) rdFile(f,t); }
+function fEmp(inp) { if(inp.files[0]) rdFile(inp.files[0],'emp'); }
+function fLv(inp)  { if(inp.files[0]) rdFile(inp.files[0],'lv'); }
+
+// Read an uploaded file as a 2D array of rows.
+// Supports .xlsx/.xls (via SheetJS) and .csv/.txt (parsed locally).
+function rdFile(f,t) {
+    const name = (f.name||'').toLowerCase();
+    const isExcel = name.endsWith('.xlsx') || name.endsWith('.xls');
+    const r = new FileReader();
+    r.onload = e => {
+        let rows;
+        try {
+            if (isExcel) {
+                const wb = XLSX.read(e.target.result, { type: 'array' });
+                const ws = wb.Sheets[wb.SheetNames[0]];
+                rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' })
+                          .filter(rw => rw.some(c => String(c).trim() !== ''));
+            } else {
+                rows = pCSV(e.target.result);
+            }
+        } catch (err) {
+            lmToast('Could not read file: ' + (err.message||'error'), 'err');
+            return;
+        }
+        if (t === 'emp') impEmpsRows(rows); else impLvRows(rows);
+    };
+    if (isExcel) r.readAsArrayBuffer(f); else r.readAsText(f);
+}
+
+function pCSV(txt) {
+    return txt.split('\n').filter(l=>l.trim()).map(l => {
+        const cols=[]; let cur=''; let q=false;
+        for (const ch of l) { if(ch==='"') q=!q; else if((ch===','||ch==='\t')&&!q){cols.push(cur.trim());cur='';}else cur+=ch; }
+        cols.push(cur.trim()); return cols;
+    });
+}
+
+// Import employees from a 2D array of rows (first row = header)
+async function impEmpsRows(rows) {
+    if(!rows.length) return;
+    const hdr=rows[0].map(h=>String(h).toLowerCase().replace(/\W/g,''));
+    const ni=hdr.findIndex(h=>h.includes('name'));
+    const ii=hdr.findIndex(h=>h.includes('empid')||h.includes('id'));
+    const di=hdr.findIndex(h=>h.includes('dept')||h.includes('dep'));
+    if(ni<0||ii<0) { lmToast('File needs Name and Emp ID columns','err'); return; }
+    const employees=[];
+    rows.slice(1).forEach(r => {
+        const name=String(r[ni]||'').toUpperCase().trim();
+        const empId=String(r[ii]||'').toUpperCase().trim();
+        const dept=di>=0?String(r[di]||'QC').trim():'QC';
+        if(!name||!empId) return;
+        employees.push({ empId, name, dept });
+    });
+    if(!employees.length){ lmToast('No valid employee rows found','err'); return; }
+    const res = await lmApi('/api/lm/employees/bulk', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ employees })
+    });
+    if(!res.success){ lmToast(res.message||'Import failed','err'); return; }
+    await loadEmployees(); renderGrid();
+    document.getElementById('r-emp').innerHTML = `<span style="color:var(--success)">✓ ${res.added} added, ${res.skipped} skipped</span>`;
+    lmToast(`${res.added} employees imported`,'ok');
+}
+
+// Import leaves from a 2D array of rows (first row = header)
+async function impLvRows(rows) {
+    if(!rows.length) return;
+    const hdr=rows[0].map(h=>String(h).toLowerCase().replace(/\W/g,''));
+    const ii=hdr.findIndex(h=>h.includes('empid')||h.includes('id'));
+    const mi=hdr.findIndex(h=>h.includes('month'));
+    const di=hdr.findIndex(h=>h.includes('day'));
+    const ti=hdr.findIndex(h=>h.includes('type'));
+    if(ii<0||mi<0||di<0||ti<0) { lmToast('File needs: Emp ID, Month, Day, Type','err'); return; }
+    const valid=['C','S','L','HC','HS','CH','SH'];
+    const leaves=[];
+    rows.slice(1).forEach(r => {
+        const empId=String(r[ii]||'').toUpperCase().trim();
+        let month=String(r[mi]||'').trim();
+        // accept full month names too
+        if(month.length>3) month = month.slice(0,3);
+        month = month.charAt(0).toUpperCase()+month.slice(1).toLowerCase();
+        const day=parseInt(r[di]);
+        const type=String(r[ti]||'').toUpperCase().trim();
+        if(!empId||!MNS.includes(month)||!day||!valid.includes(type)) return;
+        leaves.push({ empId, year: curYear, month, day, type });
+    });
+    if(!leaves.length){ lmToast('No valid leave rows found','err'); return; }
+    const res = await lmApi('/api/lm/leaves/bulk', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ leaves })
+    });
+    if(!res.success){ lmToast(res.message||'Import failed','err'); return; }
+    await loadLeaves(curYear); renderGrid();
+    document.getElementById('r-lv').innerHTML = `<span style="color:var(--success)">✓ ${res.added} records imported, ${res.skipped} skipped</span>`;
+    lmToast(`${res.added} leave records imported`,'ok');
+}
+
+// Parse pasted text (CSV / TSV) and import
+function pPaste(t) {
+    const txt = document.getElementById(t==='emp'?'p-emp':'p-lv').value.trim();
+    if (!txt) { lmToast('Nothing to parse','err'); return; }
+    const rows = pCSV(txt);
+    t==='emp' ? impEmpsRows(rows) : impLvRows(rows);
+}
+
+function dlEmpTpl() {
+    const rows=[['S.No','Name','Emp ID','Department'],[1,'EXAMPLE NAME','RDM1026','QC']];
+    const ws=XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols']=[{wch:6},{wch:26},{wch:10},{wch:12}];
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Employees');
+    XLSX.writeFile(wb, 'emp_template.xlsx');
+}
+function dlLvTpl() {
+    const rows=[['Emp ID','Month','Day','Type'],
+        ['RDM1001','Jan',5,'C'],['RDM1001','Jan',14,'HS'],['RDM1002','Feb',3,'S']];
+    const ws=XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols']=[{wch:10},{wch:7},{wch:5},{wch:8}];
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Leaves');
+    XLSX.writeFile(wb, 'leave_template.xlsx');
+}
+async function clrLeaves() {
+    if (!IS_ADMIN) { lmToast('Only an admin can clear leave data','err'); return; }
+    if (!confirm(`Clear ALL leave data for ${curYear}? This cannot be undone.`)) return;
+    const res = await lmApi('/api/lm/clear-year/' + curYear, { method:'POST' });
+    if(!res.success){ lmToast(res.message||'Could not clear','err'); return; }
+    await loadLeaves(curYear); renderGrid(); lmToast(`${curYear} leave data cleared`,'err');
+}
+async function clrAll() {
+    if (!IS_ADMIN) { lmToast('Only an admin can reset data','err'); return; }
+    if (!confirm(`Reset ALL leave data for ${curYear}? Employees are kept. This cannot be undone.`)) return;
+    const res = await lmApi('/api/lm/clear-year/' + curYear, { method:'POST' });
+    if(!res.success){ lmToast(res.message||'Could not reset','err'); return; }
+    await loadLeaves(curYear); renderGrid(); lmToast('Leave data reset','err');
+}
+
+// ════════════════════════════════════════
+// TOAST
+// ════════════════════════════════════════
+let _lmtt = null;
+function lmToast(msg, type='ok') {
+    const t = document.getElementById('lm-toast');
+    const icon = type==='ok'?'<i class="fa-solid fa-check"></i>':type==='err'?'<i class="fa-solid fa-xmark"></i>':'<i class="fa-solid fa-circle-info"></i>';
+    t.innerHTML = `${icon} ${msg}`;
+    t.className = `lm-toast show ${type}`;
+    clearTimeout(_lmtt); _lmtt = setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// ════════════════════════════════════════
+// KEYBOARD NAVIGATION (arrow keys on grid)
+// ════════════════════════════════════════
+let focusedCell = { empId:null, month:null, day:null };
+
+function lmVisibleEmployees() {
+    return DB.employees.filter(e => empStatusFilter==='All'?true:e.status===empStatusFilter);
+}
+
+function lmFocusCell(empId, month, day, opts) {
+    opts = opts || {};
+    focusedCell = { empId, month, day };
+    // Remove old highlight
+    document.querySelectorAll('.td-day.kbd-focus').forEach(c => c.classList.remove('kbd-focus'));
+    const cell = document.querySelector(`.td-day[data-eid="${CSS.escape(empId)}"][data-day="${day}"]`);
+    if (cell) {
+        cell.classList.add('kbd-focus');
+        if (opts.scroll !== false) cell.scrollIntoView({ block:'nearest', inline:'nearest' });
+    }
+}
+
+function lmMoveFocus(dr, dc) {
+    if (curMonth === 'YTD') return;
+    const emps = lmVisibleEmployees();
+    if (!emps.length) return;
+    const mi = MNS.indexOf(curMonth);
+    const dim = getDIM(curYear)[mi];
+
+    // Initialise focus if none
+    if (!focusedCell.empId) {
+        lmFocusCell(emps[0].empId, curMonth, 1);
+        return;
+    }
+    let rIdx = emps.findIndex(e => e.empId === focusedCell.empId);
+    if (rIdx < 0) rIdx = 0;
+    let day = focusedCell.day || 1;
+
+    rIdx = Math.max(0, Math.min(emps.length - 1, rIdx + dr));
+    day  = Math.max(1, Math.min(dim, day + dc));
+    lmFocusCell(emps[rIdx].empId, curMonth, day);
+}
+
+document.addEventListener('keydown', (e) => {
+    const tag = (e.target.tagName || '').toLowerCase();
+    const typing = tag === 'input' || tag === 'textarea' || tag === 'select';
+    const popupOpen = document.getElementById('cpop') &&
+                      document.getElementById('cpop').style.display === 'block';
+
+    // When popup is open: number/letter shortcuts to set leave type
+    if (popupOpen) {
+        const map = { '1':'C','2':'S','3':'L','4':'HC','5':'HS','0':'',
+                      'c':'C','s':'S','l':'L' };
+        const k = e.key.toLowerCase();
+        if (map.hasOwnProperty(k)) { e.preventDefault(); setLv(map[k]); return; }
+        if (e.key === 'Escape') { closePopup(); return; }
+        return;
+    }
+
+    if (typing) return;
+    if (curView !== 'tracker' && curView !== undefined) { /* allow only on grid view */ }
+
+    switch (e.key) {
+        case 'ArrowUp':    e.preventDefault(); lmMoveFocus(-1, 0); break;
+        case 'ArrowDown':  e.preventDefault(); lmMoveFocus( 1, 0); break;
+        case 'ArrowLeft':  e.preventDefault(); lmMoveFocus( 0,-1); break;
+        case 'ArrowRight': e.preventDefault(); lmMoveFocus( 0, 1); break;
+        case 'Enter':
+            if (focusedCell.empId) {
+                e.preventDefault();
+                const cell = document.querySelector(`.td-day[data-eid="${CSS.escape(focusedCell.empId)}"][data-day="${focusedCell.day}"]`);
+                if (cell) {
+                    const rect = cell.getBoundingClientRect();
+                    openPop({ stopPropagation(){}, clientX: rect.left, clientY: rect.top },
+                            focusedCell.empId, focusedCell.month, focusedCell.day, MNS.indexOf(focusedCell.month));
+                }
+            }
+            break;
+        // Quick-set without opening popup
+        case '1': case 'c': case 'C':
+            if (focusedCell.empId) { e.preventDefault(); quickSet('C'); } break;
+        case '2': case 's': case 'S':
+            if (focusedCell.empId) { e.preventDefault(); quickSet('S'); } break;
+        case '3': case 'l': case 'L':
+            if (focusedCell.empId) { e.preventDefault(); quickSet('L'); } break;
+        case 'Delete': case 'Backspace': case '0':
+            if (focusedCell.empId) { e.preventDefault(); quickSet(''); } break;
+    }
+});
+
+async function quickSet(val) {
+    if (!focusedCell.empId) return;
+    await setLvDB(focusedCell.empId, focusedCell.month, focusedCell.day, val);
+    renderGrid();
+    // Re-apply focus highlight after re-render
+    lmFocusCell(focusedCell.empId, focusedCell.month, focusedCell.day, { scroll:false });
+    lmToast(val ? `Set ${val} · ${focusedCell.month} ${focusedCell.day}` : `Cleared · ${focusedCell.month} ${focusedCell.day}`, 'ok');
+}
+
+// ════════════════════════════════════════
+// INIT
+// ════════════════════════════════════════
+(async function() {
+    const now = new Date();
+    const cm = now.getMonth(); curYear = now.getFullYear(); DIM = getDIM(curYear);
+
+    const sel = document.getElementById('year-sel');
+    if (sel) { let found=[...sel.options].some(o=>+o.value===curYear); if(!found){const o=document.createElement('option');o.value=curYear;o.textContent=curYear;sel.appendChild(o);} sel.value=curYear; }
+    const dSel = document.getElementById('d-year'); if(dSel) dSel.value=curYear;
+    const sub = document.getElementById('tb-year-sub-inner'); if(sub) sub.textContent=curYear;
+    const tabs = document.querySelectorAll('.mtab[data-m]');
+    tabs.forEach(t => t.classList.remove('active'));
+    const target = [...tabs].find(t=>t.dataset.m===MNS[cm]);
+    if (target) { target.classList.add('active'); curMonth=MNS[cm]; } else if (tabs[0]) { tabs[0].classList.add('active'); }
+
+    // Hide admin-only destructive buttons for non-admins
+    if (!IS_ADMIN) {
+        document.querySelectorAll('.lm-btn-danger').forEach(b => {
+            const oc = b.getAttribute('onclick')||'';
+            if (oc.includes('clrLeaves') || oc.includes('clrAll')) b.style.display = 'none';
+        });
+    }
+
+    document.getElementById('grid-wrap').innerHTML =
+        '<div style="padding:40px;text-align:center;color:var(--muted)">⏳ Loading leave data…</div>';
+
+    await loadEmployees();
+    await loadLeaves(curYear);
+    renderGrid();
+})();
+</script>
+{% endblock %}

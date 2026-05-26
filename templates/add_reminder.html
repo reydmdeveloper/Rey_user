@@ -1,0 +1,53 @@
+{% extends "app_base.html" %}
+{% block title %}Add Reminder – REYDM{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>New Reminder</h2>
+    <p>Schedule a project reminder for all users</p>
+</div>
+
+<div class="card" style="max-width: 560px;">
+    <form method="POST" action="{{ url_for('add_reminder') }}">
+        <div class="form-group">
+            <label for="project_name">
+                <i class="fa-solid fa-folder-open"></i> Project Name
+            </label>
+            <input type="text" id="project_name" name="project_name" class="form-control"
+                   placeholder="e.g. Website Redesign v2" required>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label for="reminder_date">
+                    <i class="fa-solid fa-calendar"></i> Date
+                </label>
+                <input type="date" id="reminder_date" name="reminder_date" class="form-control" required>
+            </div>
+            <div class="form-group">
+                <label for="reminder_time">
+                    <i class="fa-solid fa-clock"></i> Time
+                </label>
+                <input type="time" id="reminder_time" name="reminder_time" class="form-control" required>
+            </div>
+        </div>
+
+        <div class="btn-group" style="margin-top: 8px;">
+            <button type="submit" class="btn btn-primary">
+                <i class="fa-solid fa-bell"></i> Create Reminder
+            </button>
+            <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const dateInput = document.getElementById('reminder_date');
+    if (dateInput) {
+        const today = new Date().toISOString().split('T')[0];
+        dateInput.setAttribute('min', today);
+    }
+</script>
+{% endblock %}

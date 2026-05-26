@@ -1,0 +1,115 @@
+{% extends "app_base.html" %}
+{% block title %}Cost Converter – REYDM{% endblock %}
+
+{% block head %}
+<style>
+/* ── Cost Converter Scoped Styles ── */
+.cc-container{max-width:420px}
+.cc-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:28px}
+.cc-title{text-align:center;font-size:20px;font-weight:700;margin-bottom:24px;display:flex;align-items:center;justify-content:center;gap:10px}
+.cc-title i{color:var(--accent2)}
+.cc-group{margin-bottom:18px}
+.cc-group label{display:block;font-size:12px;font-weight:500;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.4px}
+.cc-group input,.cc-group select{width:100%;padding:10px 14px;border-radius:var(--radius-md);border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:var(--font);font-size:14px;outline:none;transition:border-color .15s}
+.cc-group input:focus,.cc-group select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.cc-group input::placeholder{color:var(--muted)}
+.cc-group select{cursor:pointer}
+.cc-swap{text-align:center;padding:8px 0;cursor:pointer;color:var(--accent2);font-size:14px;font-weight:500;transition:color .15s;user-select:none}
+.cc-swap:hover{color:var(--info)}
+.cc-result-box{margin-top:20px;padding:16px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-md)}
+.cc-result{font-size:18px;font-weight:700;font-family:var(--mono);color:var(--text)}
+.cc-rate{font-size:13px;color:var(--muted);margin-top:6px;font-family:var(--mono)}
+.cc-updated{font-size:11px;color:var(--muted);margin-top:4px;font-family:var(--mono);opacity:.7}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2><i class="fa-solid fa-money-bill-transfer"></i> Cost Converter</h2>
+    <p>Real-time currency exchange rates</p>
+</div>
+
+<div class="cc-container">
+    <div class="cc-card">
+        <div class="cc-title"><i class="fa-solid fa-right-left"></i> REY XChange</div>
+
+        <div class="cc-group">
+            <label>Enter Amount</label>
+            <input type="number" id="cc-amount" placeholder="Enter amount" />
+        </div>
+
+        <div class="cc-group">
+            <label>From Currency</label>
+            <select id="cc-fromCurrency">
+                <option value="USD">USD — US Dollar</option>
+                <option value="EUR">EUR — Euro</option>
+                <option value="GBP">GBP — British Pound</option>
+                <option value="INR">INR — Indian Rupee</option>
+                <option value="JPY">JPY — Japanese Yen</option>
+                <option value="AUD">AUD — Australian Dollar</option>
+                <option value="CAD">CAD — Canadian Dollar</option>
+                <option value="CHF">CHF — Swiss Franc</option>
+                <option value="CNY">CNY — Chinese Yuan</option>
+                <option value="SGD">SGD — Singapore Dollar</option>
+            </select>
+        </div>
+
+        <div class="cc-swap" onclick="ccSwap()">🔄 Swap Currency</div>
+
+        <div class="cc-group">
+            <label>To Currency</label>
+            <select id="cc-toCurrency">
+                <option value="INR">INR — Indian Rupee</option>
+                <option value="USD">USD — US Dollar</option>
+                <option value="EUR">EUR — Euro</option>
+                <option value="GBP">GBP — British Pound</option>
+                <option value="JPY">JPY — Japanese Yen</option>
+                <option value="AUD">AUD — Australian Dollar</option>
+                <option value="CAD">CAD — Canadian Dollar</option>
+                <option value="CHF">CHF — Swiss Franc</option>
+                <option value="CNY">CNY — Chinese Yuan</option>
+                <option value="SGD">SGD — Singapore Dollar</option>
+            </select>
+        </div>
+
+        <div class="cc-result-box">
+            <div class="cc-result" id="cc-result">Converted amount will appear here</div>
+            <div class="cc-rate" id="cc-rate"></div>
+            <div class="cc-updated" id="cc-updated"></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const ccAmount=document.getElementById("cc-amount");
+const ccFrom=document.getElementById("cc-fromCurrency");
+const ccTo=document.getElementById("cc-toCurrency");
+const ccResult=document.getElementById("cc-result");
+const ccRate=document.getElementById("cc-rate");
+const ccUpdated=document.getElementById("cc-updated");
+
+async function ccConvert(){
+    const amt=ccAmount.value,from=ccFrom.value,to=ccTo.value;
+    if(!amt||amt<=0){ccResult.textContent="Enter a valid amount";return}
+    try{
+        const res=await fetch(`https://api.exchangerate-api.com/v4/latest/${from}`);
+        const data=await res.json();
+        const rate=data.rates[to];
+        const converted=(amt*rate).toFixed(2);
+        ccResult.textContent=`${amt} ${from} = ${converted} ${to}`;
+        ccRate.textContent=`1 ${from} = ${rate} ${to}`;
+        ccUpdated.textContent=`Last updated: ${data.date}`;
+    }catch(e){ccResult.textContent="Error fetching exchange rate"}
+}
+
+function ccSwap(){
+    let t=ccFrom.value;ccFrom.value=ccTo.value;ccTo.value=t;ccConvert();
+}
+
+ccAmount.addEventListener("input",ccConvert);
+ccFrom.addEventListener("change",ccConvert);
+ccTo.addEventListener("change",ccConvert);
+</script>
+{% endblock %}

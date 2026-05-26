@@ -1,0 +1,38 @@
+{% extends "auth_base.html" %}
+{% block title %}Verify OTP – REYDM{% endblock %}
+
+{% block auth_content %}
+<div class="auth-header">
+    <img src="{{ url_for('static', filename='Images/REYDM_LOGO.png') }}" alt="REYDM" class="auth-logo">
+    <h2>Verify Your Email</h2>
+    <p>Enter the 6-digit code sent to <strong>{{ email }}</strong></p>
+</div>
+
+<form method="POST" action="{{ url_for('verify_otp') }}">
+    <input type="hidden" name="otp" id="otp-hidden">
+
+    <div class="otp-inputs">
+        <input type="text" class="otp-input" maxlength="1" inputmode="numeric" pattern="[0-9]" autofocus>
+        <input type="text" class="otp-input" maxlength="1" inputmode="numeric" pattern="[0-9]">
+        <input type="text" class="otp-input" maxlength="1" inputmode="numeric" pattern="[0-9]">
+        <input type="text" class="otp-input" maxlength="1" inputmode="numeric" pattern="[0-9]">
+        <input type="text" class="otp-input" maxlength="1" inputmode="numeric" pattern="[0-9]">
+        <input type="text" class="otp-input" maxlength="1" inputmode="numeric" pattern="[0-9]">
+    </div>
+
+    <button type="submit" class="btn btn-primary">
+        <i class="fa-solid fa-check"></i> Verify & Register
+    </button>
+</form>
+
+<div class="auth-footer" style="margin-top: 14px;">
+    <p class="text-muted text-sm">Didn't receive the code?</p>
+    <button id="resend-otp-btn" class="btn btn-secondary btn-sm mt-2" type="button">
+        Resend OTP
+    </button>
+</div>
+
+<div class="auth-footer">
+    <a href="{{ url_for('register') }}"><i class="fa-solid fa-arrow-left"></i> Back to Registration</a>
+</div>
+{% endblock %}
