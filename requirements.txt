@@ -1,15 +1,8 @@
-# ─── Core web app (existing) ────────────────────────────────
 Flask==3.0.0
 mysql-connector-python==8.2.0
 Werkzeug==3.0.1
 pytz==2024.1
-
-# ─── Desktop shell (PyQt6) ──────────────────────────────────
 PyQt6==6.7.0
 PyQt6-WebEngine==6.7.0
-
-# ─── Production WSGI server for the embedded app ────────────
 waitress==3.0.0
-
-# ─── Packaging (optional, only needed to build the .exe) ────
 pyinstaller==6.6.0
