@@ -421,13 +421,33 @@ def send_email(to_email, subject, body_html):
         msg.attach(MIMEText(body_html, "html"))
 
         if SMTP_MODE == "ssl":
-            ctx = ssl.create_default_context()
-            with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=ctx, timeout=30) as server:
+            try:
+                # Try secure SSL context first (best practice)
+                ctx = ssl.create_default_context()
+                server = smtplib.SMTP_SSL("smtp.gmail.com", 465, context=ctx, timeout=30)
+            except Exception as ssl_err:
+                # Fallback to unverified SSL context on cloud platforms like Render
+                print(f"⚠️ Secure SSL context failed ({ssl_err}). Falling back to unverified context...")
+                ctx = ssl._create_unverified_context()
+                server = smtplib.SMTP_SSL("smtp.gmail.com", 465, context=ctx, timeout=30)
+            
+            with server:
                 server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
                 server.sendmail(GMAIL_USER, to_email, msg.as_string())
         else:
-            with smtplib.SMTP("smtp.gmail.com", 587, timeout=30) as server:
-                server.starttls()
+            try:
+                # Try secure STARTTLS context first
+                ctx = ssl.create_default_context()
+                server = smtplib.SMTP("smtp.gmail.com", 587, timeout=30)
+                server.starttls(context=ctx)
+            except Exception as ssl_err:
+                # Fallback to unverified context on cloud platforms like Render
+                print(f"⚠️ Secure STARTTLS context failed ({ssl_err}). Falling back to unverified context...")
+                ctx = ssl._create_unverified_context()
+                server = smtplib.SMTP("smtp.gmail.com", 587, timeout=30)
+                server.starttls(context=ctx)
+
+            with server:
                 server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
                 server.sendmail(GMAIL_USER, to_email, msg.as_string())
 
@@ -1255,13 +1275,18 @@ def api_ns_update_employee(emp_id):
 
     conn = get_db()
     cur = conn.cursor()
-    if new_id != emp_id:
-        cur.execute("UPDATE ns_attendance SET emp_id = %s WHERE emp_id = %s", (new_id, emp_id))
-    cur.execute(
-        "UPDATE ns_employees SET emp_id = %s, name = %s, dept = %s, status = %s WHERE emp_id = %s",
-        (new_id, name, dept, status, emp_id),
-    )
-    conn.commit()
+    try:
+        if new_id != emp_id:
+            cur.execute("UPDATE ns_attendance SET emp_id = %s WHERE emp_id = %s", (new_id, emp_id))
+        cur.execute(
+            "UPDATE ns_employees SET emp_id = %s, name = %s, dept = %s, status = %s WHERE emp_id = %s",
+            (new_id, name, dept, status, emp_id),
+        )
+        conn.commit()
+    except mysql.connector.IntegrityError:
+        cur.close()
+        conn.close()
+        return jsonify({"success": False, "message": "Employee ID already exists."}), 400
     cur.close()
     conn.close()
     return jsonify({"success": True})
@@ -1345,7 +1370,7 @@ def api_ns_toggle_attendance():
         cur.execute("DELETE FROM ns_attendance WHERE id = %s", (existing["id"],))
         present = False
     else:
-        cur.execute("INSERT INTO ns_attendance (emp_id, att_date) VALUES (%s, %s)", (emp_id, att_date))
+        cur.execute("INSERT INTO ns_attendance (emp_id, att_date, present) VALUES (%s, %s, 1)", (emp_id, att_date))
         present = True
     conn.commit()
     cur.close()

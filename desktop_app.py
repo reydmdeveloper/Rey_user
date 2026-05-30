@@ -219,6 +219,15 @@ def build_window(start_url: str):
             reload_act.triggered.connect(self.view.reload)
             self.addAction(reload_act)
 
+            # Hard Reload (Ctrl+F5 / Ctrl+Shift+R)
+            from PyQt6.QtWebEngineCore import QWebEnginePage
+            hard_reload_act = QAction(self)
+            hard_reload_act.setShortcuts([QKeySequence("Ctrl+F5"), QKeySequence("Ctrl+Shift+R")])
+            hard_reload_act.triggered.connect(
+                lambda: self.view.triggerPageAction(QWebEnginePage.WebAction.ReloadAndBypassCache)
+            )
+            self.addAction(hard_reload_act)
+
             # Back / Forward
             back_act = QAction(self)
             back_act.setShortcut(QKeySequence("Alt+Left"))
