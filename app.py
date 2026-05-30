@@ -114,6 +114,25 @@ AVAILABLE_TOOLS = {
 }
 
 
+def parse_allowed_tools(tools_data):
+    """Safely parse allowed_tools JSON column regardless of return type (bytes, str, list, etc.)."""
+    if not tools_data:
+        return []
+    if isinstance(tools_data, (bytes, bytearray)):
+        try:
+            tools_data = tools_data.decode("utf-8")
+        except Exception:
+            pass
+    if isinstance(tools_data, str):
+        try:
+            return json.loads(tools_data)
+        except Exception:
+            return []
+    if isinstance(tools_data, list):
+        return tools_data
+    return []
+
+
 # ═══════════════════════════════════════════════════════════════════════
 # DATABASE HELPERS
 # ═══════════════════════════════════════════════════════════════════════
@@ -651,17 +670,8 @@ def login():
         session["email"] = user["email"]
         session["role"] = user["role"]
 
-        # Parse allowed_tools
-        tools = user.get("allowed_tools")
-        if tools:
-            if isinstance(tools, str):
-                try:
-                    tools = json.loads(tools)
-                except Exception:
-                    tools = []
-            session["allowed_tools"] = tools if isinstance(tools, list) else []
-        else:
-            session["allowed_tools"] = []
+        # Parse allowed_tools robustly
+        session["allowed_tools"] = parse_allowed_tools(user.get("allowed_tools"))
 
         # Update last_active
         conn2 = get_db()
@@ -1786,16 +1796,9 @@ def admin_users():
     cur.close()
     conn.close()
     for u in users:
-        tools = u.get("allowed_tools")
-        if tools:
-            if isinstance(tools, str):
-                try:
-                    u["allowed_tools"] = json.loads(tools)
-                except Exception:
-                    u["allowed_tools"] = []
-        else:
-            u["allowed_tools"] = []
-    return render_template("admin_users.html", users=users)
+        u["allowed_tools"] = parse_allowed_tools(u.get("allowed_tools"))
+    pending_users = [u for u in users if not u.get("is_approved")]
+    return render_template("admin_users.html", users=users, pending_users=pending_users)
 
 
 @app.route("/admin/users/approve/<int:user_id>", methods=["POST"])
@@ -1922,17 +1925,7 @@ def toggle_tool(user_id, tool_key):
         conn.close()
         flash("User not found.", "danger")
         return redirect(url_for("admin_users"))
-    tools = row.get("allowed_tools")
-    if tools:
-        if isinstance(tools, str):
-            try:
-                tools = json.loads(tools)
-            except Exception:
-                tools = []
-    else:
-        tools = []
-    if not isinstance(tools, list):
-        tools = []
+    tools = parse_allowed_tools(row.get("allowed_tools"))
 
     if tool_key in tools:
         tools.remove(tool_key)
