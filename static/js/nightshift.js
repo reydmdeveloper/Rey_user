@@ -48,7 +48,7 @@ async function loadEmployees() {
 
 async function loadAttendance() {
     const data = await apiFetch(`/api/ns/attendance/${nsCurYear}/${nsCurMonth + 1}`);
-    nsAttendance = (data && typeof data === 'object' && !Array.isArray(data) && !data.success === false) ? data : {};
+    nsAttendance = (data && typeof data === 'object' && !Array.isArray(data) && data.success !== false) ? data : {};
     if (data && data.success === false) nsAttendance = {};
 }
 
@@ -184,19 +184,62 @@ function nsRenderBody() {
         c.addEventListener('click', async () => {
             const eid = c.dataset.eid;
             const d = +c.dataset.d;
-            const res = await apiFetch('/api/ns/attendance/toggle', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ emp_id: eid, year: nsCurYear, month: nsCurMonth + 1, day: d })
-            });
-            if (res.success) {
-                if (!nsAttendance[eid]) nsAttendance[eid] = [];
-                if (res.present) {
-                    nsAttendance[eid].push(d);
+            const isPresent = c.classList.contains('present');
+
+            // ── OPTIMISTIC UPDATE ──
+            // 1. Toggle UI immediately
+            c.classList.toggle('present');
+
+            // 2. Update local state
+            if (!nsAttendance[eid]) nsAttendance[eid] = [];
+            if (!isPresent) {
+                if (!nsAttendance[eid].includes(d)) nsAttendance[eid].push(d);
+            } else {
+                nsAttendance[eid] = nsAttendance[eid].filter(x => x !== d);
+            }
+
+            // 3. Update total count column (tc) for this row instantly
+            const tr = c.closest('tr');
+            const tc = tr ? tr.querySelector('.tc') : null;
+            if (tc) {
+                tc.textContent = nsAttendance[eid].length;
+            }
+
+            // 4. Update the statistics counters on dashboard
+            nsRenderStats();
+
+            // 5. Fire background request to synchronize with backend database
+            try {
+                const res = await apiFetch('/api/ns/attendance/toggle', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ emp_id: eid, year: nsCurYear, month: nsCurMonth + 1, day: d })
+                });
+
+                if (!res || res.success === false) {
+                    throw new Error(res ? res.message : 'Database error');
+                }
+            } catch (err) {
+                // ── ROLLBACK ON FAILURE ──
+                console.error('Attendance toggle failed:', err);
+                nsToast('Failed to save attendance change. Rolling back...', 'err');
+
+                // Revert class list
+                c.classList.toggle('present', isPresent);
+
+                // Revert local state
+                if (isPresent) {
+                    if (!nsAttendance[eid].includes(d)) nsAttendance[eid].push(d);
                 } else {
                     nsAttendance[eid] = nsAttendance[eid].filter(x => x !== d);
                 }
-                nsRenderBody();
+
+                // Revert total count column
+                if (tc) {
+                    tc.textContent = nsAttendance[eid].length;
+                }
+
+                // Revert statistics
                 nsRenderStats();
             }
         });
