@@ -8,7 +8,6 @@
 </div>
 
 <!-- Pending Approvals -->
-{% set pending_users = users | selectattr('is_approved', 'equalto', 0) | list %}
 {% if pending_users | length > 0 %}
 <div class="card" style="border-color: var(--warning); border-left: 3px solid var(--warning);">
     <div class="card-header">
@@ -29,7 +28,7 @@
                 <tr>
                     <td><strong>{{ u.full_name }}</strong></td>
                     <td>{{ u.email }}</td>
-                    <td class="text-muted text-sm">{{ u.created_at.strftime('%b %d, %Y %I:%M %p') }}</td>
+                    <td class="text-muted text-sm">{{ u.created_at.strftime('%b %d, %Y %I:%M %p') if u.created_at else 'N/A' }}</td>
                     <td>
                         <div class="btn-group">
                             <form method="POST" action="{{ url_for('approve_user', user_id=u.id) }}">
