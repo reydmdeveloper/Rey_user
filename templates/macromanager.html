@@ -93,6 +93,22 @@
                 <div class="mm-status-val" style="font-size:11px; font-family:var(--mono);">
                     {{ local_path if local_path else 'N/A (Non-Windows)' }}
                 </div>
+                {% if is_windows %}
+                    <div style="margin-top: 8px; display: flex; gap: 8px;">
+                        <form method="POST" action="{{ url_for('macromanager_select_path') }}">
+                            <button type="submit" class="btn btn-secondary btn-sm" style="padding: 2px 8px; font-size: 11px;">
+                                <i class="fa-solid fa-folder-open"></i> Find Path / Browse
+                            </button>
+                        </form>
+                        {% if session.get('custom_templates_dir') %}
+                            <form method="POST" action="{{ url_for('macromanager_reset_path') }}">
+                                <button type="submit" class="btn btn-secondary btn-sm" style="padding: 2px 8px; font-size: 11px; border-color: var(--danger); color: var(--danger);">
+                                    <i class="fa-solid fa-arrow-rotate-left"></i> Reset
+                                </button>
+                            </form>
+                        {% endif %}
+                    </div>
+                {% endif %}
             </div>
             <div class="mm-status-desc">
                 Default global template location for Word macros, key bindings and custom toolbars.

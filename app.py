@@ -1479,16 +1479,29 @@ def get_word_templates_dir():
     if platform.system() != 'Windows':
         return None
         
-    system_name = os.environ.get('USERNAME')
-    if not system_name:
-        try:
-            import getpass
-            system_name = getpass.getuser()
-        except Exception:
-            system_name = "Default"
-            
-    sys_drive = os.environ.get('SystemDrive', 'C:')
-    default_templates_dir = os.path.join(sys_drive + os.sep, 'Users', system_name, 'AppData', 'Roaming', 'Microsoft', 'Templates')
+    try:
+        from flask import session
+        custom_dir = session.get('custom_templates_dir')
+        if custom_dir:
+            return custom_dir
+    except RuntimeError:
+        pass
+    except Exception:
+        pass
+        
+    appdata_dir = os.environ.get('APPDATA')
+    if appdata_dir:
+        default_templates_dir = os.path.join(appdata_dir, 'Microsoft', 'Templates')
+    else:
+        system_name = os.environ.get('USERNAME')
+        if not system_name:
+            try:
+                import getpass
+                system_name = getpass.getuser()
+            except Exception:
+                system_name = "Default"
+        sys_drive = os.environ.get('SystemDrive', 'C:')
+        default_templates_dir = os.path.join(sys_drive + os.sep, 'Users', system_name, 'AppData', 'Roaming', 'Microsoft', 'Templates')
     
     try:
         import winreg
@@ -1543,9 +1556,9 @@ def get_word_templates_dir():
                                     # Accept the path if it already exists or if its parent exists
                                     if os.path.isdir(path_val) or os.path.exists(os.path.dirname(path_val)):
                                         return path_val
-                            except OSError:
+                            except Exception:
                                 pass
-                except OSError:
+                except Exception:
                     pass
 
     return default_templates_dir
@@ -1628,6 +1641,48 @@ def macromanager():
         files=files,
         word_running_id=word_running_id
     )
+
+@app.route("/macromanager/select_path", methods=["POST"])
+@login_required
+@tool_required("macromanager")
+def macromanager_select_path():
+    import platform
+    if platform.system() != 'Windows':
+        flash("Manual path selection is only supported on Windows.", "danger")
+        return redirect(url_for("macromanager"))
+        
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+        
+        # Initialize and hide tkinter root
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes("-topmost", True)
+        
+        # Open folder picker dialog
+        selected_dir = filedialog.askdirectory(title="Select Microsoft Word Templates Directory")
+        root.destroy()
+        
+        if selected_dir:
+            selected_dir = os.path.abspath(selected_dir.replace('/', os.sep))
+            session['custom_templates_dir'] = selected_dir
+            flash(f"Successfully connected and updated templates directory to '{selected_dir}'.", "success")
+        else:
+            flash("No directory selected. Using default/registry path.", "info")
+            
+    except Exception as e:
+        flash(f"Failed to open directory browser: {str(e)}", "danger")
+        
+    return redirect(url_for("macromanager"))
+
+@app.route("/macromanager/reset_path", methods=["POST"])
+@login_required
+@tool_required("macromanager")
+def macromanager_reset_path():
+    session.pop('custom_templates_dir', None)
+    flash("Templates directory path reset to system default / registry path.", "success")
+    return redirect(url_for("macromanager"))
 
 @app.route("/macromanager/export", methods=["POST"])
 @login_required
