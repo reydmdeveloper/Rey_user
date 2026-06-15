@@ -1479,8 +1479,16 @@ def get_word_templates_dir():
     if platform.system() != 'Windows':
         return None
         
-    appdata_dir = os.environ.get('APPDATA')
-    default_templates_dir = os.path.join(appdata_dir, 'Microsoft', 'Templates') if appdata_dir else None
+    system_name = os.environ.get('USERNAME')
+    if not system_name:
+        try:
+            import getpass
+            system_name = getpass.getuser()
+        except Exception:
+            system_name = "Default"
+            
+    sys_drive = os.environ.get('SystemDrive', 'C:')
+    default_templates_dir = os.path.join(sys_drive + os.sep, 'Users', system_name, 'AppData', 'Roaming', 'Microsoft', 'Templates')
     
     try:
         import winreg
@@ -1554,8 +1562,16 @@ def macromanager():
     local_exists = False
     local_backup_exists = False
     local_files = []
+    system_name = None
     
     if is_windows:
+        system_name = os.environ.get('USERNAME')
+        if not system_name:
+            try:
+                import getpass
+                system_name = getpass.getuser()
+            except Exception:
+                system_name = "Default"
         templates_dir = get_word_templates_dir()
         if templates_dir:
             local_path = os.path.join(templates_dir, 'Normal.dotm')
@@ -1604,6 +1620,7 @@ def macromanager():
     return render_template(
         "macromanager.html",
         is_windows=is_windows,
+        system_name=system_name,
         local_path=local_path,
         local_exists=local_exists,
         local_backup_exists=local_backup_exists,

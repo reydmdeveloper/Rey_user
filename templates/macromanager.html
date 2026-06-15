@@ -72,6 +72,7 @@
                 <div class="mm-status-val">
                     {% if is_windows %}
                         <i class="fa-brands fa-windows" style="color: #00adef"></i> Windows Local App
+                        <div style="font-size: 11px; color: var(--muted); margin-top: 4px;">System name: <span style="color:var(--text)">{{ system_name }}</span></div>
                     {% else %}
                         <i class="fa-solid fa-cloud" style="color: var(--accent2)"></i> Cloud Hosting (Render)
                     {% endif %}
