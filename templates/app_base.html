@@ -99,6 +99,12 @@
                     <span class="nav-icon"><i class="{{ tool.icon }}"></i></span>
                     Leave Manager
                 </a>
+                {% elif tool.key == 'macromanager' %}
+                <a href="{{ url_for('macromanager') }}"
+                   class="{% if request.endpoint == 'macromanager' %}active{% endif %}">
+                    <span class="nav-icon"><i class="{{ tool.icon }}"></i></span>
+                    Macro Manager
+                </a>
                 {% endif %}
             {% endfor %}
 

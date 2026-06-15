@@ -1,0 +1,377 @@
+{% extends "app_base.html" %}
+{% block title %}Macro Manager – REYDM{% endblock %}
+
+{% block head %}
+<style>
+.mm-container {max-width: 900px; margin: 0 auto;}
+.mm-card {background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 24px; margin-bottom: 20px;}
+.mm-card h3 {font-size: 16px; font-weight: 600; margin-bottom: 16px; display: flex; align-items: center; gap: 10px; color: var(--text)}
+.mm-status-grid {display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin-bottom: 20px;}
+.mm-status-card {background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 16px; display: flex; flex-direction: column; justify-content: space-between;}
+.mm-status-title {font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;}
+.mm-status-val {font-size: 14px; font-weight: 700; color: var(--text); word-break: break-all;}
+.mm-status-desc {font-size: 11px; color: var(--muted); margin-top: 6px; line-height: 1.4;}
+.mm-badge {display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 600;}
+.mm-badge.ok {background: rgba(63,185,80,0.12); color: var(--success); border: 1px solid rgba(63,185,80,0.2);}
+.mm-badge.warn {background: rgba(210,153,34,0.12); color: var(--warning); border: 1px solid rgba(210,153,34,0.2);}
+.mm-badge.info {background: rgba(31,111,235,0.12); color: var(--accent2); border: 1px solid rgba(31,111,235,0.2);}
+
+.mm-drop {border: 2px dashed var(--border); border-radius: var(--radius-md); padding: 32px 16px; text-align: center; cursor: pointer; transition: all .18s; background: var(--surface2); position: relative; margin-bottom: 15px;}
+.mm-drop:hover, .mm-drop.over {border-color: var(--accent); background: rgba(31,111,235,.06);}
+.mm-drop input[type=file] {position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;}
+.mm-drop-icon {font-size: 32px; margin-bottom: 8px; opacity: 0.7;}
+.mm-drop-text {font-size: 13px; font-weight: 500; margin-bottom: 4px;}
+.mm-drop-hint {font-size: 11px; color: var(--muted);}
+
+.mm-table {width: 100%; border-collapse: collapse; font-size: 13px;}
+.mm-table th {background: var(--surface2); color: var(--muted); padding: 10px 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; border-bottom: 1px solid var(--border);}
+.mm-table td {padding: 12px; border-bottom: 1px solid var(--border); vertical-align: middle;}
+.mm-table tr:last-child td {border-bottom: none;}
+.mm-table .actions {display: flex; gap: 8px;}
+.mm-info-block {background: var(--surface2); border-left: 3px solid var(--accent); padding: 14px; border-radius: 0 var(--radius-md) var(--radius-md) 0; font-size: 12px; color: var(--muted); line-height: 1.6; margin-top: 15px;}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2><i class="fa-solid fa-file-code"></i> Macro Manager</h2>
+    <p>Manage and install Microsoft Word macro template files (Normal.dotm) to restore keyboard shortcuts, custom UI and macros</p>
+</div>
+
+<div class="mm-container">
+    <!-- Word Running Alert with Force Close Option -->
+    {% if word_running_id %}
+    <div class="mm-card" style="border-left: 4px solid var(--danger); background: rgba(233,69,96,0.08); margin-bottom: 20px;">
+        <h3 style="color:var(--danger); margin-bottom:10px;"><i class="fa-solid fa-circle-exclamation"></i> Microsoft Word Background Process Active</h3>
+        <p style="font-size: 13px; line-height: 1.6; color: var(--text); margin-bottom: 14px;">
+            Microsoft Word was detected running in the background (Process: <code>WINWORD.EXE</code>), even though you may have closed all document windows. Word locks the template files and must be closed to complete the import.
+        </p>
+        <form method="POST" action="{{ url_for('macromanager_apply', file_id=word_running_id) }}" onsubmit="return confirm('WARNING: This will forcefully close Microsoft Word and terminate any background instances. Any unsaved edits will be lost. Proceed?')">
+            <input type="hidden" name="force" value="true">
+            <button type="submit" class="btn btn-danger btn-sm" style="background:var(--danger); border-color:var(--danger); display: inline-flex; align-items: center; gap: 6px;">
+                <i class="fa-solid fa-power-off"></i> Force Close Word &amp; Import
+            </button>
+        </form>
+    </div>
+    {% endif %}
+
+    <!-- Word Active Warning -->
+    <div class="mm-card" style="border-left: 4px solid var(--danger); background: rgba(233,69,96,0.06);">
+        <h3 style="color:var(--danger); margin-bottom:8px;"><i class="fa-solid fa-triangle-exclamation"></i> Critical Requirement</h3>
+        <p style="font-size: 13px; line-height: 1.6; color: var(--text); margin: 0;">
+            <strong>Microsoft Word must be completely closed</strong> before you import & replace the template. 
+            If Word is running in the background, it locks the template file or will overwrite your imported macros with its own cached settings when it closes.
+        </p>
+    </div>
+
+    <!-- Local Status Dashboard -->
+    <div class="mm-status-grid">
+        <div class="mm-status-card">
+            <div>
+                <div class="mm-status-title">System Mode</div>
+                <div class="mm-status-val">
+                    {% if is_windows %}
+                        <i class="fa-brands fa-windows" style="color: #00adef"></i> Windows Local App
+                    {% else %}
+                        <i class="fa-solid fa-cloud" style="color: var(--accent2)"></i> Cloud Hosting (Render)
+                    {% endif %}
+                </div>
+            </div>
+            <div class="mm-status-desc">
+                {% if is_windows %}
+                    Desktop Native mode active. You can automatically replace your Word template template files.
+                {% else %}
+                    Hosted on Render cloud. Automatic local path manipulation is disabled. Download templates and place them manually.
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="mm-status-card">
+            <div>
+                <div class="mm-status-title">Word Template Path</div>
+                <div class="mm-status-val" style="font-size:11px; font-family:var(--mono);">
+                    {{ local_path if local_path else 'N/A (Non-Windows)' }}
+                </div>
+            </div>
+            <div class="mm-status-desc">
+                Default global template location for Word macros, key bindings and custom toolbars.
+            </div>
+        </div>
+
+        <div class="mm-status-card">
+            <div>
+                <div class="mm-status-title">Active Template Status</div>
+                <div>
+                    {% if local_exists %}
+                        <span class="mm-badge ok"><i class="fa-solid fa-circle-check"></i> Normal.dotm Exists</span>
+                    {% else %}
+                        <span class="mm-badge warn"><i class="fa-solid fa-circle-exclamation"></i> Not Detected</span>
+                    {% endif %}
+                    
+                    {% if local_backup_exists %}
+                        <span class="mm-badge info" style="margin-top: 4px;"><i class="fa-solid fa-clock-rotate-left"></i> Backups Exist</span>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="mm-status-desc">
+                Shows if MS Word's Normal.dotm file is configured on your local operating system.
+            </div>
+        </div>
+    </div>
+
+    <!-- Upload & Export Section (Admins Only) -->
+    {% if session.get('role') == 'admin' %}
+    <div class="mm-card">
+        <h3><i class="fa-solid fa-cloud-arrow-up"></i> Admin Actions: Manage Macro Template</h3>
+        
+        {% if is_windows %}
+        <div style="background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 16px; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
+            <div style="flex: 1; min-width: 200px;">
+                <strong style="color:var(--text); font-size:14px;"><i class="fa-solid fa-file-export" style="color:var(--accent2)"></i> Quick Export from Word</strong>
+                <p style="font-size:11px; color:var(--muted); margin-top:4px; line-height:1.4; margin-bottom: 0;">Directly capture your local MS Word macros, shortcuts, and custom UI settings and save them as a new file in the database library.</p>
+            </div>
+            <form method="POST" action="{{ url_for('macromanager_export') }}">
+                <button type="submit" class="btn btn-primary btn-sm">
+                    <i class="fa-solid fa-file-export"></i> Export from Word
+                </button>
+            </form>
+        </div>
+        {% endif %}
+
+        <form method="POST" action="{{ url_for('macromanager_upload') }}" enctype="multipart/form-data">
+            <div class="mm-drop" id="mm-drop">
+                <input type="file" name="file" accept=".dotm,.zip" onchange="this.form.submit()" />
+                <div class="mm-drop-icon"><i class="fa-solid fa-file-invoice" style="color:var(--accent2)"></i></div>
+                <div class="mm-drop-text">Drag Normal.dotm or templates zip archive here or click to browse</div>
+                <div class="mm-drop-hint">Accepts template files (.dotm) or zipped templates (.zip) up to 15MB</div>
+            </div>
+        </form>
+        <div class="mm-info-block">
+            <strong>What is Normal.dotm?</strong><br>
+            It is MS Word's global scratchpad template. When you record a macro, edit a shortcut key, or customize your ribbon layout, Word saves those changes to this file. Exporting from Word or uploading your old system's <code>Normal.dotm</code> allows you to carry over all those settings.
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Upload History -->
+    <div class="mm-card">
+        <h3><i class="fa-solid fa-list"></i> Macro Template Library ({{ files|length }})</h3>
+        {% if files|length > 0 %}
+            <div class="table-wrapper" style="margin-top: 10px;">
+                <table class="mm-table">
+                    <thead>
+                        <tr>
+                            <th>File Name</th>
+                            <th>Uploaded By</th>
+                            <th>Upload Date</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for f in files %}
+                            <tr>
+                                <td>
+                                    <strong style="color:var(--text)">
+                                        {% if f.filename.lower().endswith('.zip') %}
+                                            <i class="fa-solid fa-file-zipper" style="color: var(--accent2);"></i>
+                                        {% else %}
+                                            <i class="fa-solid fa-file-code" style="color: var(--accent2);"></i>
+                                        {% endif %}
+                                        &nbsp; {{ f.filename }}
+                                    </strong>
+                                    {% if f.has_ui %}
+                                        <span class="mm-badge ok" style="font-size:10px; padding:2px 6px; margin-left:6px;" title="Contains custom Ribbon tabs and Quick Access Toolbar configurations"><i class="fa-solid fa-desktop"></i> + Taskbar UI</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ f.uploader_name or 'System' }}</td>
+                                <td class="text-muted text-sm">{{ f.uploaded_at.strftime('%b %d, %Y %I:%M %p') }}</td>
+                                <td>
+                                    <div class="actions">
+                                        <a href="{{ url_for('macromanager_download', file_id=f.id) }}" class="btn btn-secondary btn-sm" title="Download Template File (.dotm)">
+                                            <i class="fa-solid fa-download"></i> Download
+                                        </a>
+                                        {% if f.has_ui %}
+                                            <a href="{{ url_for('macromanager_download_ui', file_id=f.id) }}" class="btn btn-secondary btn-sm" title="Download Ribbon UI Customization (Word.officeUI)" style="border-color: var(--accent2); color: var(--accent2);">
+                                                <i class="fa-solid fa-desktop"></i> Download UI
+                                            </a>
+                                        {% endif %}
+                                        
+                                        {% if is_windows %}
+                                             <form method="POST" action="{{ url_for('macromanager_apply', file_id=f.id) }}" style="display:inline;" onsubmit="return confirm('CRITICAL REQUIREMENT:\n\n1. You MUST CLOSE MICROSOFT WORD COMPLETELY before proceeding.\n2. If Word remains open, the replacement will fail or be silently overwritten.\n\nAre you sure you have closed Word and want to import and replace your template?')">
+                                                 <button type="submit" class="btn btn-success btn-sm">
+                                                     <i class="fa-solid fa-circle-check"></i> Import &amp; Replace
+                                                 </button>
+                                             </form>
+
+                                             {% if word_running_id == f.id %}
+                                             <form method="POST" action="{{ url_for('macromanager_apply', file_id=f.id) }}" style="display:inline;" onsubmit="return confirm('WARNING: This will forcefully close Microsoft Word and any unsaved document edits will be lost. Proceed?')">
+                                                 <input type="hidden" name="force" value="true">
+                                                 <button type="submit" class="btn btn-danger btn-sm" style="background:var(--danger); border-color:var(--danger);">
+                                                     <i class="fa-solid fa-power-off"></i> Force Close Word &amp; Import
+                                                 </button>
+                                             </form>
+                                             {% endif %}
+                                        {% endif %}
+                                        
+                                        {% if session.get('role') == 'admin' %}
+                                            <form method="POST" action="{{ url_for('macromanager_delete', file_id=f.id) }}" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete this macro file?')">
+                                                <button type="submit" class="btn btn-danger btn-sm" title="Delete File">
+                                                    <i class="fa-solid fa-trash-can"></i>
+                                                </button>
+                                            </form>
+                                        {% endif %}
+                                    </div>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div style="color:var(--muted); text-align:center; padding:32px 0;">
+                <i class="fa-solid fa-folder-open" style="font-size:32px; opacity:0.5; margin-bottom:10px; display:block;"></i>
+                {% if session.get('role') == 'admin' %}
+                    No macro templates uploaded yet. Upload your <strong>normal.dotm</strong> file above to get started.
+                {% else %}
+                    No macro templates available yet. Please contact an Administrator to upload the <strong>Normal.dotm</strong> file.
+                {% endif %}
+            </div>
+        {% endif %}
+    </div>
+
+    <!-- Local Files Diagnostics -->
+    {% if is_windows %}
+    <div class="mm-card">
+        <h3><i class="fa-solid fa-folder-tree"></i> Active Files in Word Templates Folder</h3>
+        <p style="font-size:12px; color:var(--muted); margin-bottom:12px;">
+            Below is the list of files in the active MS Word template folder. If you see copies like <code>Normal (1).dotm</code>, this indicates a OneDrive sync conflict. Word will ignore duplicate copies and load settings only from <strong>Normal.dotm</strong>.
+        </p>
+
+        {# Check for OneDrive sync conflicts or other template issues #}
+        {% set has_onedrive_conflict = [false] %}
+        {% set has_duplicate_temp = [false] %}
+        {% for lf in local_files %}
+            {% if "normal (" in lf.name.lower() or "normal-" in lf.name.lower() %}
+                {% if has_onedrive_conflict.append(true) %}{% endif %}
+            {% endif %}
+            {% if lf.name.lower() == "normal.dotm" and lf.size_bytes == 0 %}
+                {% if has_duplicate_temp.append(true) %}{% endif %}
+            {% endif %}
+        {% endfor %}
+
+        {% if has_onedrive_conflict[-1] %}
+        <div style="background: rgba(210,153,34,0.1); border: 1px solid rgba(210,153,34,0.3); border-radius: var(--radius-md); padding: 12px; margin-bottom: 16px; display: flex; align-items: flex-start; gap: 10px; font-size: 12px; color: var(--warning);">
+            <i class="fa-solid fa-triangle-exclamation" style="margin-top: 2px; color: var(--warning);"></i>
+            <div>
+                <strong>OneDrive/Sync Duplicates Detected!</strong><br>
+                OneDrive has created conflicting copies (e.g. <code>Normal (1).dotm</code>) of your template. Microsoft Word will NOT load macros from these duplicate copies. You must delete them and keep only the main <code>Normal.dotm</code> file active.
+            </div>
+        </div>
+        {% endif %}
+
+        {% if has_duplicate_temp[-1] %}
+        <div style="background: rgba(233,69,96,0.1); border: 1px solid rgba(233,69,96,0.3); border-radius: var(--radius-md); padding: 12px; margin-bottom: 16px; display: flex; align-items: flex-start; gap: 10px; font-size: 12px; color: var(--danger);">
+            <i class="fa-solid fa-circle-exclamation" style="margin-top: 2px; color: var(--danger);"></i>
+            <div>
+                <strong>Empty Normal.dotm Detected!</strong><br>
+                The active <code>Normal.dotm</code> template file size is 0 KB. Word might overwrite or ignore it. Try clicking "Import & Replace" on a valid template from the library to populate it.
+            </div>
+        </div>
+        {% endif %}
+
+        {% if local_files|length > 0 %}
+            <div class="table-wrapper">
+                <table class="mm-table">
+                    <thead>
+                        <tr>
+                            <th>File Name</th>
+                            <th>Size</th>
+                            <th>Date Modified</th>
+                            <th>Status / Type</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for lf in local_files %}
+                            <tr>
+                                <td>
+                                    <strong style="color:var(--text)">
+                                        {% if lf.name.lower() == "normal.dotm" %}
+                                            <i class="fa-solid fa-star" style="color: #ffc107;"></i>&nbsp; {{ lf.name }}
+                                        {% else %}
+                                            <i class="fa-solid fa-file-code" style="color: var(--muted);"></i>&nbsp; {{ lf.name }}
+                                        {% endif %}
+                                    </strong>
+                                </td>
+                                <td>{{ lf.size }}</td>
+                                <td class="text-muted text-sm">{{ lf.modified }}</td>
+                                <td>
+                                    {% if lf.name.lower() == "normal.dotm" %}
+                                        <span class="mm-badge ok">Active Template</span>
+                                    {% elif lf.name.startswith("Normal.dotm.bak") %}
+                                        <span class="mm-badge info">Backup File</span>
+                                    {% elif "normal (" in lf.name.lower() or "normal-" in lf.name.lower() %}
+                                        <span class="mm-badge warn">Sync Conflict / Duplicate</span>
+                                    {% else %}
+                                        <span class="mm-badge info">Template Related</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div style="color:var(--muted); text-align:center; padding:20px 0; font-size:13px;">
+                <i class="fa-solid fa-folder-open" style="font-size:24px; opacity:0.5; margin-bottom:8px; display:block;"></i>
+                No files detected in the Word templates folder.
+            </div>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- Manual Installation Guide for Cloud Users -->
+    <div class="mm-card">
+        <h3><i class="fa-solid fa-circle-question"></i> How to apply manually on other PCs</h3>
+        <div style="font-size: 13px; line-height: 1.6; color: var(--muted);">
+            If you are not using the desktop application, or want to install it on another computer:
+            <ol style="margin-top: 8px; padding-left: 20px;">
+                <li>Click the <strong>Download</strong> button on the uploaded file above to save it. If the template contains ribbon custom UI, also click <strong>Download UI</strong> to download the <code>Word.officeUI</code> file.</li>
+                <li>Close Microsoft Word completely.</li>
+                <li><strong>Restore Template (Macros &amp; Shortcuts)</strong>: Open File Explorer, enter <code style="background:var(--surface2); padding:2px 6px; border-radius:4px; font-family:var(--mono); font-size:11px; display:inline-block; margin:4px 0; word-break:break-all;">%APPDATA%\Microsoft\Templates</code> in the address bar, backup the existing <code>Normal.dotm</code>, and replace it with the downloaded template file (renaming it to <code>Normal.dotm</code>).</li>
+                <li><strong>Restore Ribbon/Taskbar UI (if downloaded)</strong>: Open File Explorer, enter <code style="background:var(--surface2); padding:2px 6px; border-radius:4px; font-family:var(--mono); font-size:11px; display:inline-block; margin:4px 0; word-break:break-all;">%LOCALAPPDATA%\Microsoft\Office</code> in the address bar, backup the existing <code>Word.officeUI</code>, and replace it with the downloaded UI file (renaming it exactly to <code>Word.officeUI</code>).</li>
+                <li>Open Microsoft Word; all your macros, shortcuts, custom ribbon tabs, and taskbar buttons will be fully active!</li>
+            </ol>
+        </div>
+    </div>
+
+    <!-- Troubleshooting & Macro Security Guide -->
+    <div class="mm-card">
+        <h3><i class="fa-solid fa-triangle-exclamation"></i> Troubleshooting: Macros Not Loading?</h3>
+        <div style="font-size: 13px; line-height: 1.6; color: var(--muted);">
+            If you click import but MS Word still does not load your macros or ribbon tabs, check these common issues:
+            <ul style="margin-top: 8px; padding-left: 20px; list-style-type: disc;">
+                <li><strong>Macro Security Level</strong>: Microsoft Word blocks macros by default. In Word, go to <strong>File</strong> &gt; <strong>Options</strong> &gt; <strong>Trust Center</strong> &gt; <strong>Trust Center Settings...</strong> &gt; <strong>Macro Settings</strong>, and select <em>"Disable all macros with notification"</em>.</li>
+                <li><strong>Windows File Block (Mark of the Web)</strong>: Windows blocks files downloaded from the web. Close Word, go to <code>%APPDATA%\Microsoft\Templates</code>, right-click on <code>Normal.dotm</code>, click <strong>Properties</strong>, and check the <strong>Unblock</strong> checkbox at the bottom of the General tab, then click <strong>Apply</strong>.</li>
+                <li><strong>Ribbon UI Customization Locked</strong>: If MS Word was open in the background while importing, the <code>Word.officeUI</code> file or <code>Normal.dotm</code> template might have been locked or overwritten by Word. Close Word completely and click **Import & Replace** again.</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<script>
+// Simple drag and drop hover effects
+const dropZone = document.getElementById('mm-drop');
+if (dropZone) {
+    dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.classList.add('over');
+    });
+    dropZone.addEventListener('dragleave', () => {
+        dropZone.classList.remove('over');
+    });
+    dropZone.addEventListener('drop', () => {
+        dropZone.classList.remove('over');
+    });
+}
+</script>
+{% endblock %}
