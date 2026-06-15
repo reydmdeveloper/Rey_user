@@ -1487,33 +1487,58 @@ def get_word_templates_dir():
     except ImportError:
         return default_templates_dir
 
-    office_versions = ["16.0", "15.0", "14.0"]
-    
-    # 1. Check DOT-PATH in Word Options
-    for version in office_versions:
+    # 1. Determine Office versions installed
+    office_versions = []
+    for root in [winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE]:
         try:
-            key_path = f"Software\\Microsoft\\Office\\{version}\\Word\\Options"
-            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_READ) as key:
-                dot_path, _ = winreg.QueryValueEx(key, "DOT-PATH")
-                if dot_path:
-                    dot_path = os.path.expandvars(dot_path)
-                    if os.path.isdir(dot_path):
-                        return os.path.abspath(dot_path)
-        except OSError:
+            with winreg.OpenKey(root, "Software\\Microsoft\\Office") as office_key:
+                num_keys = winreg.QueryInfoKey(office_key)[0]
+                for i in range(num_keys):
+                    subkey_name = winreg.EnumKey(office_key, i)
+                    if subkey_name.replace('.', '').isdigit():
+                        if subkey_name not in office_versions:
+                            office_versions.append(subkey_name)
+        except Exception:
             pass
+            
+    # Sort version keys in descending order (e.g. 16.0, 15.0)
+    try:
+        office_versions = sorted(office_versions, key=lambda x: [float(i) for i in x.split('.') if i.replace('.', '').isdigit()], reverse=True)
+    except Exception:
+        pass
+        
+    if not office_versions:
+        office_versions = ["16.0", "15.0", "14.0"]
 
-    # 2. Check UserTemplates in Common/General
+    # 2. Check all common registry locations
+    roots = [winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE]
+    key_templates = [
+        r"Software\Microsoft\Office\{version}\Word\Options",
+        r"Software\Microsoft\Office\{version}\Common\General",
+        r"Software\Policies\Microsoft\Office\{version}\Word\Options",
+        r"Software\Policies\Microsoft\Office\{version}\Common\General",
+    ]
+    value_names = ["DOT-PATH", "UserTemplates"]
+
     for version in office_versions:
-        try:
-            key_path = f"Software\\Microsoft\\Office\\{version}\\Common\\General"
-            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_READ) as key:
-                user_templates, _ = winreg.QueryValueEx(key, "UserTemplates")
-                if user_templates:
-                    user_templates = os.path.expandvars(user_templates)
-                    if os.path.isdir(user_templates):
-                        return os.path.abspath(user_templates)
-        except OSError:
-            pass
+        for root in roots:
+            for template in key_templates:
+                key_path = template.format(version=version)
+                try:
+                    with winreg.OpenKey(root, key_path, 0, winreg.KEY_READ) as key:
+                        for val_name in value_names:
+                            try:
+                                path_val, _ = winreg.QueryValueEx(key, val_name)
+                                if path_val:
+                                    path_val = os.path.expandvars(path_val)
+                                    path_val = os.path.abspath(path_val)
+                                    # Accept the path if it already exists or if its parent exists
+                                    if os.path.isdir(path_val) or os.path.exists(os.path.dirname(path_val)):
+                                        return path_val
+                            except OSError:
+                                pass
+                except OSError:
+                    pass
 
     return default_templates_dir
 
