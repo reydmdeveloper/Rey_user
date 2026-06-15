@@ -6,6 +6,7 @@ Tools: Reminder, Night Shift, Attendance, Petty Cash (CBE/DGL), Leave Manager,
 """
 
 import os
+import io
 import json
 import random
 import string
@@ -111,6 +112,11 @@ AVAILABLE_TOOLS = {
         "icon": "fa-solid fa-calendar-check",
         "description": "Employee leave tracker with monthly dashboard",
     },
+    "macromanager": {
+        "name": "Macro Manager",
+        "icon": "fa-solid fa-file-code",
+        "description": "Install or update Normal.dotm with old system macro, UI, and shortcuts",
+    },
 }
 
 
@@ -153,7 +159,7 @@ def get_db():
         cur.close()
         return conn
     except mysql.connector.Error as e:
-        print(f"❌ Database connection error: {e}")
+        print(f"[ERROR] Database connection error: {e}")
         return None
 
 
@@ -334,6 +340,25 @@ def init_db():
             )
         """)
 
+        # ─── MACRO FILES ─────────────────────────────────────────────
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS macro_files (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                filename VARCHAR(150) NOT NULL,
+                file_data LONGBLOB NOT NULL,
+                ui_data LONGBLOB DEFAULT NULL,
+                uploaded_by INT,
+                uploaded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE SET NULL
+            )
+        """)
+
+        # Migration: Ensure ui_data column exists in older deployments
+        try:
+            cur.execute("ALTER TABLE macro_files ADD COLUMN ui_data LONGBLOB DEFAULT NULL")
+        except mysql.connector.Error:
+            pass
+
         # ─── ADMIN SETTINGS ──────────────────────────────────────────
         cur.execute("""
             CREATE TABLE IF NOT EXISTS admin_settings (
@@ -411,9 +436,9 @@ def init_db():
         conn.commit()
         cur.close()
         conn.close()
-        print("✅ Database initialized successfully.")
+        print("[OK] Database initialized successfully.")
     except mysql.connector.Error as e:
-        print(f"❌ Database initialization error: {e}")
+        print(f"[ERROR] Database initialization error: {e}")
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -429,7 +454,7 @@ def send_email(to_email, subject, body_html):
     from email.mime.multipart import MIMEMultipart
 
     if not GMAIL_USER or not GMAIL_APP_PASSWORD:
-        print("⚠️  Gmail credentials not configured.")
+        print("[WARN] Gmail credentials not configured.")
         return False
 
     try:
@@ -446,7 +471,7 @@ def send_email(to_email, subject, body_html):
                 server = smtplib.SMTP_SSL("smtp.gmail.com", 465, context=ctx, timeout=30)
             except Exception as ssl_err:
                 # Fallback to unverified SSL context on cloud platforms like Render
-                print(f"⚠️ Secure SSL context failed ({ssl_err}). Falling back to unverified context...")
+                print(f"[WARN] Secure SSL context failed ({ssl_err}). Falling back to unverified context...")
                 ctx = ssl._create_unverified_context()
                 server = smtplib.SMTP_SSL("smtp.gmail.com", 465, context=ctx, timeout=30)
             
@@ -461,7 +486,7 @@ def send_email(to_email, subject, body_html):
                 server.starttls(context=ctx)
             except Exception as ssl_err:
                 # Fallback to unverified context on cloud platforms like Render
-                print(f"⚠️ Secure STARTTLS context failed ({ssl_err}). Falling back to unverified context...")
+                print(f"[WARN] Secure STARTTLS context failed ({ssl_err}). Falling back to unverified context...")
                 ctx = ssl._create_unverified_context()
                 server = smtplib.SMTP("smtp.gmail.com", 587, timeout=30)
                 server.starttls(context=ctx)
@@ -470,10 +495,10 @@ def send_email(to_email, subject, body_html):
                 server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
                 server.sendmail(GMAIL_USER, to_email, msg.as_string())
 
-        print(f"📧 Email sent to {to_email}")
+        print(f"[MAIL] Email sent to {to_email}")
         return True
     except Exception as e:
-        print(f"❌ Email send failed to {to_email}: {e}")
+        print(f"[ERROR] Email send failed to {to_email}: {e}")
         return False
 
 
@@ -1440,6 +1465,633 @@ def projectanalysis():
 @tool_required("pdfunlocker")
 def pdfunlocker():
     return render_template("pdfunlocker.html")
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# MACRO MANAGER ROUTES
+# ═══════════════════════════════════════════════════════════════════════
+
+def get_word_templates_dir():
+    """Dynamically determine the active Microsoft Word templates directory.
+    Queries Windows Registry keys for Word options and common template path redirections.
+    Falls back to %APPDATA%/Microsoft/Templates if registry scanning fails or returns empty."""
+    import platform
+    if platform.system() != 'Windows':
+        return None
+        
+    appdata_dir = os.environ.get('APPDATA')
+    default_templates_dir = os.path.join(appdata_dir, 'Microsoft', 'Templates') if appdata_dir else None
+    
+    try:
+        import winreg
+    except ImportError:
+        return default_templates_dir
+
+    office_versions = ["16.0", "15.0", "14.0"]
+    
+    # 1. Check DOT-PATH in Word Options
+    for version in office_versions:
+        try:
+            key_path = f"Software\\Microsoft\\Office\\{version}\\Word\\Options"
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_READ) as key:
+                dot_path, _ = winreg.QueryValueEx(key, "DOT-PATH")
+                if dot_path:
+                    dot_path = os.path.expandvars(dot_path)
+                    if os.path.isdir(dot_path):
+                        return os.path.abspath(dot_path)
+        except OSError:
+            pass
+
+    # 2. Check UserTemplates in Common/General
+    for version in office_versions:
+        try:
+            key_path = f"Software\\Microsoft\\Office\\{version}\\Common\\General"
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_READ) as key:
+                user_templates, _ = winreg.QueryValueEx(key, "UserTemplates")
+                if user_templates:
+                    user_templates = os.path.expandvars(user_templates)
+                    if os.path.isdir(user_templates):
+                        return os.path.abspath(user_templates)
+        except OSError:
+            pass
+
+    return default_templates_dir
+
+
+@app.route("/macromanager")
+@login_required
+@tool_required("macromanager")
+def macromanager():
+    import platform
+    is_windows = (platform.system() == 'Windows')
+    
+    local_path = None
+    local_exists = False
+    local_backup_exists = False
+    local_files = []
+    
+    if is_windows:
+        templates_dir = get_word_templates_dir()
+        if templates_dir:
+            local_path = os.path.join(templates_dir, 'Normal.dotm')
+            if os.path.exists(local_path):
+                local_exists = True
+            # Check if backups exist and list files
+            if os.path.exists(templates_dir):
+                for file in os.listdir(templates_dir):
+                    if file.startswith("Normal.dotm.bak"):
+                        local_backup_exists = True
+                    
+                    lower_file = file.lower()
+                    # Filter for template-related files and OneDrive/conflict copies
+                    if 'normal' in lower_file or lower_file.endswith('.dotm') or lower_file.endswith('.dotx'):
+                        file_path = os.path.join(templates_dir, file)
+                        if os.path.isfile(file_path):
+                            try:
+                                stat_info = os.stat(file_path)
+                                size_bytes = stat_info.st_size
+                                modified_time = datetime.fromtimestamp(stat_info.st_mtime)
+                                local_files.append({
+                                    'name': file,
+                                    'size': f"{size_bytes / 1024:.1f} KB" if size_bytes > 0 else "0 KB",
+                                    'size_bytes': size_bytes,
+                                    'modified': modified_time.strftime("%b %d, %Y %I:%M %p")
+                                })
+                            except Exception:
+                                pass
+                local_files.sort(key=lambda x: x['name'].lower())
+
+    conn = get_db()
+    cur = conn.cursor(dictionary=True)
+    cur.execute("""
+        SELECT mf.id, mf.filename, mf.uploaded_at, u.full_name as uploader_name, mf.uploaded_by,
+               (mf.ui_data IS NOT NULL AND LENGTH(mf.ui_data) > 0) AS has_ui
+        FROM macro_files mf
+        LEFT JOIN users u ON mf.uploaded_by = u.id
+        ORDER BY mf.uploaded_at DESC
+    """)
+    files = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    word_running_id = session.get("macro_word_running_id")
+
+    return render_template(
+        "macromanager.html",
+        is_windows=is_windows,
+        local_path=local_path,
+        local_exists=local_exists,
+        local_backup_exists=local_backup_exists,
+        local_files=local_files,
+        files=files,
+        word_running_id=word_running_id
+    )
+
+@app.route("/macromanager/export", methods=["POST"])
+@login_required
+@tool_required("macromanager")
+def macromanager_export():
+    if session.get('role') != 'admin':
+        flash("Only administrators are allowed to export macro templates.", "danger")
+        return redirect(url_for("macromanager"))
+        
+    import platform
+    is_windows = (platform.system() == 'Windows')
+    
+    if not is_windows:
+        flash("Exporting local Word settings is only supported when running the desktop app locally on Windows.", "danger")
+        return redirect(url_for("macromanager"))
+        
+    templates_dir = get_word_templates_dir()
+    if not templates_dir:
+        flash("Could not determine Microsoft Word templates directory.", "danger")
+        return redirect(url_for("macromanager"))
+        
+    local_path = os.path.join(templates_dir, 'Normal.dotm')
+    if not os.path.exists(local_path):
+        flash("No local MS Word Normal.dotm template file was found. Please ensure you have customized your Word settings or created macros first.", "danger")
+        return redirect(url_for("macromanager"))
+        
+    # Attempt to read Ribbon/Taskbar UI customizations
+    ui_data = None
+    localappdata = os.environ.get('LOCALAPPDATA')
+    ui_path = None
+    if localappdata:
+        ui_path = os.path.join(localappdata, 'Microsoft', 'Office', 'Word.officeUI')
+        if os.path.exists(ui_path):
+            try:
+                with open(ui_path, 'rb') as uf:
+                    ui_data = uf.read()
+            except Exception as e:
+                print(f"Warning: could not read Word.officeUI: {e}")
+                
+    try:
+        import zipfile
+        import io
+        
+        # Build the zip archive in-memory
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            for root, dirs, files in os.walk(templates_dir):
+                # Exclude Microsoft's cache folders like LiveContent to keep size small
+                if 'LiveContent' in root:
+                    continue
+                for file in files:
+                    # Exclude temp files and existing backups
+                    if file.startswith('~$') or '.bak' in file:
+                        continue
+                    file_path = os.path.join(root, file)
+                    if os.path.exists(file_path):
+                        rel_path = os.path.relpath(file_path, templates_dir).replace('\\', '/')
+                        zip_file.write(file_path, rel_path)
+            
+            # Package the Word.officeUI file into the zip under a special folder
+            if ui_path and os.path.exists(ui_path) and ui_data:
+                zip_file.writestr('__OfficeUI__/Word.officeUI', ui_data)
+                
+        file_data = zip_buffer.getvalue()
+        
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"Templates_Exported_{timestamp}.zip"
+        
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO macro_files (filename, file_data, ui_data, uploaded_by) VALUES (%s, %s, %s, %s)",
+            (filename, file_data, ui_data, session.get('user_id'))
+        )
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        ui_msg = " and Ribbon customizations (Word.officeUI)" if ui_data else " (no custom ribbon UI file found)"
+        flash(f"Successfully compiled, zipped and exported your active Templates folder{ui_msg} as '{filename}' and added it to the library. Users can now import & replace this on their computers.", "success")
+    except Exception as e:
+        flash(f"Error exporting Templates folder: {str(e)}", "danger")
+        
+    return redirect(url_for("macromanager"))
+
+
+@app.route("/macromanager/upload", methods=["POST"])
+@login_required
+@tool_required("macromanager")
+def macromanager_upload():
+    if session.get('role') != 'admin':
+        flash("Only administrators are allowed to upload macro templates.", "danger")
+        return redirect(url_for("macromanager"))
+        
+    if 'file' not in request.files:
+        flash("No file part.", "danger")
+        return redirect(url_for("macromanager"))
+    
+    file = request.files['file']
+    if file.filename == '':
+        flash("No selected file.", "danger")
+        return redirect(url_for("macromanager"))
+    
+    filename_lower = file.filename.lower()
+    if not (filename_lower.endswith('.dotm') or filename_lower.endswith('.zip')):
+        flash("Invalid file type. Only MS Word Template files (.dotm) or zipped templates (.zip) are allowed.", "danger")
+        return redirect(url_for("macromanager"))
+    
+    # Check file size limit (maximum size is 15MB)
+    file_data = file.read()
+    if len(file_data) > 15 * 1024 * 1024:
+        flash("File too large. Maximum size is 15MB.", "danger")
+        return redirect(url_for("macromanager"))
+        
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO macro_files (filename, file_data, uploaded_by) VALUES (%s, %s, %s)",
+        (file.filename, file_data, session.get('user_id'))
+    )
+    conn.commit()
+    cur.close()
+    conn.close()
+    
+    flash(f"Macro file '{file.filename}' uploaded successfully.", "success")
+    return redirect(url_for("macromanager"))
+
+@app.route("/macromanager/download/<int:file_id>")
+@login_required
+@tool_required("macromanager")
+def macromanager_download(file_id):
+    conn = get_db()
+    cur = conn.cursor(dictionary=True)
+    cur.execute("SELECT filename, file_data FROM macro_files WHERE id = %s", (file_id,))
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    
+    if not row:
+        flash("File not found.", "danger")
+        return redirect(url_for("macromanager"))
+        
+    import io
+    from flask import send_file
+    mimetype = 'application/zip' if row['filename'].lower().endswith('.zip') else 'application/vnd.ms-word.template.macroEnabled.12'
+    return send_file(
+        io.BytesIO(row['file_data']),
+        as_attachment=True,
+        download_name=row['filename'],
+        mimetype=mimetype
+    )
+
+@app.route("/macromanager/download_ui/<int:file_id>")
+@login_required
+@tool_required("macromanager")
+def macromanager_download_ui(file_id):
+    conn = get_db()
+    cur = conn.cursor(dictionary=True)
+    cur.execute("SELECT filename, ui_data FROM macro_files WHERE id = %s", (file_id,))
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    
+    if not row or not row['ui_data']:
+        flash("Ribbon customization UI file was not found for this template.", "danger")
+        return redirect(url_for("macromanager"))
+        
+    import io
+    from flask import send_file
+    ui_filename = row['filename'].replace('.dotm', '.officeUI')
+    if not ui_filename.endswith('.officeUI'):
+        ui_filename = "Word.officeUI"
+        
+    return send_file(
+        io.BytesIO(row['ui_data']),
+        as_attachment=True,
+        download_name=ui_filename,
+        mimetype='text/xml'
+    )
+
+def clear_templates_directory(templates_dir):
+    import shutil
+    import stat
+    if not os.path.exists(templates_dir):
+        return
+    for item in os.listdir(templates_dir):
+        item_path = os.path.join(templates_dir, item)
+        # Skip LiveContent
+        if item.lower() == 'livecontent':
+            continue
+        # Skip backups
+        if 'templates_backup_' in item.lower() or 'normal.dotm.bak_' in item.lower():
+            continue
+        try:
+            if os.path.isdir(item_path):
+                # Recursively clear read-only flag on Windows to allow clean deletion
+                def remove_readonly(func, path, excinfo):
+                    try:
+                        os.chmod(path, stat.S_IWRITE)
+                    except Exception:
+                        pass
+                    func(path)
+                shutil.rmtree(item_path, onerror=remove_readonly)
+            else:
+                try:
+                    os.chmod(item_path, stat.S_IWRITE)
+                except Exception:
+                    pass
+                os.remove(item_path)
+        except Exception as e:
+            print(f"Warning: failed to delete {item_path}: {e}")
+
+@app.route("/macromanager/apply/<int:file_id>", methods=["POST"])
+@login_required
+@tool_required("macromanager")
+def macromanager_apply(file_id):
+    import platform
+    is_windows = (platform.system() == 'Windows')
+    
+    if not is_windows:
+        flash("Automatic installation is only supported when running the desktop app locally on Windows.", "danger")
+        return redirect(url_for("macromanager"))
+        
+    templates_dir = get_word_templates_dir()
+    if not templates_dir:
+        flash("Could not determine Microsoft Word templates directory.", "danger")
+        return redirect(url_for("macromanager"))
+
+    # Check if Microsoft Word is running (winword.exe)
+    import subprocess
+    try:
+        tasklist_output = subprocess.check_output('tasklist /FI "IMAGENAME eq winword.exe" /NH', shell=True)
+        word_is_running = b"winword.exe" in tasklist_output.lower()
+    except Exception:
+        word_is_running = False
+
+    if word_is_running:
+        force = request.form.get("force", "false").lower() in ("true", "1", "yes")
+        if force:
+            try:
+                subprocess.check_call('taskkill /f /im winword.exe', shell=True)
+                time.sleep(0.5)
+                word_is_running = False
+                flash("Microsoft Word was successfully closed.", "info")
+            except Exception as e:
+                flash(f"Failed to force close Word: {str(e)}", "danger")
+                return redirect(url_for("macromanager"))
+        else:
+            session["macro_word_running_id"] = file_id
+            flash("Error: Microsoft Word is currently running! Please save your work and close all MS Word windows completely before importing & replacing the template. If Word is open, it locks the file or will overwrite your changes when it closes.", "danger")
+            return redirect(url_for("macromanager"))
+        
+    local_path = os.path.join(templates_dir, 'Normal.dotm')
+    
+    # Retrieve file data and UI data from database
+    conn = get_db()
+    cur = conn.cursor(dictionary=True)
+    cur.execute("SELECT filename, file_data, ui_data FROM macro_files WHERE id = %s", (file_id,))
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    
+    if not row:
+        flash("Macro template file not found in database.", "danger")
+        return redirect(url_for("macromanager"))
+        
+    try:
+        # Create templates directory if it does not exist
+        if not os.path.exists(templates_dir):
+            os.makedirs(templates_dir)
+            
+        is_zip = row['filename'].lower().endswith('.zip')
+        
+        if is_zip:
+            # 1. Back up existing templates directory
+            import zipfile
+            import shutil
+            import stat
+            
+            backup_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_path = os.path.join(os.path.dirname(templates_dir), f"Templates_Backup_{backup_timestamp}.zip")
+            
+            try:
+                with zipfile.ZipFile(backup_path, 'w', zipfile.ZIP_DEFLATED) as backup_zip:
+                    for root, dirs, files in os.walk(templates_dir):
+                        if 'LiveContent' in root:
+                            continue
+                        for file in files:
+                            file_path = os.path.join(root, file)
+                            if os.path.exists(file_path):
+                                rel_path = os.path.relpath(file_path, templates_dir).replace('\\', '/')
+                                backup_zip.write(file_path, rel_path)
+                backup_msg = f"A backup of your old templates folder was saved as 'Templates_Backup_{backup_timestamp}.zip'."
+            except Exception as be:
+                backup_msg = f" (Warning: templates folder backup failed: {str(be)})"
+                
+            # 2. Extract zip package
+            zip_buffer = io.BytesIO(row['file_data'])
+            ui_restore_msg = ""
+            
+            # Clear old templates first (excluding LiveContent and backups)
+            clear_templates_directory(templates_dir)
+            
+            ui_backed_up = False
+            
+            with zipfile.ZipFile(zip_buffer, 'r') as zip_file:
+                # First, find if there is a common top-level directory prefix for non-UI template files
+                members = zip_file.infolist()
+                non_ui_files = []
+                for member in members:
+                    norm_name = member.filename.replace('\\', '/')
+                    if norm_name.endswith('/') or member.is_dir():
+                        continue
+                    
+                    # Clean leading slashes and dot-segments
+                    clean_name = norm_name
+                    while clean_name.startswith('/') or clean_name.startswith('../') or clean_name.startswith('./'):
+                        if clean_name.startswith('/'):
+                            clean_name = clean_name[1:]
+                        elif clean_name.startswith('../'):
+                            clean_name = clean_name[3:]
+                        elif clean_name.startswith('./'):
+                            clean_name = clean_name[2:]
+                            
+                    if not clean_name.lower().startswith('__officeui__/'):
+                        non_ui_files.append(clean_name)
+                
+                common_prefix = ""
+                if non_ui_files:
+                    parts = non_ui_files[0].split('/')
+                    if len(parts) > 1:
+                        first_seg = parts[0]
+                        standard_folders = {'document themes', 'smartart graphics', 'livecontent', '1033'}
+                        is_locale_folder = first_seg.isdigit() and len(first_seg) == 4
+                        if first_seg.lower() not in standard_folders and not is_locale_folder:
+                            all_share = True
+                            for f in non_ui_files:
+                                if not f.startswith(first_seg + '/'):
+                                    all_share = False
+                                    break
+                            if all_share:
+                                common_prefix = first_seg + '/'
+                
+                for member in members:
+                    norm_name = member.filename.replace('\\', '/')
+                    
+                    # Skip directory entries
+                    if norm_name.endswith('/') or member.is_dir():
+                        continue
+                    
+                    # Clean leading slashes and dot-segments
+                    clean_name = norm_name
+                    while clean_name.startswith('/') or clean_name.startswith('../') or clean_name.startswith('./'):
+                        if clean_name.startswith('/'):
+                            clean_name = clean_name[1:]
+                        elif clean_name.startswith('../'):
+                            clean_name = clean_name[3:]
+                        elif clean_name.startswith('./'):
+                            clean_name = clean_name[2:]
+                        
+                    # Check if this is the Word.officeUI file (case-insensitive)
+                    if clean_name.lower().startswith('__officeui__/'):
+                        ui_filename = clean_name[len('__officeui__/'):]
+                        if not ui_filename:
+                            continue
+                        localappdata = os.environ.get('LOCALAPPDATA')
+                        if localappdata:
+                            ui_dir = os.path.join(localappdata, 'Microsoft', 'Office')
+                            ui_path = os.path.join(ui_dir, ui_filename)
+                            try:
+                                if not os.path.exists(ui_dir):
+                                    os.makedirs(ui_dir)
+                                if os.path.exists(ui_path) and not ui_backed_up:
+                                    try:
+                                        os.chmod(ui_path, stat.S_IWRITE)
+                                    except Exception:
+                                        pass
+                                    ui_backup = f"{ui_path}.bak_{backup_timestamp}"
+                                    shutil.copy2(ui_path, ui_backup)
+                                    ui_restore_msg = f" Additionally, your old ribbon/taskbar UI customization was backed up as '{os.path.basename(ui_path)}.bak_{backup_timestamp}'."
+                                    ui_backed_up = True
+                                
+                                if os.path.exists(ui_path):
+                                    try:
+                                        os.chmod(ui_path, stat.S_IWRITE)
+                                    except Exception:
+                                        pass
+                                with open(ui_path, 'wb') as uf:
+                                    uf.write(zip_file.read(member.filename))
+                                if "successfully restored" not in ui_restore_msg:
+                                    ui_restore_msg += f" Ribbon and taskbar UI customizations ({ui_filename}) successfully restored."
+                            except Exception as ue:
+                                ui_restore_msg = f" (Warning: failed to restore ribbon UI customizations: {str(ue)})"
+                    else:
+                        # Extract normal template folder files
+                        rel_filename = clean_name
+                        if common_prefix and clean_name.startswith(common_prefix):
+                            rel_filename = clean_name[len(common_prefix):]
+                        
+                        target_path = os.path.join(templates_dir, rel_filename.replace('/', os.sep))
+                        target_dir = os.path.dirname(target_path)
+                        if not os.path.exists(target_dir):
+                            os.makedirs(target_dir)
+                            
+                        # Clear read-only attribute if file exists, to prevent PermissionError
+                        if os.path.exists(target_path):
+                            try:
+                                os.chmod(target_path, stat.S_IWRITE)
+                            except Exception:
+                                pass
+                        with open(target_path, 'wb') as f:
+                            f.write(zip_file.read(member.filename))
+                            
+            session.pop("macro_word_running_id", None)
+            flash(f"Success! Imported and replaced the active Word templates folder using '{row['filename']}'. {backup_msg}{ui_restore_msg} Please restart Microsoft Word.", "success")
+            
+        else:
+            # Standard individual file replacement logic (.dotm)
+            import stat
+            if os.path.exists(local_path):
+                try:
+                    os.chmod(local_path, stat.S_IWRITE)
+                except Exception:
+                    pass
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                backup_path = f"{local_path}.bak_{timestamp}"
+                import shutil
+                shutil.copy2(local_path, backup_path)
+                backup_msg = f"A backup of your old template was saved as 'Normal.dotm.bak_{timestamp}'."
+            else:
+                backup_msg = "No existing Normal.dotm template was found, a new one was created."
+                
+            if os.path.exists(local_path):
+                try:
+                    os.chmod(local_path, stat.S_IWRITE)
+                except Exception:
+                    pass
+            # Write new file data
+            with open(local_path, 'wb') as f:
+                f.write(row['file_data'])
+                
+            # Restore Ribbon / Taskbar UI customization if available
+            ui_restore_msg = ""
+            if 'ui_data' in row and row['ui_data']:
+                localappdata = os.environ.get('LOCALAPPDATA')
+                if localappdata:
+                    ui_dir = os.path.join(localappdata, 'Microsoft', 'Office')
+                    ui_path = os.path.join(ui_dir, 'Word.officeUI')
+                    try:
+                        if not os.path.exists(ui_dir):
+                            os.makedirs(ui_dir)
+                        if os.path.exists(ui_path):
+                            try:
+                                os.chmod(ui_path, stat.S_IWRITE)
+                            except Exception:
+                                pass
+                            ui_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                            ui_backup_path = f"{ui_path}.bak_{ui_timestamp}"
+                            import shutil
+                            shutil.copy2(ui_path, ui_backup_path)
+                            ui_restore_msg = f" Additionally, your old ribbon/taskbar UI customization was backed up as 'Word.officeUI.bak_{ui_timestamp}'."
+                        
+                        if os.path.exists(ui_path):
+                            try:
+                                os.chmod(ui_path, stat.S_IWRITE)
+                            except Exception:
+                                pass
+                        with open(ui_path, 'wb') as uf:
+                            uf.write(row['ui_data'])
+                        ui_restore_msg += " Taskbar UI and custom Ribbon tabs successfully restored."
+                    except Exception as ue:
+                        ui_restore_msg = f" (Warning: failed to restore ribbon UI customizations: {str(ue)})"
+                
+            session.pop("macro_word_running_id", None)
+            flash(f"Success! Replaced local Normal.dotm with '{row['filename']}'. {backup_msg}{ui_restore_msg} Please restart Microsoft Word to apply the macros, custom UI, and shortcuts.", "success")
+    except Exception as e:
+        flash(f"Error applying macro: {str(e)}", "danger")
+        
+    return redirect(url_for("macromanager"))
+
+@app.route("/macromanager/delete/<int:file_id>", methods=["POST"])
+@login_required
+@tool_required("macromanager")
+def macromanager_delete(file_id):
+    if session.get('role') != 'admin':
+        flash("Only administrators are allowed to delete macro templates.", "danger")
+        return redirect(url_for("macromanager"))
+        
+    conn = get_db()
+    cur = conn.cursor(dictionary=True)
+    cur.execute("SELECT id, filename FROM macro_files WHERE id = %s", (file_id,))
+    row = cur.fetchone()
+    
+    if not row:
+        cur.close()
+        conn.close()
+        flash("File not found.", "danger")
+        return redirect(url_for("macromanager"))
+        
+    cur.execute("DELETE FROM macro_files WHERE id = %s", (file_id,))
+    conn.commit()
+    cur.close()
+    conn.close()
+    
+    flash(f"Macro file '{row['filename']}' deleted successfully.", "success")
+    return redirect(url_for("macromanager"))
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -2574,13 +3226,13 @@ if __name__ == "__main__":
     run_debug = os.environ.get("APP_DEBUG", "false").lower() in ("true", "1", "yes")
 
     print("")
-    print("╔══════════════════════════════════════════════════╗")
-    print("║           🚀 REYDM Server                       ║")
-    print("╠══════════════════════════════════════════════════╣")
-    print(f"║  Local:   http://127.0.0.1:{run_port}")
-    print(f"║  Debug:   {run_debug}")
-    print(f"║  SMTP:    {SMTP_MODE} ({'port 465' if SMTP_MODE=='ssl' else 'port 587'})")
-    print("╚══════════════════════════════════════════════════╝")
+    print("+--------------------------------------------------+")
+    print("|           REYDM Server                           |")
+    print("+--------------------------------------------------+")
+    print(f"|  Local:   http://127.0.0.1:{run_port}")
+    print(f"|  Debug:   {run_debug}")
+    print(f"|  SMTP:    {SMTP_MODE} ({'port 465' if SMTP_MODE=='ssl' else 'port 587'})")
+    print("+--------------------------------------------------+")
     print("")
 
     app.run(debug=run_debug, host=run_host, port=run_port)
