@@ -1472,9 +1472,8 @@ def pdfunlocker():
 # ═══════════════════════════════════════════════════════════════════════
 
 def get_word_templates_dir():
-    """Dynamically determine the active Microsoft Word templates directory.
-    Queries Windows Registry keys for Word options and common template path redirections.
-    Falls back to %APPDATA%/Microsoft/Templates if registry scanning fails or returns empty."""
+    """Determine the active Microsoft Word templates directory.
+    Uses the custom session directory if selected; otherwise defaults to %APPDATA%/Microsoft/Templates."""
     import platform
     if platform.system() != 'Windows':
         return None
@@ -1491,77 +1490,18 @@ def get_word_templates_dir():
         
     appdata_dir = os.environ.get('APPDATA')
     if appdata_dir:
-        default_templates_dir = os.path.join(appdata_dir, 'Microsoft', 'Templates')
-    else:
-        system_name = os.environ.get('USERNAME')
-        if not system_name:
-            try:
-                import getpass
-                system_name = getpass.getuser()
-            except Exception:
-                system_name = "Default"
-        sys_drive = os.environ.get('SystemDrive', 'C:')
-        default_templates_dir = os.path.join(sys_drive + os.sep, 'Users', system_name, 'AppData', 'Roaming', 'Microsoft', 'Templates')
-    
-    try:
-        import winreg
-    except ImportError:
-        return default_templates_dir
-
-    # 1. Determine Office versions installed
-    office_versions = []
-    for root in [winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE]:
-        try:
-            with winreg.OpenKey(root, "Software\\Microsoft\\Office") as office_key:
-                num_keys = winreg.QueryInfoKey(office_key)[0]
-                for i in range(num_keys):
-                    subkey_name = winreg.EnumKey(office_key, i)
-                    if subkey_name.replace('.', '').isdigit():
-                        if subkey_name not in office_versions:
-                            office_versions.append(subkey_name)
-        except Exception:
-            pass
-            
-    # Sort version keys in descending order (e.g. 16.0, 15.0)
-    try:
-        office_versions = sorted(office_versions, key=lambda x: [float(i) for i in x.split('.') if i.replace('.', '').isdigit()], reverse=True)
-    except Exception:
-        pass
+        return os.path.join(appdata_dir, 'Microsoft', 'Templates')
         
-    if not office_versions:
-        office_versions = ["16.0", "15.0", "14.0"]
-
-    # 2. Check all common registry locations
-    roots = [winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE]
-    key_templates = [
-        r"Software\Microsoft\Office\{version}\Word\Options",
-        r"Software\Microsoft\Office\{version}\Common\General",
-        r"Software\Policies\Microsoft\Office\{version}\Word\Options",
-        r"Software\Policies\Microsoft\Office\{version}\Common\General",
-    ]
-    value_names = ["DOT-PATH", "UserTemplates"]
-
-    for version in office_versions:
-        for root in roots:
-            for template in key_templates:
-                key_path = template.format(version=version)
-                try:
-                    with winreg.OpenKey(root, key_path, 0, winreg.KEY_READ) as key:
-                        for val_name in value_names:
-                            try:
-                                path_val, _ = winreg.QueryValueEx(key, val_name)
-                                if path_val:
-                                    path_val = os.path.expandvars(path_val)
-                                    path_val = os.path.abspath(path_val)
-                                    # Accept the path if it already exists or if its parent exists
-                                    if os.path.isdir(path_val) or os.path.exists(os.path.dirname(path_val)):
-                                        return path_val
-                            except Exception:
-                                pass
-                except Exception:
-                    pass
-
-    return default_templates_dir
+    # Manual fallback if APPDATA env var is not set
+    system_name = os.environ.get('USERNAME')
+    if not system_name:
+        try:
+            import getpass
+            system_name = getpass.getuser()
+        except Exception:
+            system_name = "Default"
+    sys_drive = os.environ.get('SystemDrive', 'C:')
+    return os.path.join(sys_drive + os.sep, 'Users', system_name, 'AppData', 'Roaming', 'Microsoft', 'Templates')
 
 
 @app.route("/macromanager")
