@@ -1476,7 +1476,7 @@ def get_word_templates_dir():
     Uses the custom session directory if selected; otherwise defaults to %APPDATA%/Microsoft/Templates."""
     import platform
     if platform.system() != 'Windows':
-        return None
+        return "%APPDATA%\\Microsoft\\Templates"
         
     try:
         from flask import session
@@ -1517,17 +1517,19 @@ def macromanager():
     local_files = []
     system_name = None
     
-    if is_windows:
-        system_name = os.environ.get('USERNAME')
-        if not system_name:
-            try:
-                import getpass
-                system_name = getpass.getuser()
-            except Exception:
-                system_name = "Default"
-        templates_dir = get_word_templates_dir()
-        if templates_dir:
-            local_path = os.path.join(templates_dir, 'Normal.dotm')
+    templates_dir = get_word_templates_dir()
+    if templates_dir:
+        local_path = os.path.join(templates_dir, 'Normal.dotm').replace('/', '\\')
+        
+        if is_windows:
+            system_name = os.environ.get('USERNAME')
+            if not system_name:
+                try:
+                    import getpass
+                    system_name = getpass.getuser()
+                except Exception:
+                    system_name = "Default"
+                    
             if os.path.exists(local_path):
                 local_exists = True
             # Check if backups exist and list files
