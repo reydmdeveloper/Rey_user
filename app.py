@@ -1539,22 +1539,29 @@ def macromanager():
                         local_backup_exists = True
                     
                     lower_file = file.lower()
+                    file_path = os.path.join(templates_dir, file)
+                    is_dir = os.path.isdir(file_path)
+                    
+                    # Exclude LiveContent, backup/temp directories, and backup files
+                    if lower_file == 'livecontent' or 'templates_backup' in lower_file or file.startswith('~$') or '.bak' in lower_file:
+                        continue
+                        
                     # Filter for template-related files and OneDrive/conflict copies
-                    if 'normal' in lower_file or lower_file.endswith('.dotm') or lower_file.endswith('.dotx'):
-                        file_path = os.path.join(templates_dir, file)
-                        if os.path.isfile(file_path):
-                            try:
-                                stat_info = os.stat(file_path)
-                                size_bytes = stat_info.st_size
-                                modified_time = datetime.fromtimestamp(stat_info.st_mtime)
-                                local_files.append({
-                                    'name': file,
-                                    'size': f"{size_bytes / 1024:.1f} KB" if size_bytes > 0 else "0 KB",
-                                    'size_bytes': size_bytes,
-                                    'modified': modified_time.strftime("%b %d, %Y %I:%M %p")
-                                })
-                            except Exception:
-                                pass
+                    # For directories, we include them if they are not excluded above
+                    if is_dir or 'normal' in lower_file or lower_file.endswith('.dotm') or lower_file.endswith('.dotx'):
+                        try:
+                            stat_info = os.stat(file_path)
+                            size_bytes = stat_info.st_size
+                            modified_time = datetime.fromtimestamp(stat_info.st_mtime)
+                            local_files.append({
+                                'name': file,
+                                'is_dir': is_dir,
+                                'size': f"{size_bytes / 1024:.1f} KB" if (not is_dir and size_bytes > 0) else "0 KB" if not is_dir else "--",
+                                'size_bytes': size_bytes if not is_dir else 0,
+                                'modified': modified_time.strftime("%b %d, %Y %I:%M %p")
+                            })
+                        except Exception:
+                            pass
                 local_files.sort(key=lambda x: x['name'].lower())
 
     conn = get_db()
@@ -1672,12 +1679,18 @@ def macromanager_export():
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
             for root, dirs, files in os.walk(templates_dir):
-                # Exclude Microsoft's cache folders like LiveContent to keep size small
-                if 'LiveContent' in root:
-                    continue
+                # Modify dirs in-place to prevent traversing excluded directories (like LiveContent and backups)
+                dirs[:] = [d for d in dirs if d.lower() != 'livecontent' and 'templates_backup' not in d.lower()]
+                
+                # Write directory entries explicitly to preserve empty folders
+                for d in dirs:
+                    dir_path = os.path.join(root, d)
+                    rel_dir_path = os.path.relpath(dir_path, templates_dir).replace('\\', '/') + '/'
+                    zip_file.write(dir_path, rel_dir_path)
+                    
                 for file in files:
-                    # Exclude temp files and existing backups
-                    if file.startswith('~$') or '.bak' in file:
+                    # Exclude temp files, zip packages, and existing backups
+                    if file.startswith('~$') or '.bak' in file or file.endswith('.zip') or 'templates_backup' in file.lower():
                         continue
                     file_path = os.path.join(root, file)
                     if os.path.exists(file_path):
@@ -1910,9 +1923,19 @@ def macromanager_apply(file_id):
             try:
                 with zipfile.ZipFile(backup_path, 'w', zipfile.ZIP_DEFLATED) as backup_zip:
                     for root, dirs, files in os.walk(templates_dir):
-                        if 'LiveContent' in root:
-                            continue
+                        # Modify dirs in-place to prevent traversing excluded directories (like LiveContent and backups)
+                        dirs[:] = [d for d in dirs if d.lower() != 'livecontent' and 'templates_backup' not in d.lower()]
+                        
+                        # Write directory entries explicitly to preserve empty folders in backup
+                        for d in dirs:
+                            dir_path = os.path.join(root, d)
+                            rel_dir_path = os.path.relpath(dir_path, templates_dir).replace('\\', '/') + '/'
+                            backup_zip.write(dir_path, rel_dir_path)
+                            
                         for file in files:
+                            # Exclude temp files, zip packages, and existing backups
+                            if file.startswith('~$') or '.bak' in file or file.endswith('.zip') or 'templates_backup' in file.lower():
+                                continue
                             file_path = os.path.join(root, file)
                             if os.path.exists(file_path):
                                 rel_path = os.path.relpath(file_path, templates_dir).replace('\\', '/')
@@ -1971,10 +1994,6 @@ def macromanager_apply(file_id):
                 for member in members:
                     norm_name = member.filename.replace('\\', '/')
                     
-                    # Skip directory entries
-                    if norm_name.endswith('/') or member.is_dir():
-                        continue
-                    
                     # Clean leading slashes and dot-segments
                     clean_name = norm_name
                     while clean_name.startswith('/') or clean_name.startswith('../') or clean_name.startswith('./'):
@@ -1984,6 +2003,18 @@ def macromanager_apply(file_id):
                             clean_name = clean_name[3:]
                         elif clean_name.startswith('./'):
                             clean_name = clean_name[2:]
+                            
+                    # Recreate directory entries (including empty folders)
+                    if norm_name.endswith('/') or member.is_dir():
+                        rel_filename = clean_name
+                        if common_prefix and rel_filename.startswith(common_prefix):
+                            rel_filename = rel_filename[len(common_prefix):]
+                        rel_filename = rel_filename.rstrip('/')
+                        if rel_filename:
+                            target_dir = os.path.join(templates_dir, rel_filename.replace('/', os.sep))
+                            if not os.path.exists(target_dir):
+                                os.makedirs(target_dir)
+                        continue
                         
                     # Check if this is the Word.officeUI file (case-insensitive)
                     if clean_name.lower().startswith('__officeui__/'):

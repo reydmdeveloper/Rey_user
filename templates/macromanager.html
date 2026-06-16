@@ -312,7 +312,9 @@
                             <tr>
                                 <td>
                                     <strong style="color:var(--text)">
-                                        {% if lf.name.lower() == "normal.dotm" %}
+                                        {% if lf.is_dir %}
+                                            <i class="fa-solid fa-folder" style="color: #ffc107;"></i>&nbsp; {{ lf.name }}
+                                        {% elif lf.name.lower() == "normal.dotm" %}
                                             <i class="fa-solid fa-star" style="color: #ffc107;"></i>&nbsp; {{ lf.name }}
                                         {% else %}
                                             <i class="fa-solid fa-file-code" style="color: var(--muted);"></i>&nbsp; {{ lf.name }}
@@ -322,7 +324,9 @@
                                 <td>{{ lf.size }}</td>
                                 <td class="text-muted text-sm">{{ lf.modified }}</td>
                                 <td>
-                                    {% if lf.name.lower() == "normal.dotm" %}
+                                    {% if lf.is_dir %}
+                                        <span class="mm-badge info">Folder</span>
+                                    {% elif lf.name.lower() == "normal.dotm" %}
                                         <span class="mm-badge ok">Active Template</span>
                                     {% elif lf.name.startswith("Normal.dotm.bak") %}
                                         <span class="mm-badge info">Backup File</span>
