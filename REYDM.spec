@@ -1,26 +1,10 @@
 # -*- mode: python ; coding: utf-8 -*-
 """
-PyInstaller spec for REYDM Desktop.
-
-Build with:
-    pyinstaller REYDM.spec
-
-Output:
-    dist/REYDM/REYDM(.exe)        (one-folder build — recommended, faster start)
-
-Notes
------
-• Flask needs `templates/` and `static/` available at runtime, so they are
-  added as data files. The launcher (desktop_app.py) resolves them via
-  sys._MEIPASS when frozen.
-• mysql-connector-python and waitress have submodules PyInstaller may miss,
-  so they're declared as hidden imports.
-• QtWebEngine resources are collected automatically by the PyQt6 hooks, but we
-  also pull in PyQt6.QtWebEngineCore explicitly to be safe.
+PyInstaller spec for REYDM Desktop (Single EXE build).
 """
 
 import os
-from PyInstaller.utils.hooks import collect_submodules, collect_data_files
+from PyInstaller.utils.hooks import collect_submodules
 
 block_cipher = None
 
@@ -28,14 +12,14 @@ datas = [
     ("templates", "templates"),
     ("static", "static"),
 ]
-# Ship a .env if present so creds travel with the build (optional — remove this
-# line if you'd rather configure the database on each machine separately).
+# Ship .env if present
 if os.path.exists(".env"):
     datas.append((".env", "."))
 
 hiddenimports = []
 hiddenimports += collect_submodules("mysql.connector")
 hiddenimports += collect_submodules("waitress")
+hiddenimports += collect_submodules("docx")
 hiddenimports += [
     "pytz",
     "PyQt6.QtWebEngineCore",
@@ -63,26 +47,22 @@ pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 exe = EXE(
     pyz,
     a.scripts,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
     [],
-    exclude_binaries=True,
     name="REYDM",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=False,  # set True temporarily if you need to see server logs
-    disable_windowed_traceback=False,
-    icon=os.path.join("static", "Images", "REYDM_LOGO.png")
-    if os.path.exists(os.path.join("static", "Images", "REYDM_LOGO.png"))
-    else None,
-)
-
-coll = COLLECT(
-    exe,
-    a.binaries,
-    a.datas,
-    strip=False,
-    upx=True,
     upx_exclude=[],
-    name="REYDM",
+    runtime_tmpdir=None,
+    console=False,
+    disable_windowed_traceback=False,
+    argv_emulation=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
+    icon="Icon.ico" if os.path.exists("Icon.ico") else None,
 )

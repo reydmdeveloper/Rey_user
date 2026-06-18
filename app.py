@@ -18,11 +18,16 @@ from functools import wraps
 
 from flask import (
     Flask, render_template, request, redirect, url_for,
-    session, flash, jsonify
+    session, flash, jsonify, send_file
 )
 from werkzeug.security import generate_password_hash, check_password_hash
 import mysql.connector
 import pytz
+import shutil
+import tempfile
+from fm_automation import FrameMakerAutomation
+from mif_translator import MifTranslator
+from docx import Document
 
 # ─── Timezone (IST) ──────────────────────────────────────────────────
 IST = pytz.timezone("Asia/Kolkata")
@@ -116,6 +121,16 @@ AVAILABLE_TOOLS = {
         "name": "Macro Manager",
         "icon": "fa-solid fa-file-code",
         "description": "Install or update Normal.dotm with old system macro, UI, and shortcuts",
+    },
+    "fm_copypaste": {
+        "name": "FM Copy & Paste",
+        "icon": "fa-solid fa-paste",
+        "description": "Copy-paste FrameMaker translation callouts with format/styles intact",
+    },
+    "glossarytool": {
+        "name": "Glossary Builder",
+        "icon": "fa-solid fa-book",
+        "description": "Build clean source-to-target translation glossaries from Word index documents",
     },
 }
 
@@ -615,8 +630,6 @@ def tool_required(tool_key):
             if "user_id" not in session:
                 flash("Please log in first.", "warning")
                 return redirect(url_for("login"))
-            if session.get("role") == "admin":
-                return f(*args, **kwargs)
             allowed = session.get("allowed_tools", [])
             if tool_key not in allowed:
                 flash("You don't have access to this tool.", "danger")
@@ -627,8 +640,6 @@ def tool_required(tool_key):
 
 
 def get_user_tools():
-    if session.get("role") == "admin":
-        return list(AVAILABLE_TOOLS.keys())
     return session.get("allowed_tools", [])
 
 
@@ -1468,6 +1479,207 @@ def pdfunlocker():
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# FM COPY & PASTE TOOL ROUTES
+# ═══════════════════════════════════════════════════════════════════════
+
+FM_UPLOAD_FOLDER = os.path.join(tempfile.gettempdir(), 'reydm_uploads')
+
+@app.route("/fm-copypaste")
+@login_required
+@tool_required("fm_copypaste")
+def fm_copypaste():
+    return render_template("fm_copypaste.html")
+
+
+@app.route("/fm-copypaste/process", methods=["POST"])
+@login_required
+@tool_required("fm_copypaste")
+def fm_copypaste_process():
+    if 'fm_file' not in request.files or 'docx_file' not in request.files:
+        return jsonify({'error': 'Missing files. Please upload both FrameMaker (.fm) and Word (.docx) files.'}), 400
+        
+    fm_file = request.files['fm_file']
+    docx_file = request.files['docx_file']
+    
+    if fm_file.filename == '' or docx_file.filename == '':
+        return jsonify({'error': 'No files selected.'}), 400
+
+    os.makedirs(FM_UPLOAD_FOLDER, exist_ok=True)
+    
+    # Create a unique temporary directory for this request's processing
+    temp_dir = tempfile.mkdtemp(dir=FM_UPLOAD_FOLDER)
+    
+    fm_path = os.path.join(temp_dir, fm_file.filename)
+    docx_path = os.path.join(temp_dir, docx_file.filename)
+    
+    try:
+        fm_file.save(fm_path)
+        docx_file.save(docx_path)
+        
+        # Define MIF paths in temp directory
+        mif_name = os.path.splitext(fm_file.filename)[0] + ".mif"
+        mif_path = os.path.join(temp_dir, mif_name)
+        
+        trans_mif_name = os.path.splitext(fm_file.filename)[0] + "_translated.mif"
+        trans_mif_path = os.path.join(temp_dir, trans_mif_name)
+        
+        trans_fm_name = os.path.splitext(fm_file.filename)[0] + "_translated.fm"
+        trans_fm_path = os.path.join(temp_dir, trans_fm_name)
+        
+        automation = FrameMakerAutomation()
+        
+        # Step 1: Export FM to MIF
+        print(f"Exporting FM to MIF: {fm_path} -> {mif_path}")
+        success = automation.run_job("EXPORT", fm_path, mif_path, timeout=180)
+        if not success:
+            return jsonify({'error': 'Failed to convert FrameMaker file to MIF. Make sure Adobe FrameMaker is installed and not blocked.'}), 500
+            
+        # Step 2: Translate MIF using Docx
+        print(f"Translating MIF: {mif_path} using {docx_path}")
+        translator = MifTranslator(docx_path)
+        translator.translate_file(mif_path, trans_mif_path)
+        
+        # Step 3: Import Translated MIF to FM
+        print(f"Importing MIF to FM: {trans_mif_path} -> {trans_fm_path}")
+        success = automation.run_job("IMPORT", trans_mif_path, trans_fm_path, timeout=180)
+        if not success:
+            return jsonify({'error': 'Failed to convert translated MIF back to FrameMaker format.'}), 500
+            
+        # Save output path in a safe location outside temp dir so we can clean up temp dir before sending
+        final_download_path = os.path.join(FM_UPLOAD_FOLDER, trans_fm_name)
+        shutil.copy(trans_fm_path, final_download_path)
+        
+        # Cleanup temp directory
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        
+        return jsonify({
+            'success': True,
+            'download_url': f'/fm-copypaste/download/{trans_fm_name}'
+        })
+        
+    except Exception as e:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        return jsonify({'error': f'An error occurred: {str(e)}'}), 500
+
+
+@app.route("/fm-copypaste/download/<filename>")
+@login_required
+@tool_required("fm_copypaste")
+def fm_copypaste_download(filename):
+    file_path = os.path.join(FM_UPLOAD_FOLDER, filename)
+    if os.path.exists(file_path):
+        return send_file(file_path, as_attachment=True)
+    return "File not found.", 404
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# GLOSSARY BUILDER ROUTES & HELPERS
+# ═══════════════════════════════════════════════════════════════════════
+
+# ---------- Page-number patterns ----------
+DASH_GLOSSARY = r"[-\u2013\u2014]"                                  # hyphen | en-dash | em-dash
+SINGLE_GLOSSARY = rf"\d+\s*{DASH_GLOSSARY}\s*\d+"
+PAGEREF_GLOSSARY = rf"{SINGLE_GLOSSARY}(?:(?:\s*[,\u2013\u2014\-]\s*)?{SINGLE_GLOSSARY})*"
+
+TRAILING_RE = re_module.compile(rf"\s+{PAGEREF_GLOSSARY}\s*$")
+MIDCOMMA_RE = re_module.compile(rf"\s+{PAGEREF_GLOSSARY}(?=[,\uFF0C])")
+
+
+def strip_pages(text: str) -> str:
+    t = TRAILING_RE.sub("", text)
+    t = MIDCOMMA_RE.sub("", t)
+    return t.strip()
+
+
+def normalize_glossary_text(text: str) -> str:
+    """Smart-quote / whitespace / nbsp normalization."""
+    t = text.replace("\u00a0", " ").strip()
+    t = re_module.sub(r" {2,}", " ", t)
+    return t
+
+
+def extract_entries(docx_bytes: bytes) -> list:
+    """Pull index entries out of a .docx."""
+    doc = Document(io.BytesIO(docx_bytes))
+    entries = []
+
+    if doc.tables:
+        for table in doc.tables:
+            for row in table.rows:
+                picked = ""
+                for cell in row.cells:
+                    text = normalize_glossary_text(cell.text)
+                    if text:
+                        picked = text
+                        break
+                entries.append(picked)
+    else:
+        for para in doc.paragraphs:
+            entries.append(normalize_glossary_text(para.text))
+
+    return entries
+
+
+@app.route("/glossarytool")
+@login_required
+@tool_required("glossarytool")
+def glossarytool():
+    return render_template("glossarytool.html")
+
+
+@app.route("/glossarytool/convert", methods=["POST"])
+@login_required
+@tool_required("glossarytool")
+def glossarytool_convert():
+    source_file = request.files.get("source")
+    target_file = request.files.get("target")
+
+    if not source_file or not target_file:
+        return jsonify(error="Both source and target files are required."), 400
+    for f, label in [(source_file, "source"), (target_file, "target")]:
+        if not f.filename.lower().endswith(".docx"):
+            return jsonify(error=f"{label.capitalize()} must be a .docx file."), 400
+
+    try:
+        src_entries = extract_entries(source_file.read())
+        tgt_entries = extract_entries(target_file.read())
+    except Exception as e:
+        return jsonify(error=f"Could not read files: {e}"), 500
+
+    opts = request.form
+    do_strip = opts.get("strip_pages", "true") == "true"
+    do_headers = opts.get("drop_headers", "true") == "true"
+    do_skip = opts.get("skip_empty", "true") == "true"
+    separator = opts.get("separator", " -> ")
+
+    n = min(len(src_entries), len(tgt_entries))
+    lines = []
+    for i in range(n):
+        s, t = src_entries[i], tgt_entries[i]
+        if do_strip:
+            s, t = strip_pages(s), strip_pages(t)
+        if do_skip and not s and not t:
+            continue
+        if do_headers and s == t and len(s) == 1 and s.isalpha():
+            continue
+        lines.append(f"{s}{separator}{t}")
+
+    output = ("\n".join(lines) + "\n") if lines else ""
+    base = source_file.filename.rsplit(".", 1)[0] or "glossary"
+
+    return jsonify(
+        output=output,
+        count=len(lines),
+        source_count=len(src_entries),
+        target_count=len(tgt_entries),
+        mismatch=len(src_entries) != len(tgt_entries),
+        download_name=f"{base}_glossary.txt",
+    )
+
+
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # MACRO MANAGER ROUTES
 # ═══════════════════════════════════════════════════════════════════════
 
@@ -1771,6 +1983,10 @@ def macromanager_upload():
 @login_required
 @tool_required("macromanager")
 def macromanager_download(file_id):
+    if session.get('role') != 'admin':
+        flash("Only administrators are allowed to download macro templates.", "danger")
+        return redirect(url_for("macromanager"))
+        
     conn = get_db()
     cur = conn.cursor(dictionary=True)
     cur.execute("SELECT filename, file_data FROM macro_files WHERE id = %s", (file_id,))
@@ -1796,6 +2012,10 @@ def macromanager_download(file_id):
 @login_required
 @tool_required("macromanager")
 def macromanager_download_ui(file_id):
+    if session.get('role') != 'admin':
+        flash("Only administrators are allowed to download macro template UI files.", "danger")
+        return redirect(url_for("macromanager"))
+        
     conn = get_db()
     cur = conn.cursor(dictionary=True)
     cur.execute("SELECT filename, ui_data FROM macro_files WHERE id = %s", (file_id,))
@@ -1878,6 +2098,10 @@ def clear_templates_directory(templates_dir):
 @login_required
 @tool_required("macromanager")
 def macromanager_apply(file_id):
+    if session.get('role') != 'admin':
+        flash("Only administrators are allowed to import and replace macro templates.", "danger")
+        return redirect(url_for("macromanager"))
+        
     import platform
     is_windows = (platform.system() == 'Windows')
     
@@ -2686,6 +2910,10 @@ def toggle_tool(user_id, tool_key):
     conn.commit()
     cur.close()
     conn.close()
+
+    if user_id == session.get("user_id"):
+        session["allowed_tools"] = tools
+
     flash(f"{AVAILABLE_TOOLS[tool_key]['name']} {action} for user.", "success")
     return redirect(url_for("admin_users"))
 
@@ -2792,8 +3020,6 @@ def _pc_office_check(office_key):
 
 def _pc_required(office_key):
     """Return office shortcode if user has access, else None."""
-    if session.get("role") == "admin":
-        return _pc_office_check(office_key)
     if office_key in session.get("allowed_tools", []):
         return _pc_office_check(office_key)
     return None

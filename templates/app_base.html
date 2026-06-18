@@ -105,6 +105,18 @@
                     <span class="nav-icon"><i class="{{ tool.icon }}"></i></span>
                     Macro Manager
                 </a>
+                {% elif tool.key == 'fm_copypaste' %}
+                <a href="{{ url_for('fm_copypaste') }}"
+                   class="{% if request.endpoint == 'fm_copypaste' %}active{% endif %}">
+                    <span class="nav-icon"><i class="{{ tool.icon }}"></i></span>
+                    FM Copy & Paste
+                </a>
+                {% elif tool.key == 'glossarytool' %}
+                <a href="{{ url_for('glossarytool') }}"
+                   class="{% if request.endpoint == 'glossarytool' %}active{% endif %}">
+                    <span class="nav-icon"><i class="{{ tool.icon }}"></i></span>
+                    Glossary Builder
+                </a>
                 {% endif %}
             {% endfor %}
 

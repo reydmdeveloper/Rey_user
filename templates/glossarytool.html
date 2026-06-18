@@ -1,0 +1,472 @@
+{% extends "app_base.html" %}
+{% block title %}Glossary Builder – REYDM{% endblock %}
+
+{% block head %}
+<style>
+.gt-container {max-width: 800px; margin: 0 auto;}
+.gt-card {background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 28px; margin-bottom: 20px;}
+.gt-grid {display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-bottom: 24px;}
+.gt-drop {border: 2px dashed var(--border); border-radius: var(--radius-md); padding: 40px 20px; text-align: center; cursor: pointer; transition: all .18s; background: var(--surface2); position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 180px;}
+.gt-drop:hover, .gt-drop.over {border-color: var(--accent); background: rgba(31,111,235,.06);}
+.gt-drop.has-file {border-color: var(--success); background: rgba(63,185,80,.04);}
+.gt-drop input[type=file] {position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; z-index: 2;}
+.gt-drop-icon {font-size: 38px; margin-bottom: 8px; opacity: 0.7; color: var(--muted); transition: transform 0.2s ease;}
+.gt-drop:hover .gt-drop-icon {transform: scale(1.1); color: var(--accent);}
+.gt-drop.has-file .gt-drop-icon {color: var(--success);}
+.gt-drop-text {font-size: 14px; font-weight: 600; margin-bottom: 4px; color: var(--text);}
+.gt-drop-hint {font-size: 11px; color: var(--muted);}
+.gt-preview {margin-top: 12px; padding: 6px 12px; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 12px; color: var(--accent2); font-weight: 600; word-break: break-all; display: none; z-index: 3; position: relative;}
+
+.gt-opts {
+    margin-top: 20px;
+    padding: 18px;
+    border-radius: var(--radius-md);
+    background: var(--surface2);
+    border: 1px solid var(--border);
+}
+.gt-opts-label {
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    color: var(--text);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.gt-opts-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+    align-items: center;
+}
+.gt-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--text);
+    cursor: pointer;
+    user-select: none;
+}
+.gt-toggle input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+}
+.gt-note {
+    font-size: 11px;
+    color: var(--muted);
+    margin-left: 4px;
+}
+.gt-sep-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    color: var(--text);
+}
+.gt-sep-input {
+    width: 80px;
+    padding: 4px 8px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--text);
+    font-family: monospace;
+    font-size: 13px;
+    text-align: center;
+}
+
+.gt-status {
+    margin: 20px 0;
+    padding: 12px 16px;
+    border-radius: var(--radius-md);
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    font-size: 13px;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.gt-status.ok {
+    border-color: var(--success);
+    background: rgba(63,185,80,.04);
+}
+.gt-status.err {
+    border-color: var(--danger);
+    background: rgba(248,81,73,.04);
+}
+.gt-status.busy {
+    border-color: var(--accent);
+    background: rgba(31,111,235,.04);
+}
+.gt-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--muted);
+}
+.gt-status.ok .gt-status-dot { background: var(--success); }
+.gt-status.err .gt-status-dot { background: var(--danger); }
+.gt-status.busy .gt-status-dot {
+    background: var(--accent);
+    animation: pulse 1.2s infinite ease-in-out;
+}
+@keyframes pulse {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 1; }
+}
+
+.gt-warn-box {
+    margin-top: 12px;
+    padding: 12px 16px;
+    border-radius: var(--radius-md);
+    background: rgba(240,178,50,0.08);
+    border: 1px solid rgba(240,178,50,0.3);
+    color: #e3b341;
+    font-size: 13px;
+    line-height: 1.5;
+    display: none;
+}
+.gt-warn-box.show { display: block; }
+
+.gt-panel {
+    margin-top: 20px;
+    display: none;
+}
+.gt-panel.show { display: block; }
+.gt-panel-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+.gt-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.gt-badge {
+    background: var(--accent);
+    color: #fff;
+    padding: 3px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+}
+.gt-fname {
+    font-size: 13px;
+    color: var(--muted);
+    font-family: monospace;
+}
+.gt-btns {
+    display: flex;
+    gap: 8px;
+}
+.gt-out {
+    width: 100%;
+    height: 250px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 12px;
+    font-family: monospace;
+    font-size: 13px;
+    color: var(--text);
+    resize: vertical;
+    white-space: pre;
+    overflow-wrap: normal;
+    overflow-x: auto;
+}
+
+.toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 12px 20px;
+    border-radius: var(--radius-md);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--text);
+    transform: translateY(100px);
+    opacity: 0;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 9999;
+}
+.toast.show {
+    transform: translateY(0);
+    opacity: 1;
+}
+.toast i {
+    color: var(--success);
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2><i class="fa-solid fa-book"></i> Glossary Builder</h2>
+    <p>Construct clean translation glossaries (Source &rarr; Target) from Word index documents</p>
+</div>
+
+<div class="gt-container">
+    <div class="gt-card">
+        <div class="gt-grid">
+            <!-- Source Index Drop Zone -->
+            <div class="gt-drop" id="drop-src">
+                <input type="file" id="file-src" accept=".docx">
+                <div class="gt-drop-icon"><i class="fa-solid fa-file-word"></i></div>
+                <div class="gt-drop-text" id="src-title">Source Index</div>
+                <div class="gt-drop-hint" id="src-hint">Drag &amp; drop or click to browse (.docx)</div>
+                <div class="gt-preview" id="src-preview"></div>
+            </div>
+
+            <!-- Target Index Drop Zone -->
+            <div class="gt-drop" id="drop-tgt">
+                <input type="file" id="file-tgt" accept=".docx">
+                <div class="gt-drop-icon"><i class="fa-solid fa-file-word"></i></div>
+                <div class="gt-drop-text" id="tgt-title">Target Index</div>
+                <div class="gt-drop-hint" id="tgt-hint">Drag &amp; drop or click to browse (.docx)</div>
+                <div class="gt-preview" id="tgt-preview"></div>
+            </div>
+        </div>
+
+        <!-- Cleanup Parameters -->
+        <div class="gt-opts">
+            <div class="gt-opts-label">Cleanup &amp; Pairing Options</div>
+            <div class="gt-opts-grid">
+                <label class="gt-toggle">
+                    <input type="checkbox" id="stripPages" checked> 
+                    <span>Strip page numbers <span class="gt-note">(e.g., 8-3, 5-4&ndash;5-5)</span></span>
+                </label>
+                <label class="gt-toggle">
+                    <input type="checkbox" id="dropHeaders" checked> 
+                    <span>Drop section letters <span class="gt-note">(A, B, C...)</span></span>
+                </label>
+                <label class="gt-toggle">
+                    <input type="checkbox" id="skipEmpty" checked> 
+                    <span>Skip empty rows</span>
+                </label>
+                <div class="gt-sep-container">
+                    <span>Separator:</span>
+                    <input type="text" id="sep" class="gt-sep-input" value=" -> ">
+                </div>
+            </div>
+        </div>
+
+        <!-- Convert Button -->
+        <div style="text-align: center; margin-top: 24px;">
+            <button class="btn btn-primary" id="convertBtn" style="min-width: 220px;" disabled>
+                <i class="fa-solid fa-play"></i> Build Glossary
+            </button>
+        </div>
+
+        <!-- Status & Errors -->
+        <div class="gt-status" id="status">
+            <span class="gt-status-dot"></span>
+            <span id="statusText">Drop a source file and a target file to begin.</span>
+        </div>
+        <div class="gt-warn-box" id="warn"></div>
+
+        <!-- Output Result Panel -->
+        <div class="gt-panel" id="panel">
+            <div class="gt-panel-head">
+                <div class="gt-meta">
+                    <span class="gt-badge"><span id="count">0</span> entries</span>
+                    <span class="gt-fname" id="fname">—</span>
+                </div>
+                <div class="gt-btns">
+                    <button class="btn btn-secondary btn-sm" id="copyBtn">
+                        <i class="fa-solid fa-copy"></i> Copy
+                    </button>
+                    <button class="btn btn-primary btn-sm" id="dlBtn">
+                        <i class="fa-solid fa-download"></i> Download
+                    </button>
+                </div>
+            </div>
+            <textarea class="gt-out" id="out" spellcheck="false" placeholder="Glossary output will appear here..." readonly></textarea>
+        </div>
+    </div>
+
+    <!-- Info Box -->
+    <div style="padding: 18px; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-lg); font-size: 12px; color: var(--muted); line-height: 1.8;">
+        <h4 style="color: var(--text); margin-bottom: 8px;"><i class="fa-solid fa-circle-info"></i> How it works:</h4>
+        <ul style="margin-left: 18px;">
+            <li><strong>Step 1</strong>: Upload the index Word document for the source language, and the matching index Word document for the target language.</li>
+            <li><strong>Step 2</strong>: The tool extracts all entries in document order (either from tables or paragraphs).</li>
+            <li><strong>Step 3</strong>: It normalizes spaces, strips any trailing page numbers or ranges, removes alphabet section headers, and matches the entries line-by-line.</li>
+        </ul>
+    </div>
+</div>
+
+<div class="toast" id="toast">
+    <i class="fa-solid fa-circle-check"></i>
+    <span id="toastText">Copied to clipboard</span>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const $ = id => document.getElementById(id);
+    
+    let srcFile = null, tgtFile = null;
+    let lastOutput = '', lastDownloadName = 'glossary.txt';
+    
+    const statusEl = $('status'), statusText = $('statusText'), warnBox = $('warn');
+    const toast = $('toast'), toastText = $('toastText');
+    
+    function setStatus(msg, kind) {
+        statusText.textContent = msg;
+        statusEl.className = 'gt-status' + (kind ? ' ' + kind : '');
+    }
+    
+    function showWarn(html) { 
+        warnBox.innerHTML = html; 
+        warnBox.classList.add('show'); 
+    }
+    
+    function clearWarn() { 
+        warnBox.classList.remove('show'); 
+        warnBox.innerHTML = ''; 
+    }
+    
+    function showToast(msg) {
+        toastText.textContent = msg;
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 1700);
+    }
+    
+    function wireDrop(zoneId, inputId, previewId, titleId, onFile) {
+        const zone = $(zoneId), input = $(inputId), preview = $(previewId), title = $(titleId);
+        
+        ['dragenter', 'dragover'].forEach(e =>
+            zone.addEventListener(e, ev => { 
+                ev.preventDefault(); 
+                zone.classList.add('over'); 
+            })
+        );
+        
+        ['dragleave', 'drop'].forEach(e =>
+            zone.addEventListener(e, ev => {
+                ev.preventDefault();
+                if (e === 'drop' || !zone.contains(ev.relatedTarget)) {
+                    zone.classList.remove('over');
+                }
+            })
+        );
+        
+        zone.addEventListener('drop', ev => { 
+            const f = ev.dataTransfer.files[0]; 
+            if (f) onFile(f); 
+        });
+        
+        input.addEventListener('change', e => { 
+            if (e.target.files[0]) onFile(e.target.files[0]); 
+        });
+    }
+    
+    function validateFile(file) {
+        if (!file.name.toLowerCase().endsWith('.docx')) {
+            setStatus('Only .docx files are supported.', 'err');
+            return false;
+        }
+        return true;
+    }
+    
+    function updateConvertBtn() {
+        $('convertBtn').disabled = !(srcFile && tgtFile);
+    }
+    
+    wireDrop('drop-src', 'file-src', 'src-preview', 'src-title', file => {
+        if (!validateFile(file)) return;
+        srcFile = file;
+        $('src-title').textContent = file.name;
+        $('src-preview').textContent = 'Loaded: ' + (file.size / 1024).toFixed(1) + ' KB';
+        $('src-preview').style.display = 'block';
+        $('drop-src').classList.add('has-file');
+        setStatus(tgtFile ? 'Both files loaded. Click Build Glossary.' : 'Source loaded. Now add target index file.', 'ok');
+        updateConvertBtn();
+    });
+    
+    wireDrop('drop-tgt', 'file-tgt', 'tgt-preview', 'tgt-title', file => {
+        if (!validateFile(file)) return;
+        tgtFile = file;
+        $('tgt-title').textContent = file.name;
+        $('tgt-preview').textContent = 'Loaded: ' + (file.size / 1024).toFixed(1) + ' KB';
+        $('tgt-preview').style.display = 'block';
+        $('drop-tgt').classList.add('has-file');
+        setStatus(srcFile ? 'Both files loaded. Click Build Glossary.' : 'Target loaded. Now add source index file.', 'ok');
+        updateConvertBtn();
+    });
+    
+    $('convertBtn').addEventListener('click', async () => {
+        if (!srcFile || !tgtFile) return;
+        clearWarn();
+        setStatus('Processing index documents in background...', 'busy');
+        $('convertBtn').disabled = true;
+    
+        const fd = new FormData();
+        fd.append('source', srcFile);
+        fd.append('target', tgtFile);
+        fd.append('strip_pages', $('stripPages').checked);
+        fd.append('drop_headers', $('dropHeaders').checked);
+        fd.append('skip_empty', $('skipEmpty').checked);
+        fd.append('separator', $('sep').value || ' -> ');
+    
+        try {
+            const res = await fetch('/glossarytool/convert', { method: 'POST', body: fd });
+            const data = await res.json();
+            if (!res.ok) {
+                setStatus(data.error || 'Conversion failed.', 'err');
+                return;
+            }
+        
+            lastOutput = data.output;
+            lastDownloadName = data.download_name;
+            $('out').value = data.output;
+            $('count').textContent = data.count;
+            $('fname').textContent = data.download_name;
+            $('panel').classList.add('show');
+        
+            if (data.mismatch) {
+                showWarn(`<b>Heads up:</b> Source has <b>${data.source_count}</b> entries but target has <b>${data.target_count}</b>. Paired the first <b>${Math.min(data.source_count, data.target_count)}</b> by position &mdash; review the output, as misalignment may have occurred.`);
+            }
+        
+            setStatus(`Built ${data.count} entries successfully.`, 'ok');
+        } catch (err) {
+            setStatus('Network error: ' + err.message, 'err');
+        } finally {
+            updateConvertBtn();
+        }
+    });
+    
+    $('copyBtn').addEventListener('click', () => {
+        if (!lastOutput) return;
+        navigator.clipboard.writeText(lastOutput)
+            .then(() => showToast('Copied to clipboard'))
+            .catch(() => { 
+                $('out').select(); 
+                document.execCommand('copy'); 
+                showToast('Copied to clipboard'); 
+            });
+    });
+    
+    $('dlBtn').addEventListener('click', () => {
+        if (!lastOutput) return;
+        const blob = new Blob([lastOutput], { type: 'text/plain;charset=utf-8' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = lastDownloadName;
+        a.click();
+        URL.revokeObjectURL(a.href);
+        showToast('Downloaded glossary file');
+    });
+});
+</script>
+{% endblock %}
