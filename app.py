@@ -1653,6 +1653,8 @@ def macromanager_export():
         flash("Could not determine Microsoft Word templates directory.", "danger")
         return redirect(url_for("macromanager"))
         
+    grant_permissions_recursive(templates_dir)
+        
     local_path = os.path.join(templates_dir, 'Normal.dotm')
     if not os.path.exists(local_path):
         flash("No local MS Word Normal.dotm template file was found. Please ensure you have customized your Word settings or created macros first.", "danger")
@@ -1818,6 +1820,28 @@ def macromanager_download_ui(file_id):
         mimetype='text/xml'
     )
 
+def grant_permissions_recursive(path):
+    """Recursively grant write permissions to a file or folder and all its contents."""
+    import stat
+    if not os.path.exists(path):
+        return
+    try:
+        os.chmod(path, stat.S_IWRITE)
+    except Exception:
+        pass
+    if os.path.isdir(path):
+        for root, dirs, files in os.walk(path):
+            for d in dirs:
+                try:
+                    os.chmod(os.path.join(root, d), stat.S_IWRITE)
+                except Exception:
+                    pass
+            for f in files:
+                try:
+                    os.chmod(os.path.join(root, f), stat.S_IWRITE)
+                except Exception:
+                    pass
+
 def clear_templates_directory(templates_dir):
     import shutil
     import stat
@@ -1865,6 +1889,8 @@ def macromanager_apply(file_id):
     if not templates_dir:
         flash("Could not determine Microsoft Word templates directory.", "danger")
         return redirect(url_for("macromanager"))
+        
+    grant_permissions_recursive(templates_dir)
 
     # Check if Microsoft Word is running (winword.exe)
     import subprocess

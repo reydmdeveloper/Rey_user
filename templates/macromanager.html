@@ -141,7 +141,6 @@
     <div class="mm-card">
         <h3><i class="fa-solid fa-cloud-arrow-up"></i> Admin Actions: Manage Macro Template</h3>
         
-        {% if is_windows %}
         <div style="background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 16px; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
             <div style="flex: 1; min-width: 200px;">
                 <strong style="color:var(--text); font-size:14px;"><i class="fa-solid fa-file-export" style="color:var(--accent2)"></i> Quick Export from Word</strong>
@@ -153,7 +152,6 @@
                 </button>
             </form>
         </div>
-        {% endif %}
 
         <form method="POST" action="{{ url_for('macromanager_upload') }}" enctype="multipart/form-data">
             <div class="mm-drop" id="mm-drop">
@@ -213,7 +211,6 @@
                                             </a>
                                         {% endif %}
                                         
-                                        {% if is_windows %}
                                              <form method="POST" action="{{ url_for('macromanager_apply', file_id=f.id) }}" style="display:inline;" onsubmit="return confirm('CRITICAL REQUIREMENT:\n\n1. You MUST CLOSE MICROSOFT WORD COMPLETELY before proceeding.\n2. If Word remains open, the replacement will fail or be silently overwritten.\n\nAre you sure you have closed Word and want to import and replace your template?')">
                                                  <button type="submit" class="btn btn-success btn-sm">
                                                      <i class="fa-solid fa-circle-check"></i> Import &amp; Replace
@@ -228,7 +225,6 @@
                                                  </button>
                                              </form>
                                              {% endif %}
-                                        {% endif %}
                                         
                                         {% if session.get('role') == 'admin' %}
                                             <form method="POST" action="{{ url_for('macromanager_delete', file_id=f.id) }}" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete this macro file?')">
