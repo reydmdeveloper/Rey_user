@@ -164,8 +164,8 @@ class FlaskServerThread(threading.Thread):
 # PyQt6 window
 # ═══════════════════════════════════════════════════════════════════════════
 def build_window(start_url: str):
-    from PyQt6.QtCore import QUrl
-    from PyQt6.QtGui import QIcon, QAction, QKeySequence
+    from PyQt6.QtCore import QUrl, Qt
+    from PyQt6.QtGui import QIcon, QAction, QKeySequence, QShortcut
     from PyQt6.QtWidgets import QMainWindow, QMessageBox
     from PyQt6.QtWebEngineWidgets import QWebEngineView
     from PyQt6.QtWebEngineCore import (
@@ -214,50 +214,59 @@ def build_window(start_url: str):
 
         def _build_shortcuts(self):
             # Reload (F5 / Ctrl+R)
-            reload_act = QAction(self)
-            reload_act.setShortcuts([QKeySequence("F5"), QKeySequence("Ctrl+R")])
-            reload_act.triggered.connect(self.view.reload)
-            self.addAction(reload_act)
+            self.reload_shortcut = QShortcut(QKeySequence("F5"), self)
+            self.reload_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
+            self.reload_shortcut.activated.connect(self.view.reload)
+
+            self.reload_shortcut_ctrl = QShortcut(QKeySequence("Ctrl+R"), self)
+            self.reload_shortcut_ctrl.setContext(Qt.ShortcutContext.ApplicationShortcut)
+            self.reload_shortcut_ctrl.activated.connect(self.view.reload)
 
             # Hard Reload (Ctrl+F5 / Ctrl+Shift+R)
             from PyQt6.QtWebEngineCore import QWebEnginePage
-            hard_reload_act = QAction(self)
-            hard_reload_act.setShortcuts([QKeySequence("Ctrl+F5"), QKeySequence("Ctrl+Shift+R")])
-            hard_reload_act.triggered.connect(
+            self.hard_reload_shortcut = QShortcut(QKeySequence("Ctrl+F5"), self)
+            self.hard_reload_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
+            self.hard_reload_shortcut.activated.connect(
                 lambda: self.view.triggerPageAction(QWebEnginePage.WebAction.ReloadAndBypassCache)
             )
-            self.addAction(hard_reload_act)
+
+            self.hard_reload_shortcut_shift = QShortcut(QKeySequence("Ctrl+Shift+R"), self)
+            self.hard_reload_shortcut_shift.setContext(Qt.ShortcutContext.ApplicationShortcut)
+            self.hard_reload_shortcut_shift.activated.connect(
+                lambda: self.view.triggerPageAction(QWebEnginePage.WebAction.ReloadAndBypassCache)
+            )
 
             # Back / Forward
-            back_act = QAction(self)
-            back_act.setShortcut(QKeySequence("Alt+Left"))
-            back_act.triggered.connect(self.view.back)
-            self.addAction(back_act)
+            self.back_shortcut = QShortcut(QKeySequence("Alt+Left"), self)
+            self.back_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
+            self.back_shortcut.activated.connect(self.view.back)
 
-            fwd_act = QAction(self)
-            fwd_act.setShortcut(QKeySequence("Alt+Right"))
-            fwd_act.triggered.connect(self.view.forward)
-            self.addAction(fwd_act)
+            self.fwd_shortcut = QShortcut(QKeySequence("Alt+Right"), self)
+            self.fwd_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
+            self.fwd_shortcut.activated.connect(self.view.forward)
 
             # Zoom
-            zoom_in = QAction(self)
-            zoom_in.setShortcuts([QKeySequence("Ctrl++"), QKeySequence("Ctrl+=")])
-            zoom_in.triggered.connect(
+            self.zoom_in_shortcut = QShortcut(QKeySequence("Ctrl++"), self)
+            self.zoom_in_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
+            self.zoom_in_shortcut.activated.connect(
                 lambda: self.view.setZoomFactor(self.view.zoomFactor() + 0.1)
             )
-            self.addAction(zoom_in)
 
-            zoom_out = QAction(self)
-            zoom_out.setShortcut(QKeySequence("Ctrl+-"))
-            zoom_out.triggered.connect(
+            self.zoom_in_shortcut_eq = QShortcut(QKeySequence("Ctrl+="), self)
+            self.zoom_in_shortcut_eq.setContext(Qt.ShortcutContext.ApplicationShortcut)
+            self.zoom_in_shortcut_eq.activated.connect(
+                lambda: self.view.setZoomFactor(self.view.zoomFactor() + 0.1)
+            )
+
+            self.zoom_out_shortcut = QShortcut(QKeySequence("Ctrl+-"), self)
+            self.zoom_out_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
+            self.zoom_out_shortcut.activated.connect(
                 lambda: self.view.setZoomFactor(max(0.4, self.view.zoomFactor() - 0.1))
             )
-            self.addAction(zoom_out)
 
-            zoom_reset = QAction(self)
-            zoom_reset.setShortcut(QKeySequence("Ctrl+0"))
-            zoom_reset.triggered.connect(lambda: self.view.setZoomFactor(1.0))
-            self.addAction(zoom_reset)
+            self.zoom_reset_shortcut = QShortcut(QKeySequence("Ctrl+0"), self)
+            self.zoom_reset_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
+            self.zoom_reset_shortcut.activated.connect(lambda: self.view.setZoomFactor(1.0))
 
         def _on_download(self, item: "QWebEngineDownloadRequest"):
             from PyQt6.QtWidgets import QFileDialog
