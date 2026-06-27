@@ -29,6 +29,19 @@
 .mm-table tr:last-child td {border-bottom: none;}
 .mm-table .actions {display: flex; gap: 8px;}
 .mm-info-block {background: var(--surface2); border-left: 3px solid var(--accent); padding: 14px; border-radius: 0 var(--radius-md) var(--radius-md) 0; font-size: 12px; color: var(--muted); line-height: 1.6; margin-top: 15px;}
+
+/* Dual Drop Zone styles */
+.gt-grid {display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-bottom: 20px;}
+.gt-drop {border: 2px dashed var(--border); border-radius: var(--radius-md); padding: 30px 15px; text-align: center; cursor: pointer; transition: all .18s; background: var(--surface2); position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 150px;}
+.gt-drop:hover, .gt-drop.over {border-color: var(--accent); background: rgba(31,111,235,.06);}
+.gt-drop.has-file {border-color: var(--success); background: rgba(63,185,80,.04);}
+.gt-drop input[type=file] {position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; z-index: 2;}
+.gt-drop-icon {font-size: 32px; margin-bottom: 6px; opacity: 0.7; color: var(--muted); transition: transform 0.2s ease;}
+.gt-drop:hover .gt-drop-icon {transform: scale(1.1); color: var(--accent);}
+.gt-drop.has-file .gt-drop-icon {color: var(--success);}
+.gt-drop-text {font-size: 13px; font-weight: 600; margin-bottom: 4px; color: var(--text);}
+.gt-drop-hint {font-size: 11px; color: var(--muted);}
+.gt-preview {margin-top: 10px; padding: 4px 8px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 11px; color: var(--accent2); font-weight: 600; word-break: break-all; display: none; z-index: 3; position: relative;}
 </style>
 {% endblock %}
 
@@ -153,19 +166,95 @@
             </form>
         </div>
 
-        <form method="POST" action="{{ url_for('macromanager_upload') }}" enctype="multipart/form-data">
-            <div class="mm-drop" id="mm-drop">
-                <input type="file" name="file" accept=".dotm,.zip" onchange="this.form.submit()" />
-                <div class="mm-drop-icon"><i class="fa-solid fa-file-invoice" style="color:var(--accent2)"></i></div>
-                <div class="mm-drop-text">Drag Normal.dotm or templates zip archive here or click to browse</div>
-                <div class="mm-drop-hint">Accepts template files (.dotm) or zipped templates (.zip) up to 15MB</div>
+        <form method="POST" action="{{ url_for('macromanager_upload') }}" enctype="multipart/form-data" id="mm-upload-form">
+            <div class="gt-grid">
+                <!-- Word Template Drop Zone -->
+                <div class="gt-drop" id="drop-template">
+                    <input type="file" name="file" id="file-template" accept=".dotm,.zip" required>
+                    <div class="gt-drop-icon" id="icon-template"><i class="fa-solid fa-file-word"></i></div>
+                    <div class="gt-drop-text" id="title-template">Word Template File</div>
+                    <div class="gt-drop-hint" id="hint-template">Drag &amp; drop or click (.dotm / .zip)</div>
+                    <div class="gt-preview" id="preview-template"></div>
+                </div>
+
+                <!-- Ribbon UI Customization Drop Zone -->
+                <div class="gt-drop" id="drop-ui">
+                    <input type="file" name="ui_file" id="file-ui" accept=".officeUI,.xml">
+                    <div class="gt-drop-icon" id="icon-ui"><i class="fa-solid fa-desktop"></i></div>
+                    <div class="gt-drop-text" id="title-ui">Ribbon UI File (Optional)</div>
+                    <div class="gt-drop-hint" id="hint-ui">Drag &amp; drop or click (.officeUI / .xml)</div>
+                    <div class="gt-preview" id="preview-ui"></div>
+                </div>
+            </div>
+            
+            <div style="text-align: center; margin-top: 15px; margin-bottom: 10px;">
+                <button type="submit" class="btn btn-primary" id="btn-upload" style="min-width: 180px;">
+                    <i class="fa-solid fa-cloud-arrow-up"></i> Import to Library
+                </button>
             </div>
         </form>
+        <div class="mm-info-block" style="border-left-color: var(--accent2); background: var(--surface2); color: var(--text); padding: 12px; border-radius: var(--radius-sm); margin-top: 15px; font-size: 12px; line-height: 1.5;">
+            <strong><i class="fa-solid fa-triangle-exclamation" style="color:var(--accent2)"></i> Administrator Notice:</strong><br>
+            Please ensure your Word template (<code>.dotm</code>) has <strong>VBA Project Protection enabled</strong> (Lock project for viewing with a password) before uploading. This is required so the system can programmatically apply the configured administrator protection password on import.
+        </div>
         <div class="mm-info-block">
             <strong>What is Normal.dotm?</strong><br>
             It is MS Word's global scratchpad template. When you record a macro, edit a shortcut key, or customize your ribbon layout, Word saves those changes to this file. Exporting from Word or uploading your old system's <code>Normal.dotm</code> allows you to carry over all those settings.
         </div>
     </div>
+
+    <!-- VBA Project Password Settings (Admins Only) -->
+    <div class="mm-card">
+        <h3><i class="fa-solid fa-lock"></i> VBA Project Password Protection Settings</h3>
+        <p style="font-size:12px; color:var(--muted); margin-bottom:12px;">
+            Set a password that will be programmatically applied to lock the VBA project (and lock for viewing) on the user's computer when they import a macro template. Leave blank to disable protection.
+        </p>
+        <form method="POST" action="{{ url_for('macromanager_save_settings') }}">
+            <div style="display:flex; align-items:center; gap:12px; max-width: 500px;">
+                <input type="password" name="macro_vba_password" value="{{ macro_vba_password }}" placeholder="VBA Project Protection Password" class="form-control" style="background:var(--surface2); border:1px solid var(--border); color:var(--text); border-radius:var(--radius-sm); padding:8px 12px; flex:1;">
+                <button type="submit" class="btn btn-primary" style="margin-top: 0; min-width: 140px;">
+                    <i class="fa-solid fa-floppy-disk"></i> Save Password
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Pending Macro Import Requests Dashboard (Admins Only) -->
+    {% if pending_requests|length > 0 %}
+    <div class="mm-card">
+        <h3><i class="fa-solid fa-clipboard-question"></i> Pending Macro Import Requests</h3>
+        <div class="table-wrapper" style="margin-top: 10px;">
+            <table class="mm-table">
+                <thead>
+                    <tr>
+                        <th>User Name</th>
+                        <th>Email</th>
+                        <th>Requested Template</th>
+                        <th>Requested Date</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in pending_requests %}
+                        <tr>
+                            <td><strong>{{ r.user_name }}</strong></td>
+                            <td class="text-muted text-sm">{{ r.user_email }}</td>
+                            <td><i class="fa-solid fa-file-word" style="color:var(--accent2);"></i> {{ r.filename }}</td>
+                            <td class="text-muted text-sm">{{ r.created_at.strftime('%b %d, %Y %I:%M %p') }}</td>
+                            <td>
+                                <form method="POST" action="{{ url_for('macromanager_approve_import', request_id=r.id) }}" style="display:inline;">
+                                    <button type="submit" class="btn btn-success btn-sm">
+                                        <i class="fa-solid fa-circle-check"></i> Approve Request
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
     {% endif %}
 
     <!-- Upload History -->
@@ -233,7 +322,39 @@
                                                  </button>
                                              </form>
                                         {% else %}
-                                             <span style="color:var(--muted); font-size:12px;">Admin permission required</span>
+                                             <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                                 <!-- Always show Request Import button -->
+                                                 <form method="POST" action="{{ url_for('macromanager_request_import', file_id=f.id) }}" style="display:inline;">
+                                                     <button type="submit" class="btn btn-secondary btn-sm" title="Request Administrator Approval to Import Template" style="border-color: var(--accent2); color: var(--accent2);">
+                                                         <i class="fa-solid fa-paper-plane"></i> Request Import
+                                                     </button>
+                                                 </form>
+                                                 
+                                                 {% if user_requests.get(f.id) %}
+                                                     {% if user_requests.get(f.id) == 'pending' %}
+                                                         <span class="mm-badge warning" style="font-size:11px; padding:4px 8px; margin-left:4px;"><i class="fa-solid fa-hourglass-half"></i> Pending Approval</span>
+                                                     {% elif user_requests.get(f.id) == 'approved' %}
+                                                         <span class="mm-badge ok" style="font-size:11px; padding:4px 8px; margin-left:4px;"><i class="fa-solid fa-circle-check"></i> Approved</span>
+                                                         
+                                                         <form method="POST" action="{{ url_for('macromanager_apply', file_id=f.id) }}" style="display:inline;" onsubmit="return confirm('CRITICAL REQUIREMENT:\n\n1. You MUST CLOSE MICROSOFT WORD COMPLETELY before proceeding.\n2. If Word remains open, the replacement will fail or be silently overwritten.\n\nAre you sure you have closed Word and want to import and replace your template?')">
+                                                             <button type="submit" class="btn btn-success btn-sm">
+                                                                 <i class="fa-solid fa-circle-check"></i> Import &amp; Replace
+                                                             </button>
+                                                         </form>
+            
+                                                         {% if word_running_id == f.id %}
+                                                         <form method="POST" action="{{ url_for('macromanager_apply', file_id=f.id) }}" style="display:inline;" onsubmit="return confirm('WARNING: This will forcefully close Microsoft Word and any unsaved document edits will be lost. Proceed?')">
+                                                             <input type="hidden" name="force" value="true">
+                                                             <button type="submit" class="btn btn-danger btn-sm" style="background:var(--danger); border-color:var(--danger);">
+                                                                 <i class="fa-solid fa-power-off"></i> Force Close Word &amp; Import
+                                                             </button>
+                                                         </form>
+                                                         {% endif %}
+                                                     {% elif user_requests.get(f.id) == 'used' %}
+                                                         <span class="mm-badge" style="font-size:11px; padding:4px 8px; margin-left:4px; background: var(--surface2); color: var(--muted); border: 1px solid var(--border);"><i class="fa-solid fa-check-double"></i> Imported</span>
+                                                     {% endif %}
+                                                 {% endif %}
+                                             </div>
                                         {% endif %}
                                     </div>
                                 </td>
@@ -378,19 +499,64 @@
 </div>
 
 <script>
-// Simple drag and drop hover effects
-const dropZone = document.getElementById('mm-drop');
-if (dropZone) {
-    dropZone.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        dropZone.classList.add('over');
+const wireDropZone = (zoneId, inputId, previewId, titleId, hintId, defaultTitle, defaultHint) => {
+    const zone = document.getElementById(zoneId);
+    const input = document.getElementById(inputId);
+    const preview = document.getElementById(previewId);
+    const title = document.getElementById(titleId);
+    const hint = document.getElementById(hintId);
+
+    if (!zone || !input) return;
+
+    ['dragenter', 'dragover'].forEach(e => {
+        zone.addEventListener(e, (ev) => {
+            ev.preventDefault();
+            zone.classList.add('over');
+        });
     });
-    dropZone.addEventListener('dragleave', () => {
-        dropZone.classList.remove('over');
+
+    ['dragleave', 'drop'].forEach(e => {
+        zone.addEventListener(e, (ev) => {
+            ev.preventDefault();
+            if (e === 'drop' || !zone.contains(ev.relatedTarget)) {
+                zone.classList.remove('over');
+            }
+        });
     });
-    dropZone.addEventListener('drop', () => {
-        dropZone.classList.remove('over');
+
+    const updateFileDisplay = (file) => {
+        if (file) {
+            title.textContent = file.name;
+            hint.textContent = 'Loaded';
+            preview.textContent = (file.size / 1024).toFixed(1) + ' KB';
+            preview.style.display = 'block';
+            zone.classList.add('has-file');
+        } else {
+            title.textContent = defaultTitle;
+            hint.textContent = defaultHint;
+            preview.style.display = 'none';
+            zone.classList.remove('has-file');
+        }
+    };
+
+    zone.addEventListener('drop', (ev) => {
+        const file = ev.dataTransfer.files[0];
+        if (file) {
+            input.files = ev.dataTransfer.files;
+            updateFileDisplay(file);
+        }
     });
-}
+
+    input.addEventListener('change', () => {
+        if (input.files.length > 0) {
+            updateFileDisplay(input.files[0]);
+        } else {
+            updateFileDisplay(null);
+        }
+    });
+};
+
+wireDropZone('drop-template', 'file-template', 'preview-template', 'title-template', 'hint-template', 'Word Template File', 'Drag & drop or click (.dotm / .zip)');
+wireDropZone('drop-ui', 'file-ui', 'preview-ui', 'title-ui', 'hint-ui', 'Ribbon UI File (Optional)', 'Drag & drop or click (.officeUI / .xml)');
 </script>
 {% endblock %}

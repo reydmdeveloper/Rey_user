@@ -374,6 +374,20 @@ def init_db():
         except mysql.connector.Error:
             pass
 
+        # ─── MACRO IMPORT REQUESTS ────────────────────────────────────
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS macro_import_requests (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT NOT NULL,
+                file_id INT NOT NULL,
+                status ENUM('pending', 'approved', 'used') DEFAULT 'pending',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (file_id) REFERENCES macro_files(id) ON DELETE CASCADE
+            )
+        """)
+
         # ─── ADMIN SETTINGS ──────────────────────────────────────────
         cur.execute("""
             CREATE TABLE IF NOT EXISTS admin_settings (
@@ -1716,6 +1730,215 @@ def get_word_templates_dir():
     return os.path.join(sys_drive + os.sep, 'Users', system_name, 'AppData', 'Roaming', 'Microsoft', 'Templates')
 
 
+def get_admin_setting(key, default=None):
+    """Helper to get a value from admin_settings table."""
+    conn = get_db()
+    if not conn:
+        return default
+    cur = conn.cursor(dictionary=True)
+    try:
+        cur.execute("SELECT setting_value FROM admin_settings WHERE setting_key = %s", (key,))
+        row = cur.fetchone()
+        return row['setting_value'] if row else default
+    except Exception as e:
+        print(f"[ERROR] failed to get admin setting {key}: {e}")
+        return default
+    finally:
+        cur.close()
+        conn.close()
+
+
+def set_admin_setting(key, value):
+    """Helper to set a value in admin_settings table."""
+    conn = get_db()
+    if not conn:
+        return False
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            INSERT INTO admin_settings (setting_key, setting_value)
+            VALUES (%s, %s)
+            ON DUPLICATE KEY UPDATE setting_value = %s
+        """, (key, value, value))
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"[ERROR] failed to set admin setting {key}: {e}")
+        return False
+    finally:
+        cur.close()
+        conn.close()
+
+
+def protect_vba_project_bin_bytes(vba_bin_bytes, password):
+    import io
+    import re
+    import hashlib
+    import binascii
+    import struct
+    import os
+    
+    try:
+        import olefile
+    except ImportError:
+        return vba_bin_bytes
+        
+    try:
+        bio = io.BytesIO(vba_bin_bytes)
+        ole = olefile.OleFileIO(bio, write_mode=True)
+        if not ole.exists('PROJECT'):
+            ole.close()
+            return vba_bin_bytes
+            
+        stream = ole.openstream('PROJECT')
+        project_data = stream.read()
+        stream.close()
+        
+        try:
+            project_text = project_data.decode('ansi')
+            encoding = 'ansi'
+        except Exception:
+            project_text = project_data.decode('utf-8', errors='ignore')
+            encoding = 'utf-8'
+            
+        m_dpb = re.search(r'DPB="([A-F0-9]+)"', project_text, re.I)
+        m_cmg = re.search(r'CMG="([A-F0-9]+)"', project_text, re.I)
+        m_gc = re.search(r'GC="([A-F0-9]+)"', project_text, re.I)
+        
+        if not (m_dpb and m_cmg and m_gc):
+            ole.close()
+            return vba_bin_bytes
+            
+        dpb_orig = m_dpb.group(1)
+        cmg_orig = m_cmg.group(1)
+        gc_orig = m_gc.group(1)
+        
+        target_dpb_len = len(dpb_orig) // 2
+        target_cmg_len = len(cmg_orig) // 2
+        target_gc_len = len(gc_orig) // 2
+        
+        salt = os.urandom(4)
+        pass_hash = hashlib.sha1(password.encode('utf-8') + salt).digest()
+        data_dpb = salt + pass_hash
+        
+        bitmask_str = ""
+        for b in data_dpb:
+            if b != 0:
+                bitmask_str += "1"
+            else:
+                bitmask_str += "0"
+                
+        bitmask = int(bitmask_str, 2)
+        mask_bytes = [
+            (bitmask >> 16) & 0xFF,
+            (bitmask >> 8) & 0xFF,
+            bitmask & 0xFF
+        ]
+        
+        decoded_dpb = [29, 0, 0, 0, 0] + mask_bytes + list(data_dpb)
+        
+        def encrypt_data(decoded_bytes, target_len):
+            ignore = target_len - 3 - len(decoded_bytes)
+            if not (0 <= ignore <= 3):
+                ignore = 0
+                target_len = 3 + len(decoded_bytes)
+                
+            seed = ignore * 2
+            version = 0x01
+            projectkey = 0x01
+            
+            data = [seed, version ^ seed, projectkey ^ seed]
+            for _ in range(ignore):
+                data.append(0x00)
+                
+            pb = projectkey
+            for iter in range(3, 3 + ignore):
+                val_prev_2 = data[iter - 2]
+                val_curr = data[iter]
+                pb = ((val_prev_2 + pb) ^ val_curr) % 0x100
+                
+            for b in decoded_bytes:
+                prev_2 = data[-2]
+                enc_byte = ((prev_2 + pb) ^ b) % 0x100
+                data.append(enc_byte)
+                pb = b
+                
+            return bytes(data)
+            
+        new_dpb = encrypt_data(decoded_dpb, target_dpb_len)
+        new_dpb_hex = binascii.b2a_hex(new_dpb).upper().decode('ascii')
+        
+        decoded_cmg = [4, 0, 0, 0, 1, 0, 0, 0]
+        new_cmg = encrypt_data(decoded_cmg, target_cmg_len)
+        new_cmg_hex = binascii.b2a_hex(new_cmg).upper().decode('ascii')
+        
+        decoded_gc = [1, 0, 0, 0, 0]
+        new_gc = encrypt_data(decoded_gc, target_gc_len)
+        new_gc_hex = binascii.b2a_hex(new_gc).upper().decode('ascii')
+        
+        if len(new_dpb_hex) != len(dpb_orig) or len(new_cmg_hex) != len(cmg_orig) or len(new_gc_hex) != len(gc_orig):
+            ole.close()
+            return vba_bin_bytes
+            
+        project_text = project_text.replace(dpb_orig, new_dpb_hex)
+        project_text = project_text.replace(cmg_orig, new_cmg_hex)
+        project_text = project_text.replace(gc_orig, new_gc_hex)
+        
+        new_project_data = project_text.encode(encoding)
+        ole.write_stream('PROJECT', new_project_data)
+        ole.close()
+        return bio.getvalue()
+    except Exception as e:
+        print(f"[ERROR] Failed to apply VBA password protection: {e}")
+        return vba_bin_bytes
+
+
+def protect_vba_project_in_dotm_bytes(dotm_bytes, password):
+    import io
+    import zipfile
+    
+    try:
+        zip_in = io.BytesIO(dotm_bytes)
+        zip_out = io.BytesIO()
+        has_vba = False
+        with zipfile.ZipFile(zip_in, 'r') as yin:
+            with zipfile.ZipFile(zip_out, 'w', zipfile.ZIP_DEFLATED) as yout:
+                for item in yin.infolist():
+                    data = yin.read(item.filename)
+                    if item.filename.lower() == 'word/vbaproject.bin':
+                        has_vba = True
+                        modified_vba = protect_vba_project_bin_bytes(data, password)
+                        yout.writestr(item, modified_vba)
+                    else:
+                        yout.writestr(item, data)
+        return zip_out.getvalue() if has_vba else dotm_bytes
+    except Exception as e:
+        print(f"[ERROR] Failed to repack dotm zip: {e}")
+        return dotm_bytes
+
+
+def protect_vba_project_in_zip_bytes(zip_bytes, password):
+    import io
+    import zipfile
+    
+    try:
+        zip_in = io.BytesIO(zip_bytes)
+        zip_out = io.BytesIO()
+        modified = False
+        with zipfile.ZipFile(zip_in, 'r') as yin:
+            with zipfile.ZipFile(zip_out, 'w', zipfile.ZIP_DEFLATED) as yout:
+                for item in yin.infolist():
+                    data = yin.read(item.filename)
+                    if item.filename.lower().endswith('.dotm'):
+                        modified = True
+                        data = protect_vba_project_in_dotm_bytes(data, password)
+                    yout.writestr(item, data)
+        return zip_out.getvalue() if modified else zip_bytes
+    except Exception as e:
+        print(f"[ERROR] Failed to repack zip archive: {e}")
+        return zip_bytes
+
+
 @app.route("/macromanager")
 @login_required
 @tool_required("macromanager")
@@ -1786,10 +2009,34 @@ def macromanager():
         ORDER BY mf.uploaded_at DESC
     """)
     files = cur.fetchall()
+    
+    # Fetch active import requests for the current user
+    user_id = session.get("user_id")
+    cur.execute("""
+        SELECT file_id, status 
+        FROM macro_import_requests 
+        WHERE user_id = %s
+    """, (user_id,))
+    user_requests = {r['file_id']: r['status'] for r in cur.fetchall()}
+    
+    # Fetch pending requests if the user is an admin
+    pending_requests = []
+    if session.get('role') == 'admin':
+        cur.execute("""
+            SELECT r.id, u.full_name as user_name, u.email as user_email, f.filename, r.created_at
+            FROM macro_import_requests r
+            JOIN users u ON r.user_id = u.id
+            JOIN macro_files f ON r.file_id = f.id
+            WHERE r.status = 'pending'
+            ORDER BY r.created_at DESC
+        """)
+        pending_requests = cur.fetchall()
+        
     cur.close()
     conn.close()
 
     word_running_id = session.get("macro_word_running_id")
+    macro_vba_password = get_admin_setting("macro_vba_password", "")
 
     return render_template(
         "macromanager.html",
@@ -1800,7 +2047,10 @@ def macromanager():
         local_backup_exists=local_backup_exists,
         local_files=local_files,
         files=files,
-        word_running_id=word_running_id
+        word_running_id=word_running_id,
+        user_requests=user_requests,
+        pending_requests=pending_requests,
+        macro_vba_password=macro_vba_password
     )
 
 @app.route("/macromanager/select_path", methods=["POST"])
@@ -1947,36 +2197,70 @@ def macromanager_upload():
         return redirect(url_for("macromanager"))
         
     if 'file' not in request.files:
-        flash("No file part.", "danger")
+        flash("No template file part.", "danger")
         return redirect(url_for("macromanager"))
     
     file = request.files['file']
     if file.filename == '':
-        flash("No selected file.", "danger")
+        flash("No selected template file.", "danger")
         return redirect(url_for("macromanager"))
     
     filename_lower = file.filename.lower()
     if not (filename_lower.endswith('.dotm') or filename_lower.endswith('.zip')):
-        flash("Invalid file type. Only MS Word Template files (.dotm) or zipped templates (.zip) are allowed.", "danger")
+        flash("Invalid template file type. Only MS Word Template files (.dotm) or zipped templates (.zip) are allowed.", "danger")
         return redirect(url_for("macromanager"))
     
     # Check file size limit (maximum size is 15MB)
     file_data = file.read()
     if len(file_data) > 15 * 1024 * 1024:
-        flash("File too large. Maximum size is 15MB.", "danger")
+        flash("Template file too large. Maximum size is 15MB.", "danger")
         return redirect(url_for("macromanager"))
+
+    # Check for Ribbon UI customization file
+    ui_data = None
+    ui_file = request.files.get('ui_file')
+    if ui_file and ui_file.filename != '':
+        ui_filename_lower = ui_file.filename.lower()
+        if not (ui_filename_lower.endswith('.officeui') or ui_filename_lower.endswith('.xml')):
+            flash("Invalid UI file type. Only Ribbon UI files (.officeUI) or XML files (.xml) are allowed.", "danger")
+            return redirect(url_for("macromanager"))
+        ui_data = ui_file.read()
+        if len(ui_data) > 5 * 1024 * 1024:
+            flash("UI file too large. Maximum size is 5MB.", "danger")
+            return redirect(url_for("macromanager"))
+
+        # If it's a zip file, merge the UI file into the zip under the __OfficeUI__ folder
+        if filename_lower.endswith('.zip'):
+            try:
+                import zipfile
+                import io
+                zip_in = io.BytesIO(file_data)
+                zip_out = io.BytesIO()
+                with zipfile.ZipFile(zip_in, 'r') as yin:
+                    with zipfile.ZipFile(zip_out, 'w', zipfile.ZIP_DEFLATED) as yout:
+                        # Copy existing zip files except __OfficeUI__/Word.officeUI
+                        for item in yin.infolist():
+                            if not item.filename.lower().startswith('__officeui__/'):
+                                yout.writestr(item, yin.read(item.filename))
+                        # Add or replace the UI data
+                        yout.writestr('__OfficeUI__/Word.officeUI', ui_data)
+                file_data = zip_out.getvalue()
+            except Exception as e:
+                flash(f"Error packing UI customization into zip archive: {str(e)}", "danger")
+                return redirect(url_for("macromanager"))
         
     conn = get_db()
     cur = conn.cursor()
     cur.execute(
-        "INSERT INTO macro_files (filename, file_data, uploaded_by) VALUES (%s, %s, %s)",
-        (file.filename, file_data, session.get('user_id'))
+        "INSERT INTO macro_files (filename, file_data, ui_data, uploaded_by) VALUES (%s, %s, %s, %s)",
+        (file.filename, file_data, ui_data, session.get('user_id'))
     )
     conn.commit()
     cur.close()
     conn.close()
     
-    flash(f"Macro file '{file.filename}' uploaded successfully.", "success")
+    ui_msg = " and custom Ribbon UI customization" if ui_data else ""
+    flash(f"Macro file '{file.filename}'{ui_msg} uploaded and imported successfully.", "success")
     return redirect(url_for("macromanager"))
 
 @app.route("/macromanager/download/<int:file_id>")
@@ -2098,9 +2382,27 @@ def clear_templates_directory(templates_dir):
 @login_required
 @tool_required("macromanager")
 def macromanager_apply(file_id):
-    if session.get('role') != 'admin':
-        flash("Only administrators are allowed to import and replace macro templates.", "danger")
-        return redirect(url_for("macromanager"))
+    user_id = session.get("user_id")
+    is_admin = (session.get('role') == 'admin')
+    
+    request_row_id = None
+    if not is_admin:
+        conn = get_db()
+        cur = conn.cursor(dictionary=True)
+        cur.execute("""
+            SELECT id FROM macro_import_requests 
+            WHERE user_id = %s AND file_id = %s AND status = 'approved'
+        """, (user_id, file_id))
+        req = cur.fetchone()
+        cur.close()
+        conn.close()
+        
+        if not req:
+            flash("You must request and receive administrator approval to import this template.", "danger")
+            return redirect(url_for("macromanager"))
+        request_row_id = req['id']
+        
+    macro_password = get_admin_setting("macro_vba_password", "")
         
     import platform
     is_windows = (platform.system() == 'Windows')
@@ -2310,15 +2612,24 @@ def macromanager_apply(file_id):
                         if not os.path.exists(target_dir):
                             os.makedirs(target_dir)
                             
-                        # Clear read-only attribute if file exists, to prevent PermissionError
-                        if os.path.exists(target_path):
-                            try:
-                                os.chmod(target_path, stat.S_IWRITE)
-                            except Exception:
-                                pass
+                        member_data = zip_file.read(member.filename)
+                        if macro_password and member.filename.lower().endswith('.dotm'):
+                            member_data = protect_vba_project_in_dotm_bytes(member_data, macro_password)
                         with open(target_path, 'wb') as f:
-                            f.write(zip_file.read(member.filename))
+                            f.write(member_data)
                             
+            if request_row_id:
+                conn = get_db()
+                cur = conn.cursor()
+                cur.execute("""
+                    UPDATE macro_import_requests 
+                    SET status = 'used', updated_at = CURRENT_TIMESTAMP 
+                    WHERE id = %s
+                """, (request_row_id,))
+                conn.commit()
+                cur.close()
+                conn.close()
+                
             session.pop("macro_word_running_id", None)
             flash(f"Success! Imported and replaced the active Word templates folder using '{row['filename']}'. {backup_msg}{ui_restore_msg} Please restart Microsoft Word.", "success")
             
@@ -2344,8 +2655,11 @@ def macromanager_apply(file_id):
                 except Exception:
                     pass
             # Write new file data
+            file_data = row['file_data']
+            if macro_password:
+                file_data = protect_vba_project_in_dotm_bytes(file_data, macro_password)
             with open(local_path, 'wb') as f:
-                f.write(row['file_data'])
+                f.write(file_data)
                 
             # Restore Ribbon / Taskbar UI customization if available
             ui_restore_msg = ""
@@ -2379,6 +2693,18 @@ def macromanager_apply(file_id):
                     except Exception as ue:
                         ui_restore_msg = f" (Warning: failed to restore ribbon UI customizations: {str(ue)})"
                 
+            if request_row_id:
+                conn = get_db()
+                cur = conn.cursor()
+                cur.execute("""
+                    UPDATE macro_import_requests 
+                    SET status = 'used', updated_at = CURRENT_TIMESTAMP 
+                    WHERE id = %s
+                """, (request_row_id,))
+                conn.commit()
+                cur.close()
+                conn.close()
+                
             session.pop("macro_word_running_id", None)
             flash(f"Success! Replaced local Normal.dotm with '{row['filename']}'. {backup_msg}{ui_restore_msg} Please restart Microsoft Word to apply the macros, custom UI, and shortcuts.", "success")
     except Exception as e:
@@ -2411,6 +2737,116 @@ def macromanager_delete(file_id):
     conn.close()
     
     flash(f"Macro file '{row['filename']}' deleted successfully.", "success")
+    return redirect(url_for("macromanager"))
+
+
+@app.route("/macromanager/request_import/<int:file_id>", methods=["POST"])
+@login_required
+@tool_required("macromanager")
+def macromanager_request_import(file_id):
+    user_id = session.get("user_id")
+    conn = get_db()
+    cur = conn.cursor(dictionary=True)
+    
+    # Check if file exists
+    cur.execute("SELECT id, filename FROM macro_files WHERE id = %s", (file_id,))
+    file_row = cur.fetchone()
+    if not file_row:
+        cur.close()
+        conn.close()
+        flash("File not found.", "danger")
+        return redirect(url_for("macromanager"))
+        
+    # Check for existing request
+    cur.execute("""
+        SELECT id, status FROM macro_import_requests 
+        WHERE user_id = %s AND file_id = %s
+    """, (user_id, file_id))
+    existing = cur.fetchone()
+    
+    if existing:
+        if existing['status'] == 'pending':
+            flash(f"Your import request for '{file_row['filename']}' is already pending administrator approval.", "info")
+        elif existing['status'] == 'approved':
+            flash(f"Your request is already approved! You can import '{file_row['filename']}' now.", "success")
+        else: # used
+            cur.execute("""
+                UPDATE macro_import_requests 
+                SET status = 'pending', updated_at = CURRENT_TIMESTAMP 
+                WHERE id = %s
+            """, (existing['id'],))
+            conn.commit()
+            flash(f"Import request for '{file_row['filename']}' submitted successfully.", "success")
+    else:
+        cur.execute("""
+            INSERT INTO macro_import_requests (user_id, file_id, status)
+            VALUES (%s, %s, 'pending')
+        """, (user_id, file_id))
+        conn.commit()
+        flash(f"Import request for '{file_row['filename']}' submitted successfully.", "success")
+        
+    cur.close()
+    conn.close()
+    return redirect(url_for("macromanager"))
+
+
+@app.route("/macromanager/approve_import/<int:request_id>", methods=["POST"])
+@login_required
+@tool_required("macromanager")
+def macromanager_approve_import(request_id):
+    if session.get('role') != 'admin':
+        flash("Only administrators are allowed to approve import requests.", "danger")
+        return redirect(url_for("macromanager"))
+        
+    conn = get_db()
+    cur = conn.cursor(dictionary=True)
+    
+    # Check if request exists
+    cur.execute("""
+        SELECT r.id, u.full_name as user_name, f.filename 
+        FROM macro_import_requests r
+        JOIN users u ON r.user_id = u.id
+        JOIN macro_files f ON r.file_id = f.id
+        WHERE r.id = %s
+    """, (request_id,))
+    req_row = cur.fetchone()
+    
+    if not req_row:
+        cur.close()
+        conn.close()
+        flash("Request not found.", "danger")
+        return redirect(url_for("macromanager"))
+        
+    # Update status to approved
+    cur.execute("""
+        UPDATE macro_import_requests 
+        SET status = 'approved', updated_at = CURRENT_TIMESTAMP 
+        WHERE id = %s
+    """, (request_id,))
+    conn.commit()
+    
+    cur.close()
+    conn.close()
+    flash(f"Approved import request from {req_row['user_name']} for '{req_row['filename']}'.", "success")
+    return redirect(url_for("macromanager"))
+
+
+@app.route("/macromanager/settings/save", methods=["POST"])
+@login_required
+@tool_required("macromanager")
+def macromanager_save_settings():
+    if session.get('role') != 'admin':
+        flash("Only administrators are allowed to update settings.", "danger")
+        return redirect(url_for("macromanager"))
+        
+    password = request.form.get("macro_vba_password", "").strip()
+    success = set_admin_setting("macro_vba_password", password)
+    
+    if success:
+        flash("Macro Manager settings updated successfully.", "success")
+    else:
+        flash("Failed to update Macro Manager settings.", "danger")
+        
     return redirect(url_for("macromanager"))
 
 

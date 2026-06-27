@@ -20,6 +20,7 @@ hiddenimports = []
 hiddenimports += collect_submodules("mysql.connector")
 hiddenimports += collect_submodules("waitress")
 hiddenimports += collect_submodules("docx")
+hiddenimports += collect_submodules("olefile")
 hiddenimports += [
     "pytz",
     "PyQt6.QtWebEngineCore",
