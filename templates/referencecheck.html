@@ -1,0 +1,126 @@
+{% extends "app_base.html" %}
+{% block title %}Reference Check – REYDM{% endblock %}
+
+{% block head %}
+<style>
+.rc-wrap{max-width:860px}
+.rc-specimen{border:1px dashed var(--danger);background:var(--danger-soft);border-radius:var(--radius-md);padding:10px 16px;display:inline-flex;flex-direction:column;gap:2px;margin-bottom:18px}
+.rc-specimen-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.rc-specimen-text{font-family:var(--mono);font-size:14px;color:var(--danger);font-weight:500}
+.rc-drop{border:2px dashed var(--border);border-radius:var(--radius-lg);padding:44px 24px;text-align:center;cursor:pointer;transition:all .15s;color:var(--muted);background:var(--surface2);position:relative}
+.rc-drop:hover,.rc-drop.over{border-color:var(--accent);background:var(--accent-soft)}
+.rc-drop-icon{font-size:42px;margin-bottom:10px;color:var(--muted)}
+.rc-drop.over .rc-drop-icon{color:var(--accent)}
+.rc-drop-title{font-size:16px;font-weight:600;color:var(--text)}
+.rc-drop-sub{font-size:13px;margin-top:4px}
+.rc-drop-browse{color:var(--accent);font-weight:600;text-decoration:underline}
+.rc-queue{margin-top:18px}
+.rc-queue-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+.rc-queue-summary{font-weight:600;font-size:14px}
+.rc-queue-actions{display:flex;gap:8px}
+.rc-queue-list{list-style:none;max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius-md)}
+.rc-queue-list li{display:flex;justify-content:space-between;gap:12px;padding:8px 14px;font-size:13px;border-bottom:1px solid var(--border)}
+.rc-queue-list li:last-child{border-bottom:none}
+.rc-queue-file{font-family:var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rc-queue-size{color:var(--muted);flex-shrink:0}
+.rc-progress{margin-top:18px}
+.rc-progress-track{height:8px;background:var(--surface2);border-radius:999px;overflow:hidden;border:1px solid var(--border)}
+.rc-progress-fill{height:100%;width:0%;background:var(--accent);border-radius:999px;transition:width .25s}
+.rc-progress-label{margin-top:8px;font-size:13px;color:var(--muted);font-family:var(--mono)}
+.rc-results-head{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:16px}
+.rc-results-stats{display:flex;gap:8px;flex-wrap:wrap}
+.rc-stat-chip{font-size:12px;font-weight:600;padding:5px 12px;border-radius:999px;border:1px solid var(--border)}
+.rc-stat-chip.found{background:var(--danger-soft);border-color:var(--danger);color:var(--danger)}
+.rc-stat-chip.clean{background:var(--success-soft);border-color:var(--success);color:var(--success)}
+.rc-stat-chip.errored{background:var(--warning-soft);border-color:var(--warning);color:var(--warning)}
+.rc-results-tools{display:flex;gap:8px;flex-wrap:wrap}
+.rc-search{border:1px solid var(--border);border-radius:var(--radius-md);padding:9px 14px;background:var(--surface2);color:var(--text);font-family:var(--font);font-size:14px;min-width:220px}
+.rc-search:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:var(--accent)}
+.rc-table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius-lg)}
+.rc-table{width:100%;border-collapse:collapse;font-size:13px}
+.rc-table thead th{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);padding:10px 14px;border-bottom:2px solid var(--text);cursor:pointer;user-select:none;white-space:nowrap;text-align:left;background:var(--surface)}
+.rc-table thead th:hover{color:var(--text)}
+.rc-table tbody td{padding:10px 14px;border-bottom:1px solid var(--border);vertical-align:top}
+.rc-table tbody tr:hover td{background:var(--accent-soft)}
+.rc-table .cell-file,.rc-table .cell-pages{font-family:var(--mono);font-size:12px}
+.rc-table .cell-num{font-variant-numeric:tabular-nums}
+.rc-badge{display:inline-block;font-size:11px;font-weight:600;padding:3px 10px;border-radius:999px}
+.rc-badge.found{background:var(--danger-soft);color:var(--danger);border:1px solid var(--danger)}
+.rc-badge.not-found{background:var(--success-soft);color:var(--success);border:1px solid var(--success)}
+.rc-badge.error{background:var(--warning-soft);color:var(--warning);border:1px solid var(--warning)}
+.rc-error-msg{display:block;margin-top:4px;font-size:11px;color:var(--warning)}
+.rc-empty{text-align:center;padding:30px;color:var(--muted);font-size:14px}
+.rc-drop input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2><i class="fa-solid fa-magnifying-glass"></i> Reference Check</h2>
+    <p>Batch-scan PDFs for broken Word cross-references</p>
+</div>
+
+<div class="rc-wrap">
+
+    <div class="rc-specimen" title="The exact string every page is searched for">
+        <span class="rc-specimen-label">Searching for</span>
+        <span class="rc-specimen-text">{{ target_text }}</span>
+    </div>
+
+    <div class="card" style="padding:24px">
+        <div class="rc-drop" id="rc-drop" tabindex="0" role="button" aria-label="Upload PDF files">
+            <input type="file" id="rc-file" accept=".pdf" multiple />
+            <div class="rc-drop-icon"><i class="fa-solid fa-cloud-arrow-up"></i></div>
+            <div class="rc-drop-title">Drop PDF files here</div>
+            <div class="rc-drop-sub">or <span class="rc-drop-browse">browse</span> to choose — multiple files welcome</div>
+        </div>
+
+        <div class="rc-queue" id="rc-queue" hidden>
+            <div class="rc-queue-head">
+                <span class="rc-queue-summary" id="rc-queue-summary"></span>
+                <div class="rc-queue-actions">
+                    <button class="btn btn-secondary" id="rc-clear-btn" type="button">Clear</button>
+                    <button class="btn btn-primary" id="rc-scan-btn" type="button">Scan files</button>
+                </div>
+            </div>
+            <ul class="rc-queue-list" id="rc-queue-list"></ul>
+        </div>
+
+        <div class="rc-progress" id="rc-progress" hidden aria-live="polite">
+            <div class="rc-progress-track"><div class="rc-progress-fill" id="rc-progress-fill"></div></div>
+            <p class="rc-progress-label" id="rc-progress-label"></p>
+        </div>
+    </div>
+
+    <div class="card" id="rc-results-panel" hidden style="margin-top:18px;padding:24px">
+        <div class="rc-results-head">
+            <div class="rc-results-stats" id="rc-results-stats"></div>
+            <div class="rc-results-tools">
+                <input type="search" id="rc-search" class="rc-search" placeholder="Filter by name, status..." aria-label="Filter results">
+                <button class="btn btn-primary" id="rc-export-btn" type="button">Export to Excel</button>
+            </div>
+        </div>
+
+        <div class="rc-table-wrap">
+            <table class="rc-table" id="rc-table">
+                <thead>
+                    <tr>
+                        <th data-key="file_name" data-type="text" aria-sort="none">File Name <span class="rc-sort-arrow"></span></th>
+                        <th data-key="total_pages" data-type="number" aria-sort="none">Total Pages <span class="rc-sort-arrow"></span></th>
+                        <th data-key="occurrences" data-type="number" aria-sort="none">Occurrences <span class="rc-sort-arrow"></span></th>
+                        <th data-key="pages_str" data-type="text" aria-sort="none">Page Numbers <span class="rc-sort-arrow"></span></th>
+                        <th data-key="status" data-type="text" aria-sort="none">Status <span class="rc-sort-arrow"></span></th>
+                    </tr>
+                </thead>
+                <tbody id="rc-results-body"></tbody>
+            </table>
+            <p class="rc-empty" id="rc-empty" hidden>No rows match this filter.</p>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/referencecheck.js') }}"></script>
+{% endblock %}

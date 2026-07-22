@@ -28,6 +28,10 @@ import tempfile
 from fm_automation import FrameMakerAutomation
 from mif_translator import MifTranslator
 from docx import Document
+import fitz
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.utils import get_column_letter
 
 # ─── Timezone (IST) ──────────────────────────────────────────────────
 IST = pytz.timezone("Asia/Kolkata")
@@ -131,6 +135,11 @@ AVAILABLE_TOOLS = {
         "name": "Glossary Builder",
         "icon": "fa-solid fa-book",
         "description": "Build clean source-to-target translation glossaries from Word index documents",
+    },
+    "referencecheck": {
+        "name": "Reference Check",
+        "icon": "fa-solid fa-magnifying-glass",
+        "description": "Batch-scan PDFs for broken Word cross-references",
     },
 }
 
@@ -1490,6 +1499,151 @@ def projectanalysis():
 @tool_required("pdfunlocker")
 def pdfunlocker():
     return render_template("pdfunlocker.html")
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# REFERENCE CHECK TOOL ROUTES
+# ═══════════════════════════════════════════════════════════════════════
+
+TARGET_TEXT_RC = "Error! Reference source not found."
+TARGET_PATTERN_RC = re_module.compile(
+    r"\s+".join(re_module.escape(word) for word in TARGET_TEXT_RC.split())
+)
+
+
+def _normalise_rc(text: str) -> str:
+    return text.replace("\u00ad", "").replace("\u00a0", " ")
+
+
+def scan_pdf_reference_check(data: bytes, filename: str) -> dict:
+    result = {
+        "file_name": filename,
+        "total_pages": 0,
+        "occurrences": 0,
+        "pages": [],
+        "status": "Not Found",
+        "message": "",
+    }
+    try:
+        doc = fitz.open(stream=data, filetype="pdf")
+    except Exception as exc:
+        result["status"] = "Error"
+        result["message"] = f"Could not open file: {exc}"
+        return result
+    try:
+        if doc.needs_pass:
+            result["status"] = "Error"
+            result["message"] = "Password-protected PDF — skipped."
+            return result
+        result["total_pages"] = doc.page_count
+        pages_found = []
+        total = 0
+        for page_index in range(doc.page_count):
+            try:
+                text = _normalise_rc(doc.load_page(page_index).get_text("text"))
+            except Exception:
+                continue
+            count = len(TARGET_PATTERN_RC.findall(text))
+            if count:
+                total += count
+                pages_found.extend([page_index + 1] * count)
+        result["occurrences"] = total
+        result["pages"] = pages_found
+        result["status"] = "Found" if total else "Not Found"
+        return result
+    except Exception as exc:
+        result["status"] = "Error"
+        result["message"] = f"Failed while reading pages: {exc}"
+        return result
+    finally:
+        doc.close()
+
+
+@app.route("/referencecheck")
+@login_required
+@tool_required("referencecheck")
+def referencecheck():
+    return render_template("referencecheck.html", target_text=TARGET_TEXT_RC)
+
+
+@app.route("/referencecheck/scan", methods=["POST"])
+@login_required
+@tool_required("referencecheck")
+def referencecheck_scan():
+    files = request.files.getlist("files")
+    if not files:
+        return jsonify({"error": "No files received."}), 400
+    results = []
+    for f in files:
+        name = f.filename or "unnamed.pdf"
+        if not name.lower().endswith(".pdf"):
+            results.append({
+                "file_name": name, "total_pages": 0, "occurrences": 0,
+                "pages": [], "status": "Error", "message": "Not a PDF file — skipped.",
+            })
+            continue
+        data = f.read()
+        results.append(scan_pdf_reference_check(data, name))
+    return jsonify({"results": results})
+
+
+@app.route("/referencecheck/export", methods=["POST"])
+@login_required
+@tool_required("referencecheck")
+def referencecheck_export():
+    payload = request.get_json(silent=True) or {}
+    rows = payload.get("results", [])
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Reference Check"
+    headers = ["File Name", "Total Pages", "Occurrences", "Page Numbers", "Status"]
+    header_fill = PatternFill("solid", fgColor="1F2937")
+    header_font = Font(color="FFFFFF", bold=True)
+    thin = Side(style="thin", color="D1D5DB")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    ws.append(headers)
+    for col in range(1, 6):
+        cell = ws.cell(row=1, column=col)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+        cell.border = border
+    found_font = Font(color="B91C1C", bold=True)
+    clean_font = Font(color="15803D")
+    error_font = Font(color="92400E", italic=True)
+    for row in rows:
+        pages = ", ".join(str(p) for p in row.get("pages", [])) or "-"
+        status = row.get("status", "")
+        status_text = f"Error: {row['message']}" if status == "Error" and row.get("message") else status
+        ws.append([row.get("file_name", ""), row.get("total_pages", 0), row.get("occurrences", 0), pages, status_text])
+        r = ws.max_row
+        for col in range(1, 6):
+            cell = ws.cell(row=r, column=col)
+            cell.border = border
+            if col in (2, 3):
+                cell.alignment = Alignment(horizontal="center")
+        status_cell = ws.cell(row=r, column=5)
+        if status == "Found":
+            status_cell.font = found_font
+        elif status == "Not Found":
+            status_cell.font = clean_font
+        else:
+            status_cell.font = error_font
+    for col in range(1, 6):
+        letter = get_column_letter(col)
+        longest = max((len(str(c.value)) for c in ws[letter] if c.value is not None), default=10)
+        ws.column_dimensions[letter].width = min(max(longest + 3, 14), 70)
+    ws.freeze_panes = "A2"
+    ws.auto_filter.ref = f"A1:E{ws.max_row}"
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return send_file(
+        buf, as_attachment=True,
+        download_name=f"reference_check_{stamp}.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════

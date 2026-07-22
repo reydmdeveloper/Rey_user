@@ -117,6 +117,12 @@
                     <span class="nav-icon"><i class="{{ tool.icon }}"></i></span>
                     Glossary Builder
                 </a>
+                {% elif tool.key == 'referencecheck' %}
+                <a href="{{ url_for('referencecheck') }}"
+                   class="{% if request.endpoint == 'referencecheck' %}active{% endif %}">
+                    <span class="nav-icon"><i class="{{ tool.icon }}"></i></span>
+                    Reference Check
+                </a>
                 {% endif %}
             {% endfor %}
 
