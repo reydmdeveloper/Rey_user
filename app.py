@@ -1073,7 +1073,6 @@ def dashboard():
         attendance_data=attendance_data,
         leave_summary=leave_summary,
         reminders=reminders,
-        my_reminders=my_reminders,
         upcoming_count=upcoming_reminders,
         total_reminders=total_reminders,
         pending_count=pending_count,
