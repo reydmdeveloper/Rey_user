@@ -498,6 +498,7 @@ table tbody tr:last-child td { border-bottom: none; }
 .btn-success:hover { background: rgba(63,185,80,0.2); }
 
 .btn-sm { padding: 5px 11px; font-size: 12px; }
+.btn-xs { padding: 3px 8px; font-size: 11px; border-radius: 5px; }
 
 .btn-group { display: flex; gap: 6px; flex-wrap: wrap; }
 

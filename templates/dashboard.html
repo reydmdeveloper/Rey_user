@@ -240,6 +240,45 @@
 </div>
 {% endif %}
 
+<!-- ═══ MY REMINDERS (users with reminder tool) ═══ -->
+{% if my_reminders %}
+<div class="section-hdr"><i class="fa-solid fa-bell"></i> My Reminder History</div>
+<div class="dash-card" style="margin-bottom:20px">
+    <div style="overflow-x:auto">
+        <table class="recent-tbl">
+            <thead><tr><th>Project</th><th>Scheduled (IST)</th><th>Status</th><th style="width:100px">Actions</th></tr></thead>
+            <tbody>
+                {% for r in my_reminders %}
+                <tr>
+                    <td><strong>{{ r.project_name }}</strong></td>
+                    <td class="mono">{{ r.reminder_datetime.strftime('%b %d, %Y · %I:%M %p') }}</td>
+                    <td>
+                        {% if r.is_sent %}<span class="badge badge-success">Sent</span>
+                        {% else %}<span class="badge badge-info">Pending</span>{% endif %}
+                    </td>
+                    <td>
+                        <div style="display:flex;gap:6px">
+                            <a href="{{ url_for('edit_reminder', reminder_id=r.id) }}" class="btn btn-secondary btn-xs" title="Edit">
+                                <i class="fa-solid fa-pen"></i>
+                            </a>
+                            <form method="POST" action="{{ url_for('delete_reminder', reminder_id=r.id) }}" style="display:inline" onsubmit="return confirm('Delete this reminder?')">
+                                <button type="submit" class="btn btn-danger btn-xs" title="Delete">
+                                    <i class="fa-solid fa-trash-can"></i>
+                                </button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <a href="{{ url_for('add_reminder') }}" class="btn btn-primary btn-sm" style="margin-top:10px">
+        <i class="fa-solid fa-plus"></i> New Reminder
+    </a>
+</div>
+{% endif %}
+
 {% if get_user_tools()|length == 0 and not is_admin %}
 <div class="dash-card">
     <div style="text-align:center;padding:40px 20px">
