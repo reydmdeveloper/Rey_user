@@ -199,34 +199,6 @@
 </div>
 {% endif %}
 
-<!-- Latest reminders (admin) -->
-{% if reminders %}
-<div class="dash-card" style="margin-bottom:20px">
-    <h3><i class="fa-solid fa-bell"></i> Latest Reminders</h3>
-    <div style="overflow-x:auto">
-        <table class="recent-tbl">
-            <thead><tr><th>Project</th><th>Scheduled (IST)</th><th>By</th><th>Status</th></tr></thead>
-            <tbody>
-                {% for r in reminders %}
-                <tr>
-                    <td><strong>{{ r.project_name }}</strong></td>
-                    <td class="mono">{{ r.reminder_datetime.strftime('%b %d, %Y · %I:%M %p') }}</td>
-                    <td>{{ r.creator_name }}</td>
-                    <td>
-                        {% if r.is_sent %}<span class="badge badge-success">Sent</span>
-                        {% else %}<span class="badge badge-info">Pending</span>{% endif %}
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-    <a href="{{ url_for('add_reminder') }}" class="btn btn-primary btn-sm" style="margin-top:10px">
-        <i class="fa-solid fa-plus"></i> New Reminder
-    </a>
-</div>
-{% endif %}
-
 <div class="dash-card" style="margin-bottom:20px">
     <h3><i class="fa-solid fa-server"></i> Database & Cache</h3>
     <p style="font-size:12px;color:var(--muted);margin-bottom:10px">
@@ -240,23 +212,26 @@
 </div>
 {% endif %}
 
-<!-- ═══ MY REMINDERS (users with reminder tool) ═══ -->
-{% if my_reminders %}
-<div class="section-hdr"><i class="fa-solid fa-bell"></i> My Reminder History</div>
+<!-- ═══ REMINDERS (all users with reminder tool) ═══ -->
+{% if reminders %}
+<div class="section-hdr"><i class="fa-solid fa-bell"></i> Reminder History</div>
 <div class="dash-card" style="margin-bottom:20px">
     <div style="overflow-x:auto">
+        {% set uid = session.get('user_id') %}
         <table class="recent-tbl">
-            <thead><tr><th>Project</th><th>Scheduled (IST)</th><th>Status</th><th style="width:100px">Actions</th></tr></thead>
+            <thead><tr><th>Project</th><th>Scheduled (IST)</th><th>By</th><th>Status</th><th style="width:100px">Actions</th></tr></thead>
             <tbody>
-                {% for r in my_reminders %}
+                {% for r in reminders %}
                 <tr>
                     <td><strong>{{ r.project_name }}</strong></td>
                     <td class="mono">{{ r.reminder_datetime.strftime('%b %d, %Y · %I:%M %p') }}</td>
+                    <td>{{ r.creator_name }}</td>
                     <td>
                         {% if r.is_sent %}<span class="badge badge-success">Sent</span>
                         {% else %}<span class="badge badge-info">Pending</span>{% endif %}
                     </td>
                     <td>
+                        {% if r.created_by == uid or is_admin %}
                         <div style="display:flex;gap:6px">
                             <a href="{{ url_for('edit_reminder', reminder_id=r.id) }}" class="btn btn-secondary btn-xs" title="Edit">
                                 <i class="fa-solid fa-pen"></i>
@@ -267,6 +242,7 @@
                                 </button>
                             </form>
                         </div>
+                        {% endif %}
                     </td>
                 </tr>
                 {% endfor %}

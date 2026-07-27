@@ -1038,26 +1038,16 @@ def dashboard():
                 "lop_taken": l_taken,
             }
 
-    # 4) Reminders — admin sees all, user sees their own
+    # 4) Reminders — all users with reminder tool see all reminders
     reminders = []
-    my_reminders = []
-    if is_admin:
+    if "reminder" in tools or is_admin:
         cur.execute("""
             SELECT r.*, u.full_name AS creator_name
             FROM reminders r JOIN users u ON r.created_by = u.id
-            ORDER BY r.reminder_datetime DESC
-            LIMIT 10
-        """)
-        reminders = cur.fetchall()
-    if "reminder" in tools:
-        cur.execute("""
-            SELECT r.*, u.full_name AS creator_name
-            FROM reminders r JOIN users u ON r.created_by = u.id
-            WHERE r.created_by = %s
             ORDER BY r.reminder_datetime DESC
             LIMIT 20
-        """, (session["user_id"],))
-        my_reminders = cur.fetchall()
+        """)
+        reminders = cur.fetchall()
 
     # 5) Admin-only: all users today + recent activity
     all_users_today = []
