@@ -969,13 +969,24 @@ def dashboard():
     # 1) Attendance — today's session + this month's totals
     attendance_data = None
     if "attendance" in tools or is_admin:
+        # Prefer any still-open session (logout_time IS NULL) regardless of its
+        # login_date — needed for mid-shifts that cross midnight (e.g. 4 PM-1 AM),
+        # otherwise the session "disappears" from today's view after midnight.
         cur.execute(
             """SELECT * FROM attendance_logs
-               WHERE user_id = %s AND login_date = CURDATE()
+               WHERE user_id = %s AND logout_time IS NULL
                ORDER BY login_time DESC LIMIT 1""",
             (session["user_id"],),
         )
         today_log = cur.fetchone()
+        if not today_log:
+            cur.execute(
+                """SELECT * FROM attendance_logs
+                   WHERE user_id = %s AND login_date = CURDATE()
+                   ORDER BY login_time DESC LIMIT 1""",
+                (session["user_id"],),
+            )
+            today_log = cur.fetchone()
 
         cur.execute(
             """SELECT COUNT(*) AS days, COALESCE(SUM(hours_spent), 0) AS hrs
@@ -3015,10 +3026,13 @@ def attendance():
     conn = get_db()
     cur = conn.cursor(dictionary=True)
 
-    # Active session today (no logout yet)
+    # Active (open) session — logout_time IS NULL, regardless of login_date.
+    # A mid-shift like 4 PM-1 AM starts on one calendar day and ends on the
+    # next, so filtering by "login_date = CURDATE()" would hide it after
+    # midnight and wrongly show the LOGIN button instead of LOGOUT.
     cur.execute(
         """SELECT * FROM attendance_logs
-           WHERE user_id = %s AND login_date = CURDATE() AND logout_time IS NULL
+           WHERE user_id = %s AND logout_time IS NULL
            ORDER BY login_time DESC LIMIT 1""",
         (session["user_id"],),
     )
@@ -3073,7 +3087,11 @@ def attendance():
 def attendance_login():
     """
     Idempotent login:
-      - If a row for (user, today) already exists with login_time → reject (use upsert logic).
+      - If ANY session is still open (logout_time IS NULL), regardless of its
+        login_date, reject — covers mid-shifts that cross midnight (e.g. 4 PM-1 AM)
+        where the open session's login_date is "yesterday" but the user is
+        clicking Login again "today".
+      - If a row for (user, today) already exists and is closed → reject (already done today).
       - Otherwise insert a new row with login_time.
     """
     conn = get_db()
@@ -3082,16 +3100,26 @@ def attendance_login():
     now = now_ist()
 
     cur.execute(
+        """SELECT * FROM attendance_logs
+           WHERE user_id = %s AND logout_time IS NULL
+           ORDER BY login_time DESC LIMIT 1""",
+        (session["user_id"],),
+    )
+    open_session = cur.fetchone()
+    if open_session:
+        flash("You are already logged in. Please logout first.", "warning")
+        cur.close()
+        conn.close()
+        return redirect(url_for("attendance"))
+
+    cur.execute(
         "SELECT * FROM attendance_logs WHERE user_id = %s AND login_date = %s",
         (session["user_id"], today),
     )
     existing = cur.fetchone()
 
     if existing:
-        if existing["logout_time"] is None:
-            flash("You are already logged in for today. Please logout first.", "warning")
-        else:
-            flash("You have already completed today's attendance. New login not allowed.", "warning")
+        flash("You have already completed today's attendance. New login not allowed.", "warning")
         cur.close()
         conn.close()
         return redirect(url_for("attendance"))
@@ -3114,15 +3142,17 @@ def attendance_login():
 def attendance_logout():
     conn = get_db()
     cur = conn.cursor(dictionary=True)
+    # Find the open session regardless of login_date so overnight shifts
+    # (e.g. 4 PM-1 AM) can still be logged out after midnight.
     cur.execute(
         """SELECT * FROM attendance_logs
-           WHERE user_id = %s AND login_date = CURDATE() AND logout_time IS NULL
+           WHERE user_id = %s AND logout_time IS NULL
            ORDER BY login_time DESC LIMIT 1""",
         (session["user_id"],),
     )
     active = cur.fetchone()
     if not active:
-        flash("No active login session found for today.", "warning")
+        flash("No active login session found.", "warning")
         cur.close()
         conn.close()
         return redirect(url_for("attendance"))
