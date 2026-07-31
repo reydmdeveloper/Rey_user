@@ -651,13 +651,16 @@ def admin_required(f):
 
 
 def tool_required(tool_key):
-    """Decorator: ensures the user has access to the given tool."""
+    """Decorator: ensures the user has access to the given tool.
+    Admins always have access to every tool."""
     def wrapper(f):
         @wraps(f)
         def decorated(*args, **kwargs):
             if "user_id" not in session:
                 flash("Please log in first.", "warning")
                 return redirect(url_for("login"))
+            if session.get("role") == "admin":
+                return f(*args, **kwargs)
             allowed = session.get("allowed_tools", [])
             if tool_key not in allowed:
                 flash("You don't have access to this tool.", "danger")
@@ -668,6 +671,9 @@ def tool_required(tool_key):
 
 
 def get_user_tools():
+    """Return the tools the current user can use. Admins get every tool."""
+    if session.get("role") == "admin":
+        return list(AVAILABLE_TOOLS.keys())
     return session.get("allowed_tools", [])
 
 
