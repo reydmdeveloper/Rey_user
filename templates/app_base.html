@@ -123,6 +123,12 @@
                     <span class="nav-icon"><i class="{{ tool.icon }}"></i></span>
                     Reference Check
                 </a>
+                {% elif tool.key == 'pdfconverter' %}
+                <a href="{{ url_for('pdfconverter') }}"
+                   class="{% if request.endpoint == 'pdfconverter' %}active{% endif %}">
+                    <span class="nav-icon"><i class="{{ tool.icon }}"></i></span>
+                    PDF to Image
+                </a>
                 {% endif %}
             {% endfor %}
 

@@ -1,0 +1,281 @@
+{% extends "app_base.html" %}
+{% block title %}PDF to Image – REYDM{% endblock %}
+
+{% block head %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+<style>
+.pc-wrap{max-width:1000px}
+.pc-drop{border:2px dashed var(--border);border-radius:var(--radius-lg);padding:48px 24px;text-align:center;cursor:pointer;transition:all .15s;color:var(--muted);background:var(--surface2);position:relative;margin-bottom:18px}
+.pc-drop:hover,.pc-drop.over{border-color:var(--accent);background:var(--accent-soft)}
+.pc-drop input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.pc-drop-icon{font-size:44px;margin-bottom:10px;color:var(--muted)}
+.pc-drop.over .pc-drop-icon{color:var(--accent)}
+.pc-drop-title{font-size:16px;font-weight:600;color:var(--text)}
+.pc-drop-sub{font-size:13px;margin-top:4px}
+.pc-drop-browse{color:var(--accent);font-weight:600;text-decoration:underline}
+.pc-pills{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin-top:18px}
+.pc-pill{background:var(--surface2);border:1px solid var(--border);padding:5px 12px;border-radius:999px;font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px}
+.pc-pill i{color:var(--accent2)}
+.pc-file-bar{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;margin-bottom:18px;flex-wrap:wrap;gap:12px}
+.pc-file-info{display:flex;align-items:center;gap:14px}
+.pc-file-icon{width:44px;height:44px;background:var(--danger-soft);border:1px solid var(--danger);color:var(--danger);border-radius:var(--radius-md);display:flex;align-items:center;justify-content:center;font-size:1.3rem;flex-shrink:0}
+.pc-file-details h3{font-size:14px;font-weight:600;margin-bottom:2px}
+.pc-file-meta{font-size:12px;color:var(--muted)}
+.pc-file-meta code{font-family:var(--mono);color:var(--accent2)}
+.pc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px;margin-bottom:18px}
+.pc-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px}
+.pc-card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+.pc-card-header h3{font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px}
+.pc-card-header h3 i{color:var(--accent2)}
+.pc-presets{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px}
+.pc-preset{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-md);padding:10px 4px;text-align:center;cursor:pointer;transition:all .15s;display:flex;flex-direction:column;gap:2px}
+.pc-preset:hover{border-color:var(--accent)}
+.pc-preset.active{background:var(--accent-soft);border-color:var(--accent)}
+.pc-preset-title{font-weight:600;font-size:13px;color:var(--text)}
+.pc-preset-sub{font-size:11px;color:var(--muted)}
+.pc-preset.active .pc-preset-title{color:var(--accent2)}
+.pc-slider-hdr{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--muted);margin-bottom:6px}
+.pc-value{font-weight:600;color:var(--accent2);background:var(--accent-soft);padding:2px 8px;border-radius:var(--radius-sm)}
+.pc-range{width:100%;-webkit-appearance:none;height:6px;border-radius:999px;background:var(--surface2);outline:none;cursor:pointer}
+.pc-range::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent);cursor:pointer}
+.pc-formats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px}
+.pc-radio{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-md);padding:10px;cursor:pointer;position:relative;transition:all .15s}
+.pc-radio input{position:absolute;opacity:0}
+.pc-radio.active{background:var(--accent-soft);border-color:var(--accent)}
+.pc-radio-name{display:block;font-weight:700;font-size:13px;color:var(--text)}
+.pc-radio-desc{display:block;font-size:11px;color:var(--muted)}
+.pc-action-bar{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;margin-bottom:18px;flex-wrap:wrap;gap:14px}
+.pc-range-sel{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--muted);flex-wrap:wrap}
+.pc-select{background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:7px 12px;border-radius:var(--radius-md);outline:none;cursor:pointer;font-family:var(--font);font-size:13px}
+.pc-input{background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:7px 12px;border-radius:var(--radius-md);outline:none;width:150px;font-family:var(--mono);font-size:12px}
+.pc-primary-btns{display:flex;gap:8px;flex-wrap:wrap}
+.pc-zip-box{display:inline-flex;align-items:center}
+.pc-zip-label{display:inline-flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--border);padding:7px 12px;border-radius:var(--radius-md);cursor:pointer;font-size:12px;color:var(--text);user-select:none}
+.pc-zip-label:hover{border-color:var(--accent)}
+.pc-zip-label input{position:absolute;opacity:0}
+.pc-checkbox-box{width:18px;height:18px;border-radius:5px;border:2px solid var(--muted);display:flex;align-items:center;justify-content:center;font-size:.65rem;color:transparent;transition:all .15s}
+.pc-zip-label input:checked ~ .pc-checkbox-box{background:var(--accent);border-color:var(--accent);color:#fff}
+.pc-progress{padding:16px 20px;margin-bottom:18px}
+.pc-progress-info{display:flex;justify-content:space-between;margin-bottom:8px;font-size:13px;font-weight:500}
+.pc-progress-track{width:100%;height:8px;background:var(--surface2);border-radius:999px;overflow:hidden;border:1px solid var(--border)}
+.pc-progress-fill{height:100%;width:0%;background:var(--accent);border-radius:999px;transition:width .2s linear}
+.pc-previews-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+.pc-previews-hdr h2{font-size:15px;font-weight:600;display:flex;align-items:center;gap:8px}
+.pc-previews-hdr h2 i{color:var(--accent2)}
+.pc-preview-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;margin-bottom:30px}
+.pc-page-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);overflow:hidden;display:flex;flex-direction:column;transition:all .15s}
+.pc-page-card:hover{transform:translateY(-3px);border-color:var(--accent)}
+.pc-page-hdr{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--surface2);font-size:12px;font-weight:600}
+.pc-page-check{width:15px;height:15px;accent-color:var(--accent);cursor:pointer}
+.pc-thumb{height:240px;background:var(--surface2);display:flex;align-items:center;justify-content:center;padding:10px;position:relative;cursor:pointer}
+.pc-thumb img{max-width:100%;max-height:100%;object-fit:contain;border-radius:4px}
+.pc-zoom{position:absolute;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;opacity:0;transition:all .15s;color:#fff;font-size:1.2rem}
+.pc-thumb:hover .pc-zoom{opacity:1}
+.pc-page-footer{padding:8px 12px;display:flex;justify-content:space-between;align-items:center;background:var(--surface2);font-size:11px;color:var(--muted)}
+.pc-page-size{display:flex;flex-direction:column;gap:2px;text-align:left}
+.pc-features{margin-top:40px;padding-top:28px;border-top:1px solid var(--border)}
+.pc-features h2{text-align:center;font-size:16px;font-weight:700;margin-bottom:22px}
+.pc-features-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
+.pc-feature{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:22px;text-align:center}
+.pc-feature i.f-icon{width:48px;height:48px;background:var(--accent-soft);color:var(--accent2);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.3rem;margin:0 auto 12px}
+.pc-feature h3{font-size:14px;font-weight:600;margin-bottom:6px}
+.pc-feature p{font-size:12px;color:var(--muted)}
+.pc-modal{position:fixed;inset:0;background:rgba(0,0,0,.8);backdrop-filter:blur(6px);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px}
+.pc-modal-body{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);max-width:900px;width:100%;max-height:90vh;display:flex;flex-direction:column;position:relative;padding:20px}
+.pc-modal-close{position:absolute;top:12px;right:14px;background:transparent;border:none;color:var(--muted);font-size:1.3rem;cursor:pointer}
+.pc-modal-close:hover{color:var(--text)}
+.pc-modal-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;padding-right:30px;gap:10px;flex-wrap:wrap}
+.pc-modal-hdr h3{font-size:14px;font-weight:600}
+.pc-modal-img{flex:1;overflow:auto;display:flex;align-items:center;justify-content:center}
+.pc-modal-img img{max-width:100%;max-height:70vh;object-fit:contain;border-radius:var(--radius-sm)}
+.hidden{display:none !important}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2><i class="fa-solid fa-file-image"></i> PDF to Image Converter</h2>
+    <p>Convert PDF pages to high-quality PNG, JPEG, or WEBP images — batch ZIP export</p>
+</div>
+
+<div class="pc-wrap">
+
+    <!-- Upload -->
+    <div class="card" style="padding:20px">
+        <div class="pc-drop" id="pc-drop" tabindex="0" role="button" aria-label="Upload a PDF file">
+            <input type="file" id="pc-file" accept="application/pdf,.pdf" />
+            <div class="pc-drop-icon"><i class="fa-solid fa-cloud-arrow-up"></i></div>
+            <div class="pc-drop-title">Drop your PDF here or <span class="pc-drop-browse">Browse files</span></div>
+            <div class="pc-drop-sub">Supports single or multi-page PDFs up to 200MB. Processed 100% locally in your browser.</div>
+            <div style="margin:14px 0 0">
+                <button id="pc-demo-btn" type="button" class="btn btn-secondary btn-sm" style="pointer-events:auto;position:relative;z-index:10">
+                    <i class="fa-solid fa-wand-magic-sparkles" style="color:var(--accent2)"></i> Try Demo PDF Sample
+                </button>
+            </div>
+            <div class="pc-pills">
+                <span class="pc-pill"><i class="fa-solid fa-bolt"></i> Instant Conversion</span>
+                <span class="pc-pill"><i class="fa-solid fa-shield-halved"></i> 100% Private</span>
+                <span class="pc-pill"><i class="fa-solid fa-file-zipper"></i> ZIP Download</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Converter -->
+    <div class="card" id="pc-converter" hidden style="margin-top:18px;padding:0">
+        <div style="padding:20px">
+            <div class="pc-file-bar glass" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg)">
+                <div class="pc-file-info">
+                    <div class="pc-file-icon"><i class="fa-solid fa-file-pdf"></i></div>
+                    <div class="pc-file-details">
+                        <h3 id="pc-file-name">document.pdf</h3>
+                        <div class="pc-file-meta">
+                            <span id="pc-file-size">0 MB</span> &bull;
+                            <span id="pc-page-count">0 Pages</span> &bull;
+                            <span>Pattern: <code id="pc-pattern">document_Page_1.png</code></span>
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <button id="pc-change-btn" class="btn btn-secondary btn-sm"><i class="fa-solid fa-arrows-rotate"></i> Change File</button>
+                </div>
+            </div>
+        </div>
+
+        <div style="padding:0 20px">
+            <div class="pc-grid">
+                <!-- Quality -->
+                <div class="pc-card">
+                    <div class="pc-card-header">
+                        <h3><i class="fa-solid fa-sliders"></i> Output Quality</h3>
+                        <span style="font-size:11px;background:var(--surface2);padding:3px 10px;border-radius:999px;color:var(--muted);cursor:help" title="Higher DPI produces sharper images with larger file sizes">DPI Settings</span>
+                    </div>
+                    <div class="pc-presets" id="pc-presets">
+                        <button class="pc-preset" data-dpi="72"><span class="pc-preset-title">Low</span><span class="pc-preset-sub">72 DPI</span></button>
+                        <button class="pc-preset active" data-dpi="150"><span class="pc-preset-title">Standard</span><span class="pc-preset-sub">150 DPI</span></button>
+                        <button class="pc-preset" data-dpi="300"><span class="pc-preset-title">High HD</span><span class="pc-preset-sub">300 DPI</span></button>
+                        <button class="pc-preset" data-dpi="450"><span class="pc-preset-title">Ultra HD</span><span class="pc-preset-sub">450 DPI</span></button>
+                    </div>
+                    <div>
+                        <div class="pc-slider-hdr">
+                            <label for="pc-dpi-range">Custom DPI (Resolution):</label>
+                            <span id="pc-dpi-value" class="pc-value">150 DPI</span>
+                        </div>
+                        <input type="range" id="pc-dpi-range" min="36" max="600" step="12" value="150" class="pc-range">
+                    </div>
+                </div>
+
+                <!-- Format -->
+                <div class="pc-card">
+                    <div class="pc-card-header">
+                        <h3><i class="fa-solid fa-file-image"></i> Format &amp; Compression</h3>
+                    </div>
+                    <div class="pc-formats">
+                        <label class="pc-radio active">
+                            <input type="radio" name="pcFormat" value="png" checked>
+                            <span class="pc-radio-name">PNG</span><span class="pc-radio-desc">Lossless clarity</span>
+                        </label>
+                        <label class="pc-radio">
+                            <input type="radio" name="pcFormat" value="jpeg">
+                            <span class="pc-radio-name">JPEG</span><span class="pc-radio-desc">Smaller size</span>
+                        </label>
+                        <label class="pc-radio">
+                            <input type="radio" name="pcFormat" value="webp">
+                            <span class="pc-radio-name">WEBP</span><span class="pc-radio-desc">Modern standard</span>
+                        </label>
+                    </div>
+                    <div id="pc-quality-group">
+                        <div class="pc-slider-hdr">
+                            <label for="pc-quality-range">Image Compression Quality:</label>
+                            <span id="pc-quality-value" class="pc-value">92%</span>
+                        </div>
+                        <input type="range" id="pc-quality-range" min="10" max="100" step="1" value="92" class="pc-range">
+                    </div>
+                </div>
+            </div>
+
+            <div class="pc-action-bar glass" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg)">
+                <div class="pc-range-sel">
+                    <label><i class="fa-solid fa-filter"></i> Convert Pages:</label>
+                    <select id="pc-range-option" class="pc-select">
+                        <option value="all">All Pages</option>
+                        <option value="selected">Checked Thumbnails Only</option>
+                        <option value="custom">Custom Page Range</option>
+                    </select>
+                    <input type="text" id="pc-range-input" class="pc-input hidden" placeholder="e.g. 1-3, 5, 7">
+                </div>
+                <div class="pc-primary-btns">
+                    <div class="pc-zip-box" title="Toggle to download pages as a single .zip file or separate image files">
+                        <label class="pc-zip-label" for="pc-zip-check">
+                            <input type="checkbox" id="pc-zip-check" checked>
+                            <span class="pc-checkbox-box"><i class="fa-solid fa-check"></i></span>
+                            <span><i class="fa-solid fa-file-zipper"></i> Save as <strong>.ZIP</strong></span>
+                        </label>
+                    </div>
+                    <button id="pc-render-btn" class="btn btn-secondary"><i class="fa-solid fa-rotate"></i> Re-Render</button>
+                    <button id="pc-download-btn" class="btn btn-primary"><i class="fa-solid fa-file-zipper"></i> Download as .ZIP</button>
+                </div>
+            </div>
+
+            <div class="pc-progress glass" id="pc-progress" hidden style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg)">
+                <div class="pc-progress-info">
+                    <span id="pc-progress-text"><i class="fa-solid fa-spinner fa-spin"></i> Converting PDF pages...</span>
+                    <span id="pc-progress-pct">0%</span>
+                </div>
+                <div class="pc-progress-track"><div class="pc-progress-fill" id="pc-progress-fill" style="width:0%"></div></div>
+            </div>
+
+            <div class="pc-previews-hdr">
+                <h2><i class="fa-solid fa-images"></i> Page Previews (<span id="pc-rendered-count">0</span>)</h2>
+                <div style="display:flex;gap:8px">
+                    <button id="pc-select-all" class="btn btn-secondary btn-sm"><i class="fa-regular fa-square-check"></i> Select All</button>
+                    <button id="pc-deselect-all" class="btn btn-secondary btn-sm"><i class="fa-regular fa-square"></i> Deselect All</button>
+                </div>
+            </div>
+            <div class="pc-preview-grid" id="pc-preview-grid"></div>
+        </div>
+    </div>
+
+    <!-- Features -->
+    <div class="pc-features">
+        <h2>Why Use PDF to Image Converter?</h2>
+        <div class="pc-features-grid">
+            <div class="pc-feature">
+                <i class="fa-solid fa-gauge-high f-icon"></i>
+                <h3>Custom DPI &amp; Scale</h3>
+                <p>Choose from standard 72 DPI up to ultra-sharp 450 DPI resolution for crisp printing and display.</p>
+            </div>
+            <div class="pc-feature">
+                <i class="fa-solid fa-file-zipper f-icon"></i>
+                <h3>1-Click ZIP Download</h3>
+                <p>Bundle all converted high-res images directly into a clean .zip archive file instantly.</p>
+            </div>
+            <div class="pc-feature">
+                <i class="fa-solid fa-user-shield f-icon"></i>
+                <h3>100% Private &amp; Secure</h3>
+                <p>Your documents never leave your machine. Conversion runs entirely inside your browser memory.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal -->
+<div class="pc-modal hidden" id="pc-modal">
+    <div class="pc-modal-body">
+        <button id="pc-modal-close" class="pc-modal-close"><i class="fa-solid fa-xmark"></i></button>
+        <div class="pc-modal-hdr">
+            <h3 id="pc-modal-title">Page Preview</h3>
+            <a id="pc-modal-download" class="btn btn-primary btn-sm" download><i class="fa-solid fa-download"></i> Download Image</a>
+        </div>
+        <div class="pc-modal-img">
+            <img id="pc-modal-image" src="" alt="Full Preview">
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/pdfconverter.js') }}"></script>
+{% endblock %}

@@ -141,6 +141,11 @@ AVAILABLE_TOOLS = {
         "icon": "fa-solid fa-magnifying-glass",
         "description": "Batch-scan PDFs for broken Word cross-references",
     },
+    "pdfconverter": {
+        "name": "PDF to Image",
+        "icon": "fa-solid fa-file-image",
+        "description": "Convert PDF pages to PNG / JPEG / WEBP images with ZIP export",
+    },
 }
 
 
@@ -1655,6 +1660,13 @@ def referencecheck_export():
         download_name=f"reference_check_{stamp}.xlsx",
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
+
+
+@app.route("/pdfconverter")
+@login_required
+@tool_required("pdfconverter")
+def pdfconverter():
+    return render_template("pdfconverter.html")
 
 
 # ═══════════════════════════════════════════════════════════════════════
