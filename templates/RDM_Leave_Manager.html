@@ -831,6 +831,16 @@ function renderYTD() {
 // ════════════════════════════════════════
 let PS = { empId:'', month:'', day:0, mi:0 };
 
+// Whether a leave type is still available for an employee up to month index mi.
+function lvTypeAvailable(type, empId, mi) {
+    const t = (type||'').toUpperCase();
+    if (t==='L' || t==='') return true;              // LOP (loss of pay) always allowed
+    const {aC,aS} = availUpTo(empId, mi);
+    if (t==='C' || t==='HC' || t==='CH') return aC > 0;  // consumes Casual balance
+    if (t==='S' || t==='HS' || t==='SH') return aS > 0;  // consumes Sick balance
+    return true;
+}
+
 function openPop(e,empId,month,day,mi) {
     e.stopPropagation(); PS = {empId,month,day,mi};
     const emp = DB.employees.find(x=>x.empId===empId);
@@ -840,9 +850,24 @@ function openPop(e,empId,month,day,mi) {
     const extraCL = parseFloat(emp?.extraCL)||0;
     const extraSL = parseFloat(emp?.extraSL)||0;
     const extraLine = (extraCL||extraSL) ? `<br><span style="color:var(--success)">➕ Extra granted: CL +${extraCL} · SL +${extraSL}</span>` : '';
+
+    // Show only the leave types the employee still has balance for.
+    // LOP (L) has no quota, so it is always available.
+    const canC  = aC > 0;
+    const canS  = aS > 0;
+    document.querySelectorAll('.type-btn.tb-C').forEach(b => b.style.display = canC  ? '' : 'none');
+    document.querySelectorAll('.type-btn.tb-HC').forEach(b => b.style.display = canC  ? '' : 'none');
+    document.querySelectorAll('.type-btn.tb-S').forEach(b => b.style.display = canS  ? '' : 'none');
+    document.querySelectorAll('.type-btn.tb-HS').forEach(b => b.style.display = canS  ? '' : 'none');
+    document.querySelectorAll('.type-btn.tb-L').forEach(b => b.style.display = '');  // always
+    document.querySelectorAll('.type-btn.tb-clr').forEach(b => b.style.display = ''); // always
+
+    const noBalanceNote = (!canC && !canS)
+        ? '<br><span style="color:var(--danger)">No CL/SL balance left — only LOP (L) can be marked.</span>'
+        : '';
     document.getElementById('pbal').innerHTML =
         `<b>This month taken:</b> C=${tk.C} &nbsp;S=${tk.S} &nbsp;L=${tk.L}<br>
-         <b>Available (incl. carry-fwd):</b> <span style="color:var(--accent2)">CL = ${aC}</span> &nbsp;·&nbsp; <span style="color:var(--warning)">SL = ${aS}</span>${extraLine}`;
+         <b>Available (incl. carry-fwd):</b> <span style="color:var(--accent2)">CL = ${aC}</span> &nbsp;·&nbsp; <span style="color:var(--warning)">SL = ${aS}</span>${extraLine}${noBalanceNote}`;
     const pop = document.getElementById('cpop');
     pop.style.display = 'block';
     document.getElementById('pbg').classList.add('open');
@@ -855,6 +880,10 @@ function closePopup() {
     document.getElementById('pbg').classList.remove('open');
 }
 async function setLv(val) {
+    if (val && !lvTypeAvailable(val, PS.empId, PS.mi)) {
+        lmToast(val + ' not available — no balance left', 'err');
+        return;
+    }
     await setLvDB(PS.empId, PS.month, PS.day, val);
     closePopup(); renderGrid();
     lmToast(val ? `Set: ${val} for ${PS.month} ${PS.day}` : 'Cleared', 'ok');
@@ -1319,6 +1348,10 @@ document.addEventListener('keydown', (e) => {
 
 async function quickSet(val) {
     if (!focusedCell.empId) return;
+    if (val && !lvTypeAvailable(val, focusedCell.empId, MNS.indexOf(focusedCell.month))) {
+        lmToast(val + ' not available — no balance left', 'err');
+        return;
+    }
     await setLvDB(focusedCell.empId, focusedCell.month, focusedCell.day, val);
     renderGrid();
     // Re-apply focus highlight after re-render
