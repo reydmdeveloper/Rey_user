@@ -646,8 +646,14 @@ table.appr tr:last-child td { border-bottom: none; }
             <select class="lm-input" id="rq-type2"></select>
         </div>
         <div id="rq-hours-wrap" class="lm-fgroup" style="margin-bottom:12px;display:none">
-            <label class="lm-flabel">Hours</label>
-            <input type="number" class="lm-input" id="rq-hours" min="1" step="0.5" value="2"/>
+            <label class="lm-flabel">Timing</label>
+            <div style="display:flex;gap:8px;align-items:center">
+                <input type="time" class="lm-input" id="rq-start" value="09:00" onchange="rqCalcHours()"/>
+                <span style="color:var(--muted)">→</span>
+                <input type="time" class="lm-input" id="rq-end" value="11:00" onchange="rqCalcHours()"/>
+            </div>
+            <div style="font-size:11px;color:var(--muted);margin-top:4px">Duration: <b id="rq-hours-read">2</b> h</div>
+            <input type="hidden" id="rq-hours" value="2"/>
         </div>
         <div class="lm-fgroup" style="margin-bottom:12px">
             <label class="lm-flabel">Reason</label>
@@ -1552,7 +1558,7 @@ function renderApprovals() {
             <td><div style="font-weight:600">${escHtml(r.empName)}</div><div style="font-size:10px;color:var(--muted);font-family:var(--mono)">${escHtml(r.empId)} · ${escHtml(r.dept)}</div></td>
             <td style="font-weight:600;white-space:nowrap">${r.month} ${r.day}, ${r.year}</td>
             <td><span class="lm-badge bpro">${escHtml(cat)}</span></td>
-            <td style="font-family:var(--mono)">${r.hours!=null ? r.hours + 'h' : '-'}</td>
+            <td style="font-family:var(--mono)">${r.hours!=null ? r.hours + 'h' + (r.startTime&&r.endTime?' ('+r.startTime+'–'+r.endTime+')':'') : '-'}</td>
             <td style="font-size:11px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r.reason||'')}">${escHtml(r.reason)||'-'}</td>
             <td style="font-size:11px">${escHtml(r.requester)||'-'}</td>
             <td><span class="lm-badge ${badges[r.status]||'bpro'}" style="text-transform:uppercase">${r.status}</span></td>
@@ -1633,6 +1639,8 @@ function openEditReq(id) {
         .filter(([c,t])=>t && t.enabled!==false && !t.full && ['HC','HS'].includes(c))
         .map(([c,t])=>`<option value="${c}" ${c===r.lvType2?'selected':''}>${c} — ${t.label||c}</option>`).join('');
 
+    document.getElementById('rq-start').value = r.startTime || '09:00';
+    document.getElementById('rq-end').value = r.endTime || '11:00';
     document.getElementById('rq-hours').value = r.hours != null ? r.hours : 2;
     document.getElementById('rq-category').value = r.category || (r.lvType ? 'full' : 'full');
     document.getElementById('rq-reason').value = r.reason || '';
@@ -1656,14 +1664,32 @@ function rqRebuildDays() {
 }
 
 function rqTypeChanged() {
-    const cfg = LM_CFG || { types: {}, allow_two_half_days: true, permission_max_hours: 4 };
+    const cfg = LM_CFG || { types: {}, permission_max_hours: 4 };
     const code = document.getElementById('rq-type').value;
     const t = cfg.types[code] || {};
     const slot2 = document.getElementById('rq-slot2-wrap');
     const hours = document.getElementById('rq-hours-wrap');
     slot2.style.display = (!t.full && cfg.allow_two_half_days && ['HC','HS'].includes(code)) ? '' : 'none';
     hours.style.display = (code==='P') ? '' : 'none';
-    if (code==='P') document.getElementById('rq-hours').max = cfg.permission_max_hours || 4;
+    if (code==='P') {
+        document.getElementById('rq-hours').max = cfg.permission_max_hours || 4;
+        rqCalcHours();
+    }
+}
+
+function rqCalcHours() {
+    const st = (document.getElementById('rq-start').value || '');
+    const et = (document.getElementById('rq-end').value || '');
+    const disp = document.getElementById('rq-hours-read');
+    const hidden = document.getElementById('rq-hours');
+    if (!st || !et) { if (disp) disp.textContent = '-'; return; }
+    const [sh, sm] = st.split(':').map(Number);
+    const [eh, em] = et.split(':').map(Number);
+    const mins = (eh * 60 + em) - (sh * 60 + sm);
+    if (mins <= 0) { if (disp) disp.textContent = 'invalid'; return; }
+    const hrs = Math.round((mins / 60) * 10) / 10;
+    if (disp) disp.textContent = hrs;
+    if (hidden) hidden.value = hrs;
 }
 
 function closeReqModal() { document.getElementById('req-modal').classList.remove('open'); _editingReqId = null; }
@@ -1681,6 +1707,8 @@ async function saveReqEdit() {
         lvType: document.getElementById('rq-type').value,
         lvType2: document.getElementById('rq-type2').value,
         hours: document.getElementById('rq-type').value==='P' ? parseFloat(document.getElementById('rq-hours').value) : null,
+        startTime: document.getElementById('rq-type').value==='P' ? document.getElementById('rq-start').value : null,
+        endTime: document.getElementById('rq-type').value==='P' ? document.getElementById('rq-end').value : null,
         reason: document.getElementById('rq-reason').value.trim(),
         adminNote: document.getElementById('rq-note').value.trim(),
         status: document.getElementById('rq-status').value,

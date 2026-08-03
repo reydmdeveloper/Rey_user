@@ -156,6 +156,8 @@ CREATE TABLE IF NOT EXISTS lm_leave_requests (
     lv_type VARCHAR(4) NOT NULL,
     lv_type2 VARCHAR(4) DEFAULT NULL,
     hours DECIMAL(4,1) DEFAULT NULL,
+    start_time VARCHAR(5) DEFAULT NULL,
+    end_time VARCHAR(5) DEFAULT NULL,
     reason VARCHAR(500) DEFAULT '',
     status ENUM('pending', 'approved', 'declined') DEFAULT 'pending',
     admin_note VARCHAR(255) DEFAULT '',

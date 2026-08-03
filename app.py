@@ -404,6 +404,8 @@ def init_db():
                 lv_type VARCHAR(4) NOT NULL,
                 lv_type2 VARCHAR(4) DEFAULT NULL,
                 hours DECIMAL(4,1) DEFAULT NULL,
+                start_time VARCHAR(5) DEFAULT NULL,
+                end_time VARCHAR(5) DEFAULT NULL,
                 reason VARCHAR(500) DEFAULT '',
                 status ENUM('pending', 'approved', 'declined') DEFAULT 'pending',
                 admin_note VARCHAR(255) DEFAULT '',
@@ -420,6 +422,14 @@ def init_db():
         # the admin assigns the actual leave type on approval.
         try:
             cur.execute("ALTER TABLE lm_leave_requests ADD COLUMN category VARCHAR(10) DEFAULT NULL")
+        except mysql.connector.Error:
+            pass
+        try:
+            cur.execute("ALTER TABLE lm_leave_requests ADD COLUMN start_time VARCHAR(5) DEFAULT NULL")
+        except mysql.connector.Error:
+            pass
+        try:
+            cur.execute("ALTER TABLE lm_leave_requests ADD COLUMN end_time VARCHAR(5) DEFAULT NULL")
         except mysql.connector.Error:
             pass
 
@@ -3277,8 +3287,6 @@ def attendance_login():
 def attendance_logout():
     conn = get_db()
     cur = conn.cursor(dictionary=True)
-    # Find the open session regardless of login_date so overnight shifts
-    # (e.g. 4 PM-1 AM) can still be logged out after midnight.
     cur.execute(
         """SELECT * FROM attendance_logs
            WHERE user_id = %s AND logout_time IS NULL
@@ -3294,6 +3302,26 @@ def attendance_logout():
 
     now = now_ist()
     login_time = active["login_time"]
+    login_date = active["login_date"]
+    logout_date = now.date()
+
+    # If logout crosses to a different calendar day than login,
+    # create a pending attendance request for admin review instead of
+    # processing directly. This handles overnight shifts properly.
+    if logout_date != login_date:
+        cur.execute(
+            """INSERT INTO attendance_requests
+               (user_id, request_date, requested_login, requested_logout, reason)
+               VALUES (%s, %s, %s, %s, %s)""",
+            (session["user_id"], login_date, login_time, now,
+             "[Overnight] Pending admin review to adjust login date"),
+        )
+        conn.commit()
+        cur.close()
+        conn.close()
+        flash("Overnight shift detected. A pending request has been sent for admin review.", "info")
+        return redirect(url_for("attendance"))
+
     diff = (now - login_time).total_seconds() / 3600.0
     hours_spent = round(diff, 2)
 
@@ -3485,6 +3513,136 @@ def handle_attendance_request(req_id, action):
     cur.close()
     conn.close()
     return redirect(url_for("admin_attendance_requests"))
+
+
+# ── ATTENDANCE HISTORY (all employees, selector) ──
+@app.route("/api/attendance/history")
+@login_required
+@tool_required("attendance")
+def api_attendance_history():
+    conn = get_db()
+    cur = conn.cursor(dictionary=True)
+    emp_id = str(request.args.get("empId", "")).strip().upper()
+    if session.get("role") != "admin" and not emp_id:
+        emp_id = None
+    if emp_id:
+        cur.execute(
+            "SELECT * FROM lm_employees WHERE emp_id = %s", (emp_id,)
+        )
+        emp = cur.fetchone()
+        if not emp:
+            cur.close()
+            conn.close()
+            return jsonify({"success": False, "message": "Employee not found"}), 404
+        target_user_id = emp["user_id"]
+    else:
+        target_user_id = session["user_id"]
+
+    cur.execute(
+        """SELECT al.*, u.full_name, e.emp_id, e.name AS emp_name, e.dept AS emp_dept
+           FROM attendance_logs al
+           LEFT JOIN users u ON al.user_id = u.id
+           LEFT JOIN lm_employees e ON al.user_id = e.user_id
+           WHERE al.user_id = %s
+           ORDER BY al.login_date DESC, al.login_time DESC
+           LIMIT 200""",
+        (target_user_id,),
+    )
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return jsonify(rows)
+
+
+# ── ATTENDANCE LOG EDIT (admin) ──
+@app.route("/api/attendance/logs/<int:log_id>/edit", methods=["POST"])
+@login_required
+@tool_required("attendance")
+def api_attendance_log_edit(log_id):
+    if session.get("role") != "admin":
+        return jsonify({"success": False, "message": "Admin only"}), 403
+    data = request.get_json() or {}
+    login_time_str = data.get("loginTime", "")
+    logout_time_str = data.get("logoutTime", "")
+    hours_spent = data.get("hours")
+
+    conn = get_db()
+    cur = conn.cursor(dictionary=True)
+    cur.execute("SELECT * FROM attendance_logs WHERE id = %s", (log_id,))
+    log = cur.fetchone()
+    if not log:
+        cur.close()
+        conn.close()
+        return jsonify({"success": False, "message": "Log not found"}), 404
+
+    new_login = log["login_time"]
+    new_logout = log["logout_time"]
+    new_hours = log["hours_spent"]
+
+    if login_time_str:
+        try:
+            new_login = datetime.strptime(login_time_str, "%Y-%m-%dT%H:%M")
+        except (ValueError, TypeError):
+            cur.close()
+            conn.close()
+            return jsonify({"success": False, "message": "Invalid login time"}), 400
+
+    if logout_time_str:
+        try:
+            new_logout = datetime.strptime(logout_time_str, "%Y-%m-%dT%H:%M")
+        except (ValueError, TypeError):
+            cur.close()
+            conn.close()
+            return jsonify({"success": False, "message": "Invalid logout time"}), 400
+
+    if hours_spent is not None:
+        try:
+            new_hours = float(hours_spent)
+        except (TypeError, ValueError):
+            cur.close()
+            conn.close()
+            return jsonify({"success": False, "message": "Invalid hours"}), 400
+
+    if new_logout and new_login and new_logout < new_login:
+        cur.close()
+        conn.close()
+        return jsonify({"success": False, "message": "Logout must be after login"}), 400
+
+    if new_logout and new_login and new_hours is None:
+        new_hours = round((new_logout - new_login).total_seconds() / 3600.0, 2)
+
+    cur.execute(
+        """UPDATE attendance_logs
+           SET login_time = %s, logout_time = %s, hours_spent = %s
+           WHERE id = %s""",
+        (new_login, new_logout, new_hours, log_id),
+    )
+    conn.commit()
+    cur.close()
+    conn.close()
+    return jsonify({"success": True})
+
+
+# ── ATTENDANCE LOG DELETE (admin) ──
+@app.route("/api/attendance/logs/<int:log_id>/delete", methods=["POST"])
+@login_required
+@tool_required("attendance")
+def api_attendance_log_delete(log_id):
+    if session.get("role") != "admin":
+        return jsonify({"success": False, "message": "Admin only"}), 403
+    conn = get_db()
+    cur = conn.cursor(dictionary=True)
+    cur.execute("SELECT * FROM attendance_logs WHERE id = %s", (log_id,))
+    log = cur.fetchone()
+    if not log:
+        cur.close()
+        conn.close()
+        return jsonify({"success": False, "message": "Log not found"}), 404
+    cur.execute("DELETE FROM attendance_logs WHERE id = %s", (log_id,))
+    conn.commit()
+    cur.close()
+    conn.close()
+    return jsonify({"success": True})
 
 
 @app.route("/api/attendance/chart")
@@ -4428,6 +4586,8 @@ def api_lm_create_request():
     category = str(data.get("category", "")).strip().lower()
     reason = str(data.get("reason", "") or "").strip()[:500]
     hours = data.get("hours")
+    start_time = str(data.get("startTime", "") or "").strip()
+    end_time = str(data.get("endTime", "") or "").strip()
 
     valid_months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
     valid_categories = ('full', 'half', 'permission')
@@ -4439,15 +4599,26 @@ def api_lm_create_request():
         return jsonify({"success": False, "message": "Select Full day, Half day or Permission"}), 400
 
     if category == "permission":
+        if not start_time or not end_time:
+            return jsonify({"success": False, "message": "Select a start and end time for Permission"}), 400
         try:
-            hours = float(hours)
-        except (TypeError, ValueError):
-            return jsonify({"success": False, "message": "Hours are required for Permission"}), 400
+            sh, sm = map(int, start_time.split(":"))
+            eh, em = map(int, end_time.split(":"))
+        except (ValueError, AttributeError):
+            return jsonify({"success": False, "message": "Invalid permission time range"}), 400
+        mins = (eh * 60 + em) - (sh * 60 + sm)
+        if mins <= 0:
+            return jsonify({"success": False, "message": "End time must be after start time"}), 400
+        hours = round(mins / 60.0, 1)
         if hours <= 0 or hours > int(cfg.get("permission_max_hours", 4)):
             return jsonify({"success": False,
                             "message": f"Permission must be 1–{int(cfg.get('permission_max_hours', 4))} hours"}), 400
+        start_time = f"{sh:02d}:{sm:02d}"
+        end_time = f"{eh:02d}:{em:02d}"
     else:
         hours = None
+        start_time = None
+        end_time = None
 
     conn = get_db()
     cur = conn.cursor(dictionary=True)
@@ -4490,9 +4661,11 @@ def api_lm_create_request():
     try:
         cur.execute(
             """INSERT INTO lm_leave_requests
-               (user_id, emp_id, yr, mon, dy, category, lv_type, lv_type2, hours, reason)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
-            (session["user_id"], emp_id, yr, mon, dy, category, '', None, hours, reason),
+               (user_id, emp_id, yr, mon, dy, category, lv_type, lv_type2, hours,
+                start_time, end_time, reason)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+            (session["user_id"], emp_id, yr, mon, dy, category, '', None, hours,
+             start_time, end_time, reason),
         )
         conn.commit()
     finally:
@@ -4543,6 +4716,8 @@ def api_lm_list_requests():
         "lvType": r["lv_type"],
         "lvType2": r["lv_type2"] or "",
         "hours": float(r["hours"]) if r["hours"] is not None else None,
+        "startTime": (r.get("start_time") or ""),
+        "endTime": (r.get("end_time") or ""),
         "reason": r["reason"] or "",
         "status": r["status"],
         "adminNote": r["admin_note"] or "",
@@ -4678,6 +4853,8 @@ def api_lm_edit_request(req_id):
     admin_note = str(data.get("adminNote", "") or "").strip()[:255]
     new_status = str(data.get("status", "") or "").strip().lower()
     raw_hours = data.get("hours")
+    start_time = str(data.get("startTime", "") or "").strip()
+    end_time = str(data.get("endTime", "") or "").strip()
 
     if not emp_id or yr < 2000 or mon not in valid_months or dy < 1 or dy > 31:
         return jsonify({"success": False, "message": "Invalid date or employee"}), 400
@@ -4697,13 +4874,31 @@ def api_lm_edit_request(req_id):
 
     hours = None
     if lv_type == "P" or lv_type2 == "P":
-        try:
-            hours = float(raw_hours)
-        except (TypeError, ValueError):
-            return jsonify({"success": False, "message": "Hours are required for Permission"}), 400
+        if start_time and end_time:
+            try:
+                sh, sm = map(int, start_time.split(":"))
+                eh, em = map(int, end_time.split(":"))
+            except (ValueError, AttributeError):
+                return jsonify({"success": False, "message": "Invalid permission time range"}), 400
+            mins = (eh * 60 + em) - (sh * 60 + sm)
+            if mins <= 0:
+                return jsonify({"success": False, "message": "End time must be after start time"}), 400
+            hours = round(mins / 60.0, 1)
+            start_time = f"{sh:02d}:{sm:02d}"
+            end_time = f"{eh:02d}:{em:02d}"
+        else:
+            try:
+                hours = float(raw_hours)
+            except (TypeError, ValueError):
+                return jsonify({"success": False, "message": "Hours are required for Permission"}), 400
+            start_time = None
+            end_time = None
         if hours <= 0 or hours > int(cfg.get("permission_max_hours", 4)):
             return jsonify({"success": False,
                             "message": f"Permission must be 1–{int(cfg.get('permission_max_hours', 4))} hours"}), 400
+    else:
+        start_time = None
+        end_time = None
 
     conn = get_db()
     cur = conn.cursor(dictionary=True)
@@ -4735,11 +4930,12 @@ def api_lm_edit_request(req_id):
     cur.execute(
         """UPDATE lm_leave_requests
            SET emp_id = %s, yr = %s, mon = %s, dy = %s, category = %s,
-               lv_type = %s, lv_type2 = %s, hours = %s, reason = %s,
-               admin_note = %s, status = %s, reviewed_by = %s, reviewed_at = NOW()
+               lv_type = %s, lv_type2 = %s, hours = %s, start_time = %s, end_time = %s,
+               reason = %s, admin_note = %s, status = %s,
+               reviewed_by = %s, reviewed_at = NOW()
            WHERE id = %s""",
-        (emp_id, yr, mon, dy, category, lv_type, lv_type2, hours, reason, admin_note,
-         final_status, session["user_id"], req_id),
+        (emp_id, yr, mon, dy, category, lv_type, lv_type2, hours, start_time, end_time,
+         reason, admin_note, final_status, session["user_id"], req_id),
     )
     conn.commit()
     cur.close()

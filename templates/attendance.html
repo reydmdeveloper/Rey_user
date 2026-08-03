@@ -69,6 +69,7 @@
 
 <div class="att-tabs">
     <button class="att-tab active" id="att-tab-overview" onclick="attGo('overview')"><i class="fa-solid fa-clock"></i> Overview</button>
+    <button class="att-tab" id="att-tab-history" onclick="attGo('history')"><i class="fa-solid fa-clock-rotate-left"></i> History</button>
     <button class="att-tab" id="att-tab-request" onclick="attGo('request')"><i class="fa-solid fa-paper-plane"></i> Request Leave</button>
 </div>
 
@@ -152,7 +153,7 @@
     <div style="overflow-x:auto">
         <table class="att-table">
             <thead>
-                <tr><th>Date</th><th>Login</th><th>Logout</th><th>Hours</th><th>Status</th></tr>
+                <tr><th>Date</th><th>Login</th><th>Logout</th><th>Hours</th><th>Status</th>{% if session.get('role') == 'admin' %}<th>Actions</th>{% endif %}</tr>
             </thead>
             <tbody>
                 {% for log in recent_logs %}
@@ -172,6 +173,12 @@
                             <span class="badge badge-warning">In Progress</span>
                         {% endif %}
                     </td>
+                    {% if session.get('role') == 'admin' %}
+                    <td>
+                        <button class="lm-btn lm-btn-ghost lm-btn-sm" onclick="openEditLog({{ log.id }})" title="Edit"><i class="fa-solid fa-pen"></i></button>
+                        <button class="lm-btn lm-btn-danger lm-btn-sm" onclick="deleteLog({{ log.id }})" title="Delete"><i class="fa-solid fa-trash"></i></button>
+                    </td>
+                    {% endif %}
                 </tr>
                 {% endfor %}
             </tbody>
@@ -212,6 +219,48 @@
 {% endif %}
 </div><!-- /att-view-overview -->
 
+<!-- Attendance History -->
+<div id="att-view-history" class="att-view">
+    <div class="att-card" style="margin-bottom:16px">
+        <h3><i class="fa-solid fa-clock-rotate-left"></i> Attendance History</h3>
+        <div class="lm-fgroup" style="margin-bottom:12px;max-width:360px">
+            <label class="lm-flabel">Employee</label>
+            <select class="lm-input" id="hist-emp" onchange="loadHist()">
+                <option value="">Loading…</option>
+            </select>
+        </div>
+        <div id="hist-list" style="overflow-x:auto"></div>
+    </div>
+</div>
+
+<!-- Edit Log Modal -->
+<div class="lm-modal-bg" id="log-edit-modal">
+    <div class="lm-modal" style="max-width:480px">
+        <div class="lm-modal-header"><h3 style="margin:0;font-size:15px">Edit Attendance Log</h3>
+            <button class="lm-btn lm-btn-ghost lm-btn-sm" onclick="closeLogEditModal()">✕</button>
+        </div>
+        <div class="lm-modal-body">
+            <div class="lm-fgroup" style="margin-bottom:12px">
+                <label class="lm-flabel">Login Time</label>
+                <input type="datetime-local" class="lm-input" id="log-edit-login"/>
+            </div>
+            <div class="lm-fgroup" style="margin-bottom:12px">
+                <label class="lm-flabel">Logout Time</label>
+                <input type="datetime-local" class="lm-input" id="log-edit-logout"/>
+            </div>
+            <div class="lm-fgroup" style="margin-bottom:12px">
+                <label class="lm-flabel">Hours</label>
+                <input type="number" class="lm-input" id="log-edit-hours" min="0" step="0.01" value="0"/>
+            </div>
+            <div id="log-edit-err" style="font-size:12px;color:var(--danger);display:none"></div>
+        </div>
+        <div class="lm-modal-btns">
+            <button class="lm-btn lm-btn-ghost" onclick="closeLogEditModal()">Cancel</button>
+            <button class="lm-btn lm-btn-primary" onclick="saveLogEdit()"><i class="fa-solid fa-check"></i> Save</button>
+        </div>
+    </div>
+</div>
+
 <!-- Request Leave -->
 <div id="att-view-request" class="att-view">
     <div class="att-card" style="margin-bottom:16px">
@@ -249,8 +298,14 @@
                 <div class="req-types" id="req-types"></div>
             </div>
             <div id="req-hours-wrap" class="lm-fgroup" style="margin-bottom:12px;display:none">
-                <label class="lm-flabel">Hours</label>
-                <input type="number" class="lm-input" id="req-hours" min="1" step="0.5" value="2"/>
+                <label class="lm-flabel">Timing</label>
+                <div style="display:flex;gap:8px;align-items:center">
+                    <input type="time" class="lm-input" id="req-start" value="09:00" onchange="reqCalcHours()"/>
+                    <span style="color:var(--muted)">→</span>
+                    <input type="time" class="lm-input" id="req-end" value="11:00" onchange="reqCalcHours()"/>
+                </div>
+                <div style="font-size:11px;color:var(--muted);margin-top:4px">Duration: <b id="req-hours-read">2</b> h</div>
+                <input type="hidden" id="req-hours" value="2"/>
             </div>
             <div class="lm-fgroup" style="margin-bottom:12px">
                 <label class="lm-flabel">Reason</label>
@@ -333,7 +388,119 @@ function attGo(v) {
     document.querySelectorAll('.att-view').forEach(el => el.classList.toggle('active', el.id === 'att-view-' + v));
     document.querySelectorAll('.att-tab').forEach(t => t.classList.toggle('active', t.id === 'att-tab-' + v));
     if (v === 'request') renderReq();
+    if (v === 'history') loadHist();
 }
+
+// ═══ ATTENDANCE HISTORY ═══
+let _editingLogId = null;
+
+async function loadHist() {
+    const sel = document.getElementById('hist-emp');
+    const list = document.getElementById('hist-list');
+    if (!sel || !list) return;
+    if (sel.options.length <= 1 || sel.options[0].text === 'Loading…') {
+        await loadEmpSelector();
+    }
+    const empId = sel.value;
+    if (!empId && !IS_ADMIN) {
+        HIST_LOGS = [];
+        list.innerHTML = '<div style="padding:24px;text-align:center;color:var(--muted)">Loading your records…</div>';
+        const d = await lmApi('/api/attendance/history');
+        if (!d || !Array.isArray(d)) { list.innerHTML = '<div style="padding:24px;text-align:center;color:var(--danger)">Failed to load</div>'; return; }
+        HIST_LOGS = d;
+    } else if (!empId) {
+        list.innerHTML = '<div style="padding:24px;text-align:center;color:var(--muted)">Select an employee to view their history</div>';
+        return;
+    } else {
+        list.innerHTML = '<div style="padding:24px;text-align:center;color:var(--muted)">Loading…</div>';
+        const d = await lmApi('/api/attendance/history?empId=' + encodeURIComponent(empId));
+        if (!d || !Array.isArray(d)) { list.innerHTML = '<div style="padding:24px;text-align:center;color:var(--danger)">Failed to load</div>'; return; }
+        HIST_LOGS = d;
+    }
+    if (!HIST_LOGS.length) { list.innerHTML = '<div style="padding:24px;text-align:center;color:var(--muted)">No records found</div>'; return; }
+    list.innerHTML = `<table class="att-table"><thead><tr><th>Date</th><th>Login</th><th>Logout</th><th>Hours</th><th>Status</th>${IS_ADMIN ? '<th>Actions</th>' : ''}</tr></thead><tbody>` +
+        HIST_LOGS.map(r => {
+            const status = r.logout_time ? 'Complete' : 'In Progress';
+            const badge = r.logout_time ? 'bapproved' : 'bpending';
+            let acts = '';
+            if (IS_ADMIN) {
+                acts = `<td><button class="lm-btn lm-btn-ghost lm-btn-sm" onclick="openEditLog(${r.id})" title="Edit"><i class="fa-solid fa-pen"></i></button>
+                    <button class="lm-btn lm-btn-danger lm-btn-sm" onclick="deleteLog(${r.id})" title="Delete"><i class="fa-solid fa-trash"></i></button></td>`;
+            }
+            return `<tr>
+                <td>${r.login_date}</td>
+                <td style="font-family:var(--mono)">${r.login_time ? r.login_time.replace('T',' ') : '—'}</td>
+                <td style="font-family:var(--mono)">${r.logout_time ? r.logout_time.replace('T',' ') : '<span class="badge badge-warning">Active</span>'}</td>
+                <td style="font-family:var(--mono);font-weight:600">${r.hours_spent != null ? r.hours_spent + 'h' : '—'}</td>
+                <td><span class="lm-badge ${badge}">${status}</span></td>
+                ${acts}
+            </tr>`;
+        }).join('') + '</tbody></table>';
+}
+
+async function loadEmpSelector() {
+    const sel = document.getElementById('hist-emp');
+    if (!sel) return;
+    if (IS_ADMIN) {
+        const d = await lmApi('/api/lm/me');
+        const emps = (d && Array.isArray(d.employees)) ? d.employees : [];
+        sel.innerHTML = '<option value="">All employees</option>' + emps.map(e =>
+            `<option value="${e.empId}">${escHtml(e.name)} (${e.empId})</option>`).join('');
+    } else {
+        sel.innerHTML = '<option value="">My records</option>';
+        sel.value = '';
+    }
+}
+
+function openEditLog(logId) {
+    const log = HIST_LOGS.find(x => x.id === logId);
+    if (!log) return;
+    _editingLogId = logId;
+    document.getElementById('log-edit-login').value = log.login_time ? log.login_time.slice(0,16) : '';
+    document.getElementById('log-edit-logout').value = log.logout_time ? log.logout_time.slice(0,16) : '';
+    document.getElementById('log-edit-hours').value = log.hours_spent != null ? log.hours_spent : '';
+    document.getElementById('log-edit-err').style.display = 'none';
+    document.getElementById('log-edit-modal').classList.add('open');
+}
+
+function closeLogEditModal() {
+    document.getElementById('log-edit-modal').classList.remove('open');
+    _editingLogId = null;
+}
+
+async function saveLogEdit() {
+    if (_editingLogId == null) return;
+    const login = document.getElementById('log-edit-login').value;
+    const logout = document.getElementById('log-edit-logout').value;
+    const hours = document.getElementById('log-edit-hours').value;
+    const errEl = document.getElementById('log-edit-err');
+    errEl.style.display = 'none';
+    if (login && logout && login >= logout) {
+        errEl.textContent = 'Logout must be after login'; errEl.style.display = 'block'; return;
+    }
+    const payload = {};
+    if (login) payload.loginTime = login;
+    if (logout) payload.logoutTime = logout;
+    if (hours !== '') payload.hours = parseFloat(hours);
+    const res = await lmApi('/api/attendance/logs/' + _editingLogId + '/edit', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    if (!res.success) { errEl.textContent = res.message || 'Save failed'; errEl.style.display = 'block'; return; }
+    closeLogEditModal();
+    lmToast('Attendance log updated', 'ok');
+    await loadHist();
+}
+
+async function deleteLog(logId) {
+    if (!confirm('Delete this attendance log entry? This cannot be undone.')) return;
+    const res = await lmApi('/api/attendance/logs/' + logId + '/delete', { method: 'POST' });
+    if (!res.success) { lmToast(res.message || 'Delete failed', 'err'); return; }
+    lmToast('Attendance log deleted', 'err');
+    await loadHist();
+}
+
+let HIST_LOGS = [];
 
 async function loadConfig() {
     const data = await lmApi('/api/lm/settings');
@@ -403,12 +570,32 @@ function renderReqTypes() {
 function reqPickType(code) {
     reqSelType = code;
     renderReqTypes();
-    const cfg = LM_CFG || { permission_max_hours: 4 };
     const hours = document.getElementById('req-hours-wrap');
     if (hours) {
         hours.style.display = (code === 'permission') ? '' : 'none';
-        if (code === 'permission') document.getElementById('req-hours').max = cfg.permission_max_hours || 4;
+        if (code === 'permission') {
+            const cfg = LM_CFG || { permission_max_hours: 4 };
+            document.getElementById('req-start').max = cfg.permission_start_max || '';
+            document.getElementById('req-hours').max = cfg.permission_max_hours || 4;
+            if (!document.getElementById('req-end').value) document.getElementById('req-end').value = '11:00';
+            reqCalcHours();
+        }
     }
+}
+
+function reqCalcHours() {
+    const st = (document.getElementById('req-start').value || '');
+    const et = (document.getElementById('req-end').value || '');
+    const disp = document.getElementById('req-hours-read');
+    const hidden = document.getElementById('req-hours');
+    if (!st || !et) { if (disp) disp.textContent = '-'; return; }
+    const [sh, sm] = st.split(':').map(Number);
+    const [eh, em] = et.split(':').map(Number);
+    const mins = (eh * 60 + em) - (sh * 60 + sm);
+    if (mins <= 0) { if (disp) disp.textContent = 'invalid'; return; }
+    const hrs = Math.round((mins / 60) * 10) / 10;
+    if (disp) disp.textContent = hrs;
+    if (hidden) hidden.value = hrs;
 }
 
 function updateReqBalance() {
@@ -497,7 +684,7 @@ function renderReqList() {
             <div style="font-weight:600;font-size:12px">${r.empName?escHtml(r.empName)+' — ':''}${r.month} ${r.day}, ${r.year}
                 <span class="lm-badge ${badges[r.status]||'bpro'}" style="text-transform:uppercase">${r.status}</span></div>
             <div style="font-size:11px;color:var(--muted);margin-top:2px">
-                ${CAT_LABELS[r.category]||r.category||'Leave'}${r.hours?` · ${r.hours}h`:''}${r.reason?` — ${escHtml(r.reason)}`:''}
+                ${CAT_LABELS[r.category]||r.category||'Leave'}${r.hours?` · ${r.hours}h`:''}${r.startTime&&r.endTime?` (${r.startTime}–${r.endTime})`:''}${r.reason?` — ${escHtml(r.reason)}`:''}
             </div>
             ${r.adminNote?`<div style="font-size:10px;color:var(--warning);margin-top:2px">Admin note: ${escHtml(r.adminNote)}</div>`:''}
         </div>`).join('');
@@ -511,13 +698,18 @@ async function submitRequest() {
     const dy = parseInt(document.getElementById('req-day').value);
     const category = reqSelType;
     const hours = category === 'permission' ? parseFloat(document.getElementById('req-hours').value) : null;
+    const startTime = category === 'permission' ? document.getElementById('req-start').value : null;
+    const endTime = category === 'permission' ? document.getElementById('req-end').value : null;
     const reason = document.getElementById('req-reason').value.trim();
     if (!empId) { showReqErr('Select an employee first'); return; }
     if (!category) { showReqErr('Select a leave category'); return; }
-    if (category === 'permission' && (!hours || isNaN(hours) || hours <= 0)) { showReqErr('Enter permission hours'); return; }
+    if (category === 'permission') {
+        if (!startTime || !endTime) { showReqErr('Select permission start and end time'); return; }
+        if (!hours || isNaN(hours) || hours <= 0) { showReqErr('Enter a valid permission time range'); return; }
+    }
     const res = await lmApi('/api/lm/requests', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ empId, year: yr, month: mon, day: dy, category, hours, reason })
+        body: JSON.stringify({ empId, year: yr, month: mon, day: dy, category, hours, startTime, endTime, reason })
     });
     if (!res.success) { showReqErr(res.message || 'Could not submit request'); return; }
     document.getElementById('req-reason').value = '';
