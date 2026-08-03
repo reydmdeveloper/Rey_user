@@ -400,6 +400,7 @@ def init_db():
                 yr INT NOT NULL,
                 mon VARCHAR(5) NOT NULL,
                 dy INT NOT NULL,
+                category VARCHAR(10) DEFAULT NULL,
                 lv_type VARCHAR(4) NOT NULL,
                 lv_type2 VARCHAR(4) DEFAULT NULL,
                 hours DECIMAL(4,1) DEFAULT NULL,
@@ -414,6 +415,13 @@ def init_db():
                 INDEX idx_date (yr, mon, dy)
             )
         """)
+
+        # Migration: requests carry only a category (full / half / permission);
+        # the admin assigns the actual leave type on approval.
+        try:
+            cur.execute("ALTER TABLE lm_leave_requests ADD COLUMN category VARCHAR(10) DEFAULT NULL")
+        except mysql.connector.Error:
+            pass
 
         # ─── MACRO FILES ─────────────────────────────────────────────
         cur.execute("""
@@ -4409,34 +4417,37 @@ def api_lm_capacity():
 @login_required
 @tool_required_any("leavemanager", "attendance")
 def api_lm_create_request():
+    """User submits a leave request with only a date and a category
+    (full / half / permission). The admin assigns the specific leave type
+    when approving."""
     data = request.get_json() or {}
     emp_id = str(data.get("empId", "")).strip().upper()
     yr = int(data.get("year", 0) or 0)
     mon = str(data.get("month", "")).strip()
     dy = int(data.get("day", 0) or 0)
-    lv_type = str(data.get("lvType", "")).strip().upper()
-    lv_type2 = str(data.get("lvType2", "") or "").strip().upper() or None
+    category = str(data.get("category", "")).strip().lower()
     reason = str(data.get("reason", "") or "").strip()[:500]
     hours = data.get("hours")
 
     valid_months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    valid_categories = ('full', 'half', 'permission')
     cfg = get_lm_config()
-    enabled_types = [t for t, v in cfg["types"].items() if v.get("enabled")]
 
     if not emp_id or yr < 2000 or mon not in valid_months or dy < 1 or dy > 31:
         return jsonify({"success": False, "message": "Invalid date or employee"}), 400
-    if lv_type not in enabled_types or (lv_type2 and lv_type2 not in enabled_types):
-        return jsonify({"success": False, "message": "This leave type is not enabled"}), 400
-    if lv_type2 and not cfg.get("allow_two_half_days"):
-        return jsonify({"success": False, "message": "Two half-day leaves in one day is disabled"}), 400
-    if lv_type == "P":
+    if category not in valid_categories:
+        return jsonify({"success": False, "message": "Select Full day, Half day or Permission"}), 400
+
+    if category == "permission":
         try:
             hours = float(hours)
-        except Exception:
+        except (TypeError, ValueError):
             return jsonify({"success": False, "message": "Hours are required for Permission"}), 400
         if hours <= 0 or hours > int(cfg.get("permission_max_hours", 4)):
             return jsonify({"success": False,
                             "message": f"Permission must be 1–{int(cfg.get('permission_max_hours', 4))} hours"}), 400
+    else:
+        hours = None
 
     conn = get_db()
     cur = conn.cursor(dictionary=True)
@@ -4479,9 +4490,9 @@ def api_lm_create_request():
     try:
         cur.execute(
             """INSERT INTO lm_leave_requests
-               (user_id, emp_id, yr, mon, dy, lv_type, lv_type2, hours, reason)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
-            (session["user_id"], emp_id, yr, mon, dy, lv_type, lv_type2, hours, reason),
+               (user_id, emp_id, yr, mon, dy, category, lv_type, lv_type2, hours, reason)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+            (session["user_id"], emp_id, yr, mon, dy, category, '', None, hours, reason),
         )
         conn.commit()
     finally:
@@ -4528,6 +4539,7 @@ def api_lm_list_requests():
         "year": r["yr"],
         "month": r["mon"],
         "day": r["dy"],
+        "category": (r.get("category") or "").lower(),
         "lvType": r["lv_type"],
         "lvType2": r["lv_type2"] or "",
         "hours": float(r["hours"]) if r["hours"] is not None else None,
@@ -4563,23 +4575,51 @@ def api_lm_review_request(req_id, action):
         return jsonify({"success": False, "message": "Request already reviewed"}), 400
 
     if action == "approve":
-        types = [req["lv_type"]]
-        if req["lv_type2"]:
-            types.append(req["lv_type2"])
-        for t in types:
-            hours = req["hours"] if t == "P" else None
-            cur.execute(
-                """INSERT INTO lm_leaves (emp_id, yr, mon, dy, lv_type, hours)
-                   VALUES (%s, %s, %s, %s, %s, %s)
-                   ON DUPLICATE KEY UPDATE lv_type = VALUES(lv_type), hours = VALUES(hours)""",
-                (req["emp_id"], req["yr"], req["mon"], req["dy"], t, hours),
-            )
-    cur.execute(
-        """UPDATE lm_leave_requests
-           SET status = %s, admin_note = %s, reviewed_by = %s, reviewed_at = NOW()
-           WHERE id = %s""",
-        ("approved" if action == "approve" else "declined", admin_note, session["user_id"], req_id),
-    )
+        # The admin assigns the specific leave type on approval.
+        cfg = get_lm_config()
+        valid_types = [t for t, v in cfg["types"].items() if v.get("enabled") is not False]
+        lv_type = str(data.get("lvType", "") or req["lv_type"] or "").strip().upper()
+        lv_type2 = str(data.get("lvType2", "") or req["lv_type2"] or "").strip().upper() or None
+        if not lv_type:
+            cur.close()
+            conn.close()
+            return jsonify({"success": False, "message": "Select a leave type to approve"}), 400
+        for t in ([lv_type] + ([lv_type2] if lv_type2 else [])):
+            if t not in valid_types:
+                cur.close()
+                conn.close()
+                return jsonify({"success": False,
+                                "message": f"Leave type {t} is not enabled"}), 400
+        hours = None
+        if lv_type == "P" or lv_type2 == "P":
+            try:
+                hours = float(data.get("hours") if data.get("hours") is not None else req["hours"])
+            except (TypeError, ValueError):
+                cur.close()
+                conn.close()
+                return jsonify({"success": False,
+                                "message": "Hours are required for Permission"}), 400
+            if hours <= 0 or hours > int(cfg.get("permission_max_hours", 4)):
+                cur.close()
+                conn.close()
+                return jsonify({"success": False,
+                                "message": f"Permission must be 1–{int(cfg.get('permission_max_hours', 4))} hours"}), 400
+        _lm_insert_request_leaves(cur, req["emp_id"], req["yr"], req["mon"], req["dy"],
+                                  lv_type, lv_type2, hours)
+        cur.execute(
+            """UPDATE lm_leave_requests
+               SET status = %s, admin_note = %s, lv_type = %s, lv_type2 = %s, hours = %s,
+                   reviewed_by = %s, reviewed_at = NOW()
+               WHERE id = %s""",
+            ("approved", admin_note, lv_type, lv_type2, hours, session["user_id"], req_id),
+        )
+    else:
+        cur.execute(
+            """UPDATE lm_leave_requests
+               SET status = %s, admin_note = %s, reviewed_by = %s, reviewed_at = NOW()
+               WHERE id = %s""",
+            ("declined", admin_note, session["user_id"], req_id),
+        )
     conn.commit()
     cur.close()
     conn.close()
@@ -4631,6 +4671,7 @@ def api_lm_edit_request(req_id):
     except (TypeError, ValueError):
         yr = dy = 0
     mon = str(data.get("month", "")).strip()
+    category = str(data.get("category", "") or "").strip().lower()
     lv_type = str(data.get("lvType", "")).strip().upper()
     lv_type2 = str(data.get("lvType2", "") or "").strip().upper()
     reason = str(data.get("reason", "") or "").strip()[:500]
@@ -4640,6 +4681,8 @@ def api_lm_edit_request(req_id):
 
     if not emp_id or yr < 2000 or mon not in valid_months or dy < 1 or dy > 31:
         return jsonify({"success": False, "message": "Invalid date or employee"}), 400
+    if category and category not in ("full", "half", "permission"):
+        return jsonify({"success": False, "message": "Invalid category"}), 400
     if not lv_type:
         return jsonify({"success": False, "message": "Leave type is required"}), 400
     if new_status and new_status not in ("pending", "approved", "declined"):
@@ -4691,11 +4734,11 @@ def api_lm_edit_request(req_id):
 
     cur.execute(
         """UPDATE lm_leave_requests
-           SET emp_id = %s, yr = %s, mon = %s, dy = %s, lv_type = %s, lv_type2 = %s,
-               hours = %s, reason = %s, admin_note = %s, status = %s,
-               reviewed_by = %s, reviewed_at = NOW()
+           SET emp_id = %s, yr = %s, mon = %s, dy = %s, category = %s,
+               lv_type = %s, lv_type2 = %s, hours = %s, reason = %s,
+               admin_note = %s, status = %s, reviewed_by = %s, reviewed_at = NOW()
            WHERE id = %s""",
-        (emp_id, yr, mon, dy, lv_type, lv_type2, hours, reason, admin_note,
+        (emp_id, yr, mon, dy, category, lv_type, lv_type2, hours, reason, admin_note,
          final_status, session["user_id"], req_id),
     )
     conn.commit()

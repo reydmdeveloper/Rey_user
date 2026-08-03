@@ -245,12 +245,8 @@
             <div id="req-bal-info" style="font-size:12px;color:var(--muted);margin-bottom:10px"></div>
             <div class="req-cap" id="req-cap"></div>
             <div class="lm-fgroup" style="margin-bottom:12px">
-                <label class="lm-flabel">Leave Type</label>
+                <label class="lm-flabel">Duration</label>
                 <div class="req-types" id="req-types"></div>
-            </div>
-            <div id="req-slot2-wrap" class="lm-fgroup" style="margin-bottom:12px;display:none">
-                <label class="lm-flabel">Second half-day (same date)</label>
-                <select class="lm-input" id="req-slot2" onchange="updateReqBalance()"></select>
             </div>
             <div id="req-hours-wrap" class="lm-fgroup" style="margin-bottom:12px;display:none">
                 <label class="lm-flabel">Hours</label>
@@ -308,6 +304,7 @@ function lmToast(msg, type='ok') {
 
 const IS_ADMIN = {{ 'true' if session.get('role') == 'admin' else 'false' }};
 const MNS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const CAT_LABELS = { full: 'Full day', half: 'Half day', permission: 'Permission' };
 let LM_CFG = null, MY_EMPS = [], REQUESTS = [], reqSelType = '';
 
 function getDIM(year) {
@@ -388,13 +385,16 @@ function renderReqDays() {
 function renderReqTypes() {
     const wrap = document.getElementById('req-types');
     if (!wrap) return;
-    const cfg = LM_CFG || { types: {} };
+    const cats = [
+        { code: 'full', card: 'Full', label: 'Full day' },
+        { code: 'half', card: 'Half', label: 'Half day' },
+        { code: 'permission', card: 'Perm', label: 'Permission' }
+    ];
     let h = '';
-    for (const [code, t] of Object.entries(cfg.types)) {
-        if (!t || t.enabled === false) continue;
-        h += `<div class="req-type${reqSelType===code?' sel':''}" id="rtype-${code}" onclick="reqPickType('${code}')">
-                <div class="rc">${code}</div>
-                <div class="rl">${t.label||code}</div>
+    for (const c of cats) {
+        h += `<div class="req-type${reqSelType===c.code?' sel':''}" id="rtype-${c.code}" onclick="reqPickType('${c.code}')">
+                <div class="rc">${c.card}</div>
+                <div class="rl">${c.label}</div>
               </div>`;
     }
     wrap.innerHTML = h;
@@ -403,36 +403,17 @@ function renderReqTypes() {
 function reqPickType(code) {
     reqSelType = code;
     renderReqTypes();
-    const cfg = LM_CFG || { types: {}, allow_two_half_days: true, permission_max_hours: 4 };
-    const t = cfg.types[code] || {};
-    const slot2 = document.getElementById('req-slot2-wrap');
+    const cfg = LM_CFG || { permission_max_hours: 4 };
     const hours = document.getElementById('req-hours-wrap');
-    if (slot2) {
-        const show2 = (!t.full && cfg.allow_two_half_days && ['HC','HS'].includes(code));
-        slot2.style.display = show2 ? '' : 'none';
-        if (show2) {
-            const sel = document.getElementById('req-slot2');
-            sel.innerHTML = '<option value="">None</option>' + Object.entries(cfg.types)
-                .filter(([c,x])=>x && x.enabled!==false && !x.full && c!==code && ['HC','HS'].includes(c))
-                .map(([c,x])=>`<option value="${c}">${c} — ${x.label||c}</option>`).join('');
-        }
-    }
     if (hours) {
-        hours.style.display = (code==='P') ? '' : 'none';
-        if (code==='P') document.getElementById('req-hours').max = cfg.permission_max_hours || 4;
+        hours.style.display = (code === 'permission') ? '' : 'none';
+        if (code === 'permission') document.getElementById('req-hours').max = cfg.permission_max_hours || 4;
     }
-    updateReqBalance();
 }
 
-async function updateReqBalance() {
-    const empId = reqSelEmp();
+function updateReqBalance() {
     const info = document.getElementById('req-bal-info');
-    if (!empId || !info) { if (info) info.innerHTML=''; return; }
-    const yr = parseInt(document.getElementById('req-year').value);
-    const mon = document.getElementById('req-month').value;
-    const d = await lmApi(`/api/lm/balance?empId=${encodeURIComponent(empId)}&year=${yr}&month=${mon}`);
-    if (!d || d.success === false) { info.innerHTML = ''; return; }
-    info.innerHTML = `<i class="fa-solid fa-scale-balanced"></i> <b style="color:var(--accent2)">CL ${d.aC}</b> &nbsp;·&nbsp; <b style="color:var(--warning)">SL ${d.aS}</b> available`;
+    if (info) info.innerHTML = '';
 }
 
 async function updateReqCapacity() {
@@ -516,7 +497,7 @@ function renderReqList() {
             <div style="font-weight:600;font-size:12px">${r.empName?escHtml(r.empName)+' — ':''}${r.month} ${r.day}, ${r.year}
                 <span class="lm-badge ${badges[r.status]||'bpro'}" style="text-transform:uppercase">${r.status}</span></div>
             <div style="font-size:11px;color:var(--muted);margin-top:2px">
-                ${[r.lvType, r.lvType2].filter(Boolean).join(' + ')}${r.hours?` · ${r.hours}h`:''}${r.reason?` — ${escHtml(r.reason)}`:''}
+                ${CAT_LABELS[r.category]||r.category||'Leave'}${r.hours?` · ${r.hours}h`:''}${r.reason?` — ${escHtml(r.reason)}`:''}
             </div>
             ${r.adminNote?`<div style="font-size:10px;color:var(--warning);margin-top:2px">Admin note: ${escHtml(r.adminNote)}</div>`:''}
         </div>`).join('');
@@ -528,27 +509,19 @@ async function submitRequest() {
     const yr = parseInt(document.getElementById('req-year').value);
     const mon = document.getElementById('req-month').value;
     const dy = parseInt(document.getElementById('req-day').value);
-    const lvType = reqSelType;
-    const lvType2 = (document.getElementById('req-slot2')||{}).value || '';
-    const hours = lvType==='P' ? parseFloat(document.getElementById('req-hours').value) : null;
+    const category = reqSelType;
+    const hours = category === 'permission' ? parseFloat(document.getElementById('req-hours').value) : null;
     const reason = document.getElementById('req-reason').value.trim();
     if (!empId) { showReqErr('Select an employee first'); return; }
-    if (!lvType) { showReqErr('Select a leave type'); return; }
-    if (lvType==='P' && (!hours || isNaN(hours) || hours<=0)) { showReqErr('Enter permission hours'); return; }
-    const bal = await lmApi(`/api/lm/balance?empId=${encodeURIComponent(empId)}&year=${yr}&month=${mon}`);
-    const aC = (bal && bal.success !== false) ? (bal.aC||0) : 0;
-    const aS = (bal && bal.success !== false) ? (bal.aS||0) : 0;
-    for (const t of [lvType, lvType2].filter(Boolean)) {
-        if ((t==='C'||t==='HC') && aC<=0) { showReqErr('Not enough Casual balance for ' + t); return; }
-        if ((t==='S'||t==='HS') && aS<=0) { showReqErr('Not enough Sick balance for ' + t); return; }
-    }
+    if (!category) { showReqErr('Select a leave category'); return; }
+    if (category === 'permission' && (!hours || isNaN(hours) || hours <= 0)) { showReqErr('Enter permission hours'); return; }
     const res = await lmApi('/api/lm/requests', {
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ empId, year:yr, month:mon, day:dy, lvType, lvType2, hours, reason })
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ empId, year: yr, month: mon, day: dy, category, hours, reason })
     });
     if (!res.success) { showReqErr(res.message || 'Could not submit request'); return; }
     document.getElementById('req-reason').value = '';
-    lmToast('Leave request submitted for approval','ok');
+    lmToast('Leave request submitted for approval', 'ok');
     await loadRequests();
     renderReqList();
     updateReqCapacity();

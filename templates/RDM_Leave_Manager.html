@@ -630,6 +630,14 @@ table.appr tr:last-child td { border-bottom: none; }
             </div>
         </div>
         <div class="lm-fgroup" style="margin-bottom:12px">
+            <label class="lm-flabel">Category</label>
+            <select class="lm-input" id="rq-category">
+                <option value="full">Full day</option>
+                <option value="half">Half day</option>
+                <option value="permission">Permission</option>
+            </select>
+        </div>
+        <div class="lm-fgroup" style="margin-bottom:12px">
             <label class="lm-flabel">Leave Type</label>
             <select class="lm-input" id="rq-type" onchange="rqTypeChanged()"></select>
         </div>
@@ -1518,10 +1526,17 @@ function renderApprovals() {
         return;
     }
     const badges = { pending:'bpending', approved:'bapproved', declined:'bdeclined' };
+    const catNames = { full:'Full day', half:'Half day', permission:'Permission' };
     body.innerHTML = rows.map((r,i) => {
-        const leave = [r.lvType, r.lvType2].filter(Boolean).join(' + ');
+        const cat = catNames[r.category] || r.category || [r.lvType, r.lvType2].filter(Boolean).join(' + ');
+        const catList = (LM_CFG&&LM_CFG.types)||{};
+        const typeOpts = '<option value="">— select type —</option>' + Object.entries(catList)
+            .filter(([,t])=>t && t.enabled!==false)
+            .filter(([c])=> r.category==='permission' ? c==='P' : (r.category==='half' ? !catList[c].full : true))
+            .map(([c,t])=>`<option value="${c}">${c} — ${t.label||c}</option>`).join('');
         const acts = [];
         if (r.status==='pending') {
+            acts.push(`<select class="lm-input" id="rtypeselect-${r.id}" style="width:100%;margin-bottom:5px;font-size:11px">${typeOpts}</select>`);
             acts.push(`<input class="lm-input" id="anote-${r.id}" placeholder="Note" style="width:100%;margin-bottom:5px;font-size:11px">`);
             acts.push(`<div style="display:flex;gap:5px;margin-bottom:5px">
                 <button class="lm-btn lm-btn-primary lm-btn-sm" style="flex:1;justify-content:center" onclick="reviewReq(${r.id},'approve')"><i class="fa-solid fa-check"></i> Approve</button>
@@ -1536,7 +1551,7 @@ function renderApprovals() {
             <td style="font-family:var(--mono);color:var(--muted)">${i+1}</td>
             <td><div style="font-weight:600">${escHtml(r.empName)}</div><div style="font-size:10px;color:var(--muted);font-family:var(--mono)">${escHtml(r.empId)} · ${escHtml(r.dept)}</div></td>
             <td style="font-weight:600;white-space:nowrap">${r.month} ${r.day}, ${r.year}</td>
-            <td><span class="lm-badge bpro">${escHtml(leave)}</span></td>
+            <td><span class="lm-badge bpro">${escHtml(cat)}</span></td>
             <td style="font-family:var(--mono)">${r.hours!=null ? r.hours + 'h' : '-'}</td>
             <td style="font-size:11px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r.reason||'')}">${escHtml(r.reason)||'-'}</td>
             <td style="font-size:11px">${escHtml(r.requester)||'-'}</td>
@@ -1550,9 +1565,16 @@ function renderApprovals() {
 async function reviewReq(id, action) {
     const noteEl = document.getElementById('anote-'+id);
     const note = noteEl ? noteEl.value.trim() : '';
+    const typeSel = document.getElementById('rtypeselect-'+id);
+    const lvType = (typeSel ? typeSel.value : '') || '';
+    const payload = { adminNote: note };
+    if (action === 'approve') {
+        if (!lvType) { lmToast('Select a leave type before approving','err'); return; }
+        payload.lvType = lvType;
+    }
     const res = await lmApi('/api/lm/requests/' + id + '/' + action, {
         method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ adminNote: note })
+        body: JSON.stringify(payload)
     });
     if (!res.success) { lmToast(res.message||'Action failed','err'); return; }
     lmToast(action==='approve' ? 'Request approved — leave added to tracker' : 'Request declined', action==='approve'?'ok':'info');
@@ -1612,6 +1634,7 @@ function openEditReq(id) {
         .map(([c,t])=>`<option value="${c}" ${c===r.lvType2?'selected':''}>${c} — ${t.label||c}</option>`).join('');
 
     document.getElementById('rq-hours').value = r.hours != null ? r.hours : 2;
+    document.getElementById('rq-category').value = r.category || (r.lvType ? 'full' : 'full');
     document.getElementById('rq-reason').value = r.reason || '';
     document.getElementById('rq-note').value = r.adminNote || '';
     document.getElementById('rq-status').value = r.status;
@@ -1654,6 +1677,7 @@ async function saveReqEdit() {
         year: parseInt(document.getElementById('rq-year').value),
         month: document.getElementById('rq-month').value,
         day: parseInt(document.getElementById('rq-day').value),
+        category: document.getElementById('rq-category').value,
         lvType: document.getElementById('rq-type').value,
         lvType2: document.getElementById('rq-type2').value,
         hours: document.getElementById('rq-type').value==='P' ? parseFloat(document.getElementById('rq-hours').value) : null,

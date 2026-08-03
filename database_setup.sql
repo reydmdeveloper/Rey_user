@@ -152,6 +152,7 @@ CREATE TABLE IF NOT EXISTS lm_leave_requests (
     yr INT NOT NULL,
     mon VARCHAR(5) NOT NULL,
     dy INT NOT NULL,
+    category VARCHAR(10) DEFAULT NULL,
     lv_type VARCHAR(4) NOT NULL,
     lv_type2 VARCHAR(4) DEFAULT NULL,
     hours DECIMAL(4,1) DEFAULT NULL,
