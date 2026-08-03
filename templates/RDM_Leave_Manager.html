@@ -498,8 +498,8 @@ table.appr tr:last-child td { border-bottom: none; }
     </div>
     <div id="req-no-link" style="display:none;padding:22px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);font-size:13px;color:var(--muted);margin-bottom:16px">
         <i class="fa-solid fa-circle-info" style="color:var(--accent2)"></i>
-        No employee record is linked to your login account. Ask an admin to open
-        <b>Employee</b> and link your account in <b>Add/Edit Employee → Linked Login</b> before you can request leave.
+        No employee records are available yet. Ask an admin to add employees in
+        <b>Employee</b> before you can request leave.
     </div>
     <div id="req-body" style="display:none">
         <div class="imp-grid">
@@ -1464,20 +1464,29 @@ function renderReq() {
     renderReqDays();
     const sel = document.getElementById('req-emp');
     if (!sel) return;
-    const hasEmp = IS_ADMIN
-        ? DB.employees.some(e=>e.status==='Active')
-        : MY_EMPS.length > 0;
+    let hasEmp = false;
     if (IS_ADMIN) {
+        hasEmp = DB.employees.some(e=>e.status==='Active');
         sel.innerHTML = DB.employees.filter(e=>e.status==='Active')
             .map(e=>`<option value="${e.empId}">${escHtml(e.name)} (${e.empId})</option>`).join('')
             || '<option value="">No active employees</option>';
         document.getElementById('req-emp-group').style.display = '';
     } else {
-        sel.innerHTML = MY_EMPS.map(e=>`<option value="${e.empId}">${escHtml(e.name)} (${e.empId})</option>`).join('')
-            || '<option value="">— no linked account —</option>';
-        document.getElementById('req-emp-group').style.display = MY_EMPS.length ? 'none' : '';
+        const mine     = MY_EMPS.filter(e => e.linked);
+        const unlinked = MY_EMPS.filter(e => !e.linked);
+        if (mine.length) {
+            // Auto-select the user's own linked employee.
+            sel.innerHTML = mine.map(e=>`<option value="${e.empId}">${escHtml(e.name)} (${e.empId})</option>`).join('');
+            document.getElementById('req-emp-group').style.display = 'none';
+            hasEmp = true;
+        } else if (unlinked.length) {
+            // No linked account yet — let the user pick their own (unclaimed) record.
+            sel.innerHTML = unlinked.map(e=>`<option value="${e.empId}">${escHtml(e.name)} (${e.empId})</option>`).join('');
+            document.getElementById('req-emp-group').style.display = '';
+            hasEmp = true;
+        }
     }
-    document.getElementById('req-no-link').style.display = (!hasEmp && !IS_ADMIN) ? 'block' : 'none';
+    document.getElementById('req-no-link').style.display = hasEmp ? 'none' : 'block';
     document.getElementById('req-body').style.display = hasEmp ? 'block' : 'none';
     if (hasEmp) {
         reqSelType = '';

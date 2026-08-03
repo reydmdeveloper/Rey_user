@@ -4247,7 +4247,12 @@ def api_lm_me():
     if session.get("role") == "admin":
         cur.execute("SELECT * FROM lm_employees ORDER BY sno ASC")
     else:
-        cur.execute("SELECT * FROM lm_employees WHERE user_id = %s ORDER BY sno ASC", (session.get("user_id"),))
+        # Own linked employee + unclaimed (unlinked) employees so a user can
+        # request leave for themselves without an admin pre-linking the account.
+        cur.execute(
+            "SELECT * FROM lm_employees WHERE user_id = %s OR user_id IS NULL ORDER BY sno ASC",
+            (session.get("user_id"),),
+        )
     emps = cur.fetchall()
     cur.close()
     conn.close()
@@ -4258,6 +4263,7 @@ def api_lm_me():
             "dept": e["dept"] or "",
             "status": e["status"] or "Active",
             "userId": e.get("user_id"),
+            "linked": e.get("user_id") == session.get("user_id"),
         } for e in emps]
     })
 
@@ -4303,10 +4309,13 @@ def api_lm_create_request():
         cur.close()
         conn.close()
         return jsonify({"success": False, "message": "Employee not found"}), 404
-    if session.get("role") != "admin" and emp.get("user_id") != session.get("user_id"):
-        cur.close()
-        conn.close()
-        return jsonify({"success": False, "message": "You can only request leave for your own linked account"}), 403
+    if session.get("role") != "admin":
+        owner = emp.get("user_id")
+        if owner is not None and owner != session.get("user_id"):
+            cur.close()
+            conn.close()
+            return jsonify({"success": False,
+                            "message": "This employee is linked to another account"}), 403
 
     # Day capacity check: approved leaves + pending/approved requests for the day
     max_day = int(cfg.get("max_leave_per_day", 2))
