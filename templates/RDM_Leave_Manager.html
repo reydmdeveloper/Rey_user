@@ -328,8 +328,6 @@ table.appr tr:last-child td { border-bottom: none; }
         <div class="lm-nav-tabs">
             <button class="lm-ntab active" data-view="tracker" onclick="goView('tracker')"><i class="fa-solid fa-table"></i> Tracker</button>
             <button class="lm-ntab" data-view="dashboard" onclick="goView('dashboard')"><i class="fa-solid fa-chart-bar"></i> Dashboard</button>
-            <button class="lm-ntab" data-view="request" onclick="goView('request')"><i class="fa-solid fa-paper-plane"></i> Request Leave</button>
-            <button class="lm-ntab" data-view="myrequests" onclick="goView('myrequests')"><i class="fa-solid fa-list-check"></i> My Requests <span id="myreq-badge" style="background:#fff;color:var(--accent);border-radius:10px;padding:0 6px;font-size:10px;font-weight:700">0</span></button>
             {% if session.get('role') == 'admin' %}
             <button class="lm-ntab" data-view="approvals" onclick="goView('approvals')"><i class="fa-solid fa-clipboard-check"></i> Approvals <span id="appr-badge" style="background:#fff;color:var(--accent);border-radius:10px;padding:0 6px;font-size:10px;font-weight:700">0</span></button>
             {% endif %}
@@ -489,98 +487,6 @@ table.appr tr:last-child td { border-bottom: none; }
     </div>
 </div><!-- /import -->
 
-<!-- ═══ REQUEST LEAVE ═══ -->
-<div id="view-request" class="lm-page">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px">
-        <h3 style="font-size:18px;font-weight:700">Request Leave
-            <span style="font-size:13px;font-weight:400;color:var(--muted)">Submit for admin approval</span>
-        </h3>
-        <div id="req-bal-info" style="font-size:12px;color:var(--muted)"></div>
-    </div>
-    <div id="req-no-link" style="display:none;padding:22px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);font-size:13px;color:var(--muted);margin-bottom:16px">
-        <i class="fa-solid fa-circle-info" style="color:var(--accent2)"></i>
-        No employee records are available yet. Ask an admin to add employees in
-        <b>Employee</b> before you can request leave.
-    </div>
-    <div id="req-body" style="display:none">
-        <div class="imp-grid">
-            <div class="lm-panel">
-                <div class="lm-phdr"><i class="fa-solid fa-user"></i> Request Details</div>
-                <div style="padding:16px">
-                    <div class="lm-fgroup" id="req-emp-group" style="margin-bottom:12px">
-                        <label class="lm-flabel">Employee</label>
-                        <select class="lm-input" id="req-emp" onchange="updateReqBalance();updateReqCapacity()"></select>
-                    </div>
-                    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px">
-                        <div class="lm-fgroup">
-                            <label class="lm-flabel">Year</label>
-                            <select class="lm-input" id="req-year" onchange="changeYear(this.value);renderReqDays();updateReqBalance();updateReqCapacity()"></select>
-                        </div>
-                        <div class="lm-fgroup">
-                            <label class="lm-flabel">Month</label>
-                            <select class="lm-input" id="req-month" onchange="renderReqDays();updateReqBalance();updateReqCapacity()"></select>
-                        </div>
-                        <div class="lm-fgroup">
-                            <label class="lm-flabel">Day</label>
-                            <select class="lm-input" id="req-day" onchange="updateReqCapacity()"></select>
-                        </div>
-                    </div>
-                    <div class="req-cap" id="req-cap"></div>
-                    <div class="lm-fgroup" style="margin-bottom:12px">
-                        <label class="lm-flabel">Leave Type</label>
-                        <div class="req-types" id="req-types"></div>
-                    </div>
-                    <div id="req-slot2-wrap" class="lm-fgroup" style="margin-bottom:12px;display:none">
-                        <label class="lm-flabel">Second half-day (same date)</label>
-                        <select class="lm-input" id="req-slot2" onchange="updateReqBalance()"></select>
-                        <div style="font-size:10px;color:var(--muted);margin-top:4px">Allows two ½-day leaves (e.g. ½ Casual + ½ Sick) on one date.</div>
-                    </div>
-                    <div id="req-hours-wrap" class="lm-fgroup" style="margin-bottom:12px;display:none">
-                        <label class="lm-flabel">Hours</label>
-                        <input type="number" class="lm-input" id="req-hours" min="1" step="0.5" value="2"/>
-                    </div>
-                    <div class="lm-fgroup" style="margin-bottom:12px">
-                        <label class="lm-flabel">Reason</label>
-                        <textarea class="lm-input" id="req-reason" rows="2" placeholder="Reason for leave…"></textarea>
-                    </div>
-                    <button class="lm-btn lm-btn-primary" id="req-submit" style="width:100%;justify-content:center" onclick="submitRequest()">
-                        <i class="fa-solid fa-paper-plane"></i> Submit Request
-                    </button>
-                    <div id="req-err" style="font-size:12px;color:var(--danger);margin-top:8px;display:none"></div>
-                </div>
-            </div>
-            <div class="lm-panel">
-                <div class="lm-phdr"><i class="fa-solid fa-circle-info"></i> Track Your Requests</div>
-                <div class="lm-pbody">
-                    <p style="font-size:12px;color:var(--muted);margin:0 0 12px">
-                        Submitted requests are shown in the <b>My Requests</b> tab where you can track their
-                        Pending / Approved / Declined status.
-                    </p>
-                    <button class="lm-btn lm-btn-secondary" style="width:100%;justify-content:center" onclick="goView('myrequests')">
-                        <i class="fa-solid fa-list-check"></i> Open My Requests
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-</div><!-- /request -->
-
-<!-- ═══ MY REQUESTS ═══ -->
-<div id="view-myrequests" class="lm-page">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px">
-        <h3 style="font-size:18px;font-weight:700">My Requests
-            <span style="font-size:13px;font-weight:400;color:var(--muted)">Status of submitted leave requests</span>
-        </h3>
-        <button class="lm-btn lm-btn-secondary" style="justify-content:center" onclick="goView('request')">
-            <i class="fa-solid fa-paper-plane"></i> New Request
-        </button>
-    </div>
-    <div class="lm-panel">
-        <div class="lm-phdr"><i class="fa-solid fa-list-check"></i> Requests</div>
-        <div class="lm-pbody" id="req-list"></div>
-    </div>
-</div><!-- /myrequests -->
-
 <!-- ═══ APPROVALS (ADMIN) ═══ -->
 {% if session.get('role') == 'admin' %}
 <div id="view-approvals" class="lm-page">
@@ -711,11 +617,9 @@ const IS_ADMIN = {{ 'true' if session.get('role') == 'admin' else 'false' }};
 const MNS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
 let LM_CFG = null;    // Leave Manager settings (from /api/lm/settings)
-let MY_EMPS = [];     // employee(s) the current user may request leave for
 let REQUESTS = [];    // leave requests (own for users, all for admins)
 let USERS = [];       // user accounts for employee → login linking
 let reqStatusFilter = 'Pending';
-let reqSelType = '';  // selected type in the request form
 
 function getDIM(year) {
     const leap = (year%4===0 && year%100!==0)||(year%400===0);
@@ -760,19 +664,12 @@ async function loadConfig() {
     if (!LM_CFG) LM_CFG = { types: {}, allow_two_half_days: true, max_leave_per_day: 2, permission_max_hours: 4 };
 }
 
-async function loadMyEmps() {
-    const data = await lmApi('/api/lm/me');
-    MY_EMPS = (data && Array.isArray(data.employees)) ? data.employees : [];
-}
-
 async function loadRequests() {
     const data = await lmApi('/api/lm/requests');
     REQUESTS = Array.isArray(data) ? data : [];
     const pending = REQUESTS.filter(r => r.status === 'pending').length;
     const badge = document.getElementById('appr-badge');
     if (badge) badge.textContent = pending;
-    const mbadge = document.getElementById('myreq-badge');
-    if (mbadge) mbadge.textContent = pending;
 }
 
 async function loadUsers() {
@@ -925,7 +822,7 @@ function setEmpFilter(f) {
 
 function goView(v) {
     curView = v;
-    ['tracker','dashboard','import','request','approvals','myrequests'].forEach(x => {
+    ['tracker','dashboard','import','approvals'].forEach(x => {
         const el = document.getElementById('view-'+x);
         if (el) el.classList.toggle('active', x===v);
     });
@@ -935,8 +832,6 @@ function goView(v) {
         if (lbl) lbl.textContent = ` ${curYear} Leave Overview`;
         renderDash();
     }
-    if (v==='request') renderReq();
-    if (v==='myrequests') renderReqList();
     if (v==='approvals') renderApprovals();
 }
 
@@ -1367,213 +1262,6 @@ function escHtml(s) {
         c==='&'?'&amp;':c==='<'?'&lt;':c==='>'?'&gt;':c==='"'?'&quot;':'&#39;');
 }
 
-function reqSelEmp() { return document.getElementById('req-emp').value; }
-
-function fillReqYear() {
-    const sel = document.getElementById('req-year');
-    if (!sel) return;
-    let opts = '';
-    for (let y=curYear-1; y<=curYear+2; y++) opts += `<option value="${y}" ${y===curYear?'selected':''}>${y}</option>`;
-    sel.innerHTML = opts;
-}
-
-function fillReqMonths() {
-    const sel = document.getElementById('req-month');
-    if (!sel) return;
-    sel.innerHTML = MNS.map(m => `<option value="${m}">${m}</option>`).join('');
-    sel.value = MNS[new Date().getMonth()];
-}
-
-function renderReqDays() {
-    const sel = document.getElementById('req-day');
-    if (!sel) return;
-    const mi = MNS.indexOf(document.getElementById('req-month').value);
-    const dim = getDIM(curYear)[mi];
-    const today = new Date().getDate();
-    const cur = parseInt(sel.value);
-    sel.innerHTML = '';
-    for (let d=1; d<=dim; d++) {
-        const o = document.createElement('option');
-        o.value = d; o.textContent = d;
-        if (cur === d) o.selected = true;
-        sel.appendChild(o);
-    }
-    if (!cur) sel.value = today;
-}
-
-function renderReqTypes() {
-    const wrap = document.getElementById('req-types');
-    if (!wrap) return;
-    const cfg = LM_CFG || { types: {} };
-    let h = '';
-    for (const [code, t] of Object.entries(cfg.types)) {
-        if (!t || t.enabled === false) continue;
-        h += `<div class="req-type${reqSelType===code?' sel':''}" id="rtype-${code}" onclick="reqPickType('${code}')">
-                <div class="rc">${code}</div>
-                <div class="rl">${t.label||code}</div>
-              </div>`;
-    }
-    wrap.innerHTML = h;
-}
-
-function reqPickType(code) {
-    reqSelType = code;
-    renderReqTypes();
-    const cfg = LM_CFG || { types: {}, allow_two_half_days: true, permission_max_hours: 4 };
-    const t = cfg.types[code] || {};
-    const slot2 = document.getElementById('req-slot2-wrap');
-    const hours = document.getElementById('req-hours-wrap');
-    if (slot2) {
-        const show2 = (!t.full && cfg.allow_two_half_days && ['HC','HS'].includes(code));
-        slot2.style.display = show2 ? '' : 'none';
-        if (show2) {
-            const sel = document.getElementById('req-slot2');
-            sel.innerHTML = '<option value="">None</option>' + Object.entries(cfg.types)
-                .filter(([c,x])=>x && x.enabled!==false && !x.full && c!==code && ['HC','HS'].includes(c))
-                .map(([c,x])=>`<option value="${c}">${c} — ${x.label||c}</option>`).join('');
-        }
-    }
-    if (hours) {
-        hours.style.display = (code==='P') ? '' : 'none';
-        if (code==='P') document.getElementById('req-hours').max = cfg.permission_max_hours || 4;
-    }
-    updateReqBalance();
-}
-
-function updateReqBalance() {
-    const empId = reqSelEmp();
-    const info = document.getElementById('req-bal-info');
-    if (!empId || !info) return;
-    const mi = MNS.indexOf(document.getElementById('req-month').value);
-    const {aC,aS} = availUpTo(empId, mi);
-    info.innerHTML = `<i class="fa-solid fa-scale-balanced"></i> <b style="color:var(--accent2)">CL ${aC}</b> &nbsp;·&nbsp; <b style="color:var(--warning)">SL ${aS}</b> available`;
-}
-
-// Employees (approved) + pending/approved requests already occupying the day.
-function dayLeaveCount(yr, mon, dy, excludeEmp) {
-    let n = 0;
-    DB.employees.forEach(emp => {
-        if (emp.empId === excludeEmp) return;
-        if (getLv(emp.empId, mon, dy)) n++;
-    });
-    REQUESTS.forEach(r => {
-        if (r.empId === excludeEmp) return;
-        if (r.year===yr && r.month===mon && r.day===dy && (r.status==='pending'||r.status==='approved')) n++;
-    });
-    return n;
-}
-
-function updateReqCapacity() {
-    const capEl = document.getElementById('req-cap');
-    if (!capEl) return;
-    const yr = parseInt(document.getElementById('req-year').value);
-    const mon = document.getElementById('req-month').value;
-    const dy = parseInt(document.getElementById('req-day').value);
-    const empId = reqSelEmp();
-    const max = (LM_CFG && LM_CFG.max_leave_per_day) || 2;
-    const n = dayLeaveCount(yr, mon, dy, empId);
-    const full = n >= max;
-    capEl.className = 'req-cap' + (full ? ' full' : '');
-    capEl.innerHTML = `<i class="fa-solid fa-users"></i> <b>${n}</b> of <b>${max}</b> employee(s) already on leave this day`
-        + (full ? ' — <b>day full, request blocked</b>' : '');
-    const btn = document.getElementById('req-submit');
-    if (btn) btn.disabled = full;
-}
-
-function showReqErr(msg) {
-    const el = document.getElementById('req-err');
-    if (!el) return;
-    if (!msg) { el.style.display='none'; return; }
-    el.textContent = msg; el.style.display='block';
-}
-
-function renderReq() {
-    fillReqYear();
-    fillReqMonths();
-    renderReqDays();
-    const sel = document.getElementById('req-emp');
-    if (!sel) return;
-    let hasEmp = false;
-    if (IS_ADMIN) {
-        hasEmp = DB.employees.some(e=>e.status==='Active');
-        sel.innerHTML = DB.employees.filter(e=>e.status==='Active')
-            .map(e=>`<option value="${e.empId}">${escHtml(e.name)} (${e.empId})</option>`).join('')
-            || '<option value="">No active employees</option>';
-        document.getElementById('req-emp-group').style.display = '';
-    } else {
-        const mine     = MY_EMPS.filter(e => e.linked);
-        const unlinked = MY_EMPS.filter(e => !e.linked);
-        if (mine.length) {
-            // Auto-select the user's own linked employee.
-            sel.innerHTML = mine.map(e=>`<option value="${e.empId}">${escHtml(e.name)} (${e.empId})</option>`).join('');
-            document.getElementById('req-emp-group').style.display = 'none';
-            hasEmp = true;
-        } else if (unlinked.length) {
-            // No linked account yet — let the user pick their own (unclaimed) record.
-            sel.innerHTML = unlinked.map(e=>`<option value="${e.empId}">${escHtml(e.name)} (${e.empId})</option>`).join('');
-            document.getElementById('req-emp-group').style.display = '';
-            hasEmp = true;
-        }
-    }
-    document.getElementById('req-no-link').style.display = hasEmp ? 'none' : 'block';
-    document.getElementById('req-body').style.display = hasEmp ? 'block' : 'none';
-    if (hasEmp) {
-        reqSelType = '';
-        renderReqTypes();
-        updateReqBalance();
-        updateReqCapacity();
-    }
-    renderReqList();
-}
-
-function renderReqList() {
-    const el = document.getElementById('req-list');
-    if (!el) return;
-    if (!REQUESTS.length) { el.innerHTML = '<div style="padding:24px;text-align:center;color:var(--muted)">No requests yet</div>'; return; }
-    const badges = { pending:'bpending', approved:'bapproved', declined:'bdeclined' };
-    el.innerHTML = REQUESTS.map(r => `
-        <div style="padding:10px 14px;border-bottom:1px solid var(--border)">
-            <div style="font-weight:600;font-size:12px">${r.empName?escHtml(r.empName)+' — ':''}${r.month} ${r.day}, ${r.year}
-                <span class="lm-badge ${badges[r.status]||'bpro'}" style="text-transform:uppercase">${r.status}</span></div>
-            <div style="font-size:11px;color:var(--muted);margin-top:2px">
-                ${[r.lvType, r.lvType2].filter(Boolean).join(' + ')}${r.hours?` · ${r.hours}h`:''}${r.reason?` — ${escHtml(r.reason)}`:''}
-            </div>
-            ${r.adminNote?`<div style="font-size:10px;color:var(--warning);margin-top:2px">Admin note: ${escHtml(r.adminNote)}</div>`:''}
-        </div>`).join('');
-}
-
-async function submitRequest() {
-    showReqErr('');
-    const empId = reqSelEmp();
-    const yr = parseInt(document.getElementById('req-year').value);
-    const mon = document.getElementById('req-month').value;
-    const dy = parseInt(document.getElementById('req-day').value);
-    const lvType = reqSelType;
-    const lvType2 = (document.getElementById('req-slot2')||{}).value || '';
-    const hours = lvType==='P' ? parseFloat(document.getElementById('req-hours').value) : null;
-    const reason = document.getElementById('req-reason').value.trim();
-    if (!empId) { showReqErr('Select an employee first'); return; }
-    if (!lvType) { showReqErr('Select a leave type'); return; }
-    if (lvType==='P' && (!hours || isNaN(hours) || hours<=0)) { showReqErr('Enter permission hours'); return; }
-    const mi = MNS.indexOf(mon);
-    const {aC,aS} = availUpTo(empId, mi);
-    for (const t of [lvType, lvType2].filter(Boolean)) {
-        if ((t==='C'||t==='HC') && aC<=0) { showReqErr('Not enough Casual balance for ' + t); return; }
-        if ((t==='S'||t==='HS') && aS<=0) { showReqErr('Not enough Sick balance for ' + t); return; }
-    }
-    const res = await lmApi('/api/lm/requests', {
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ empId, year:yr, month:mon, day:dy, lvType, lvType2, hours, reason })
-    });
-    if (!res.success) { showReqErr(res.message || 'Could not submit request'); return; }
-    document.getElementById('req-reason').value = '';
-    lmToast('Leave request submitted for approval','ok');
-    await loadRequests();
-    renderReqList();
-    renderApprovals();
-    updateReqCapacity();
-}
-
 // ════════════════════════════════════════
 // EXPORT / IMPORT
 // ════════════════════════════════════════
@@ -1809,7 +1497,6 @@ async function reviewReq(id, action) {
     renderApprovals();
     renderGrid();
     if (curView==='dashboard') renderDash();
-    if (curView==='request') renderReqList();
 }
 
 // ════════════════════════════════════════
@@ -1956,7 +1643,6 @@ async function quickSet(val) {
     await loadEmployees();
     await loadConfig();
     await loadLeaves(curYear);
-    await loadMyEmps();
     await loadRequests();
     await loadUsers();
     fillUserSelect();

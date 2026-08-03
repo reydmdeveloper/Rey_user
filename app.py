@@ -716,6 +716,26 @@ def tool_required(tool_key):
     return wrapper
 
 
+def tool_required_any(*tool_keys):
+    """Decorator: ensures the user has access to at least one of the given tools.
+    Admins always have access to every tool."""
+    def wrapper(f):
+        @wraps(f)
+        def decorated(*args, **kwargs):
+            if "user_id" not in session:
+                flash("Please log in first.", "warning")
+                return redirect(url_for("login"))
+            if session.get("role") == "admin":
+                return f(*args, **kwargs)
+            allowed = session.get("allowed_tools", [])
+            if not any(k in allowed for k in tool_keys):
+                flash("You don't have access to this tool.", "danger")
+                return redirect(url_for("dashboard"))
+            return f(*args, **kwargs)
+        return decorated
+    return wrapper
+
+
 def get_user_tools():
     """Return the tools the current user can use. Admins get every tool."""
     if session.get("role") == "admin":
@@ -4178,7 +4198,7 @@ def api_lm_clear_year(year):
 
 @app.route("/api/lm/settings")
 @login_required
-@tool_required("leavemanager")
+@tool_required_any("leavemanager", "attendance")
 def api_lm_settings():
     return jsonify(get_lm_config())
 
@@ -4239,7 +4259,7 @@ def api_lm_save_settings():
 
 @app.route("/api/lm/me")
 @login_required
-@tool_required("leavemanager")
+@tool_required_any("leavemanager", "attendance")
 def api_lm_me():
     """Employee record(s) the current user is allowed to request leave for."""
     conn = get_db()
@@ -4268,9 +4288,126 @@ def api_lm_me():
     })
 
 
+@app.route("/api/lm/balance")
+@login_required
+@tool_required_any("leavemanager", "attendance")
+def api_lm_balance():
+    """Available Casual/Sick balance for an employee up to the given month.
+    Mirrors the client-side availUpTo() logic."""
+    LM_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    emp_id = str(request.args.get("empId", "")).strip().upper()
+    try:
+        year = int(request.args.get("year", 0) or 0)
+    except (TypeError, ValueError):
+        year = 0
+    month = str(request.args.get("month", "")).strip()
+    if not emp_id or not year or month not in LM_MONTHS:
+        return jsonify({"success": False, "message": "Invalid parameters"}), 400
+    up_to = LM_MONTHS.index(month)
+
+    conn = get_db()
+    cur = conn.cursor(dictionary=True)
+    cur.execute("SELECT * FROM lm_employees WHERE emp_id = %s", (emp_id,))
+    emp = cur.fetchone()
+    if not emp:
+        cur.close()
+        conn.close()
+        return jsonify({"success": False, "message": "Employee not found"}), 404
+
+    try:
+        extraCL = float(emp.get("extra_cl") or 0)
+        extraSL = float(emp.get("extra_sl") or 0)
+    except (TypeError, ValueError):
+        extraCL = extraSL = 0.0
+
+    startM = 0
+    jd = emp.get("join_date")
+    if jd:
+        try:
+            if isinstance(jd, datetime):
+                jt = jd.date()
+            elif isinstance(jd, date):
+                jt = jd
+            else:
+                jt = datetime.strptime(str(jd)[:10], "%Y-%m-%d").date()
+            jy, jm = jt.year, jt.month - 1
+            if jy > year:
+                startM = 999
+            elif jy < year:
+                startM = 0
+            else:
+                startM = jm
+        except Exception:
+            startM = 0
+
+    aC, aS = extraCL, extraSL
+    for m in range(0, up_to + 1):
+        if m >= startM:
+            aC += 1
+            aS += 1
+        cur.execute(
+            "SELECT lv_type FROM lm_leaves WHERE emp_id = %s AND yr = %s AND mon = %s",
+            (emp_id, year, LM_MONTHS[m]),
+        )
+        for row in cur.fetchall():
+            p = str(row["lv_type"] or "").strip().upper()
+            if p == 'C':
+                aC -= 1
+            elif p == 'S':
+                aS -= 1
+            elif p in ('HC', 'CH'):
+                aC -= 0.5
+            elif p in ('HS', 'SH'):
+                aS -= 0.5
+        if aC < 0:
+            aC = 0
+        if aS < 0:
+            aS = 0
+
+    cur.close()
+    conn.close()
+    return jsonify({"success": True, "aC": aC, "aS": aS})
+
+
+@app.route("/api/lm/capacity")
+@login_required
+@tool_required_any("leavemanager", "attendance")
+def api_lm_capacity():
+    """How many employees are already on leave for a given day (excluding the
+    requester). Mirrors the client-side dayLeaveCount() logic."""
+    try:
+        year = int(request.args.get("year", 0) or 0)
+        day = int(request.args.get("day", 0) or 0)
+    except (TypeError, ValueError):
+        year = day = 0
+    month = str(request.args.get("month", "")).strip()
+    emp_id = str(request.args.get("empId", "")).strip().upper()
+    if not year or month not in ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] or not day:
+        return jsonify({"success": False, "message": "Invalid parameters"}), 400
+
+    conn = get_db()
+    cur = conn.cursor(dictionary=True)
+    cur.execute(
+        """SELECT COUNT(DISTINCT emp_id) AS cnt FROM lm_leaves
+           WHERE yr = %s AND mon = %s AND dy = %s AND emp_id <> %s""",
+        (year, month, day, emp_id),
+    )
+    c1 = cur.fetchone()["cnt"] or 0
+    cur.execute(
+        """SELECT COUNT(DISTINCT emp_id) AS cnt FROM lm_leave_requests
+           WHERE yr = %s AND mon = %s AND dy = %s
+             AND status IN ('pending', 'approved') AND emp_id <> %s""",
+        (year, month, day, emp_id),
+    )
+    c2 = cur.fetchone()["cnt"] or 0
+    cur.close()
+    conn.close()
+    return jsonify({"success": True, "count": c1 + c2})
+
+
 @app.route("/api/lm/requests", methods=["POST"])
 @login_required
-@tool_required("leavemanager")
+@tool_required_any("leavemanager", "attendance")
 def api_lm_create_request():
     data = request.get_json() or {}
     emp_id = str(data.get("empId", "")).strip().upper()
@@ -4355,7 +4492,7 @@ def api_lm_create_request():
 
 @app.route("/api/lm/requests")
 @login_required
-@tool_required("leavemanager")
+@tool_required_any("leavemanager", "attendance")
 def api_lm_list_requests():
     conn = get_db()
     cur = conn.cursor(dictionary=True)
