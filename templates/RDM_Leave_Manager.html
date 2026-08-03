@@ -605,6 +605,65 @@ table.appr tr:last-child td { border-bottom: none; }
     </div>
 </div>
 
+<!-- Edit Leave Request (admin) -->
+<div class="lm-modal-bg" id="req-modal">
+    <div class="lm-modal" style="width:min(520px,94vw)">
+        <div class="lm-modal-title" id="rq-title">Edit Leave Request</div>
+        <div class="lm-modal-sub">Update the request details. Changing a request that was <b>approved</b> updates the tracker automatically.</div>
+        <div id="rq-err" style="display:none;margin-bottom:12px;padding:10px 12px;background:var(--danger-soft);border:1px solid var(--danger);border-radius:var(--radius-sm);font-size:12px;color:var(--danger)"></div>
+        <div class="lm-fgroup" style="margin-bottom:12px">
+            <label class="lm-flabel">Employee</label>
+            <select class="lm-input" id="rq-emp"></select>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px">
+            <div class="lm-fgroup">
+                <label class="lm-flabel">Year</label>
+                <select class="lm-input" id="rq-year" onchange="rqRebuildDays()"></select>
+            </div>
+            <div class="lm-fgroup">
+                <label class="lm-flabel">Month</label>
+                <select class="lm-input" id="rq-month" onchange="rqRebuildDays()"></select>
+            </div>
+            <div class="lm-fgroup">
+                <label class="lm-flabel">Day</label>
+                <select class="lm-input" id="rq-day"></select>
+            </div>
+        </div>
+        <div class="lm-fgroup" style="margin-bottom:12px">
+            <label class="lm-flabel">Leave Type</label>
+            <select class="lm-input" id="rq-type" onchange="rqTypeChanged()"></select>
+        </div>
+        <div id="rq-slot2-wrap" class="lm-fgroup" style="margin-bottom:12px;display:none">
+            <label class="lm-flabel">Second half-day (same date)</label>
+            <select class="lm-input" id="rq-type2"></select>
+        </div>
+        <div id="rq-hours-wrap" class="lm-fgroup" style="margin-bottom:12px;display:none">
+            <label class="lm-flabel">Hours</label>
+            <input type="number" class="lm-input" id="rq-hours" min="1" step="0.5" value="2"/>
+        </div>
+        <div class="lm-fgroup" style="margin-bottom:12px">
+            <label class="lm-flabel">Reason</label>
+            <textarea class="lm-input" id="rq-reason" rows="2"></textarea>
+        </div>
+        <div class="lm-fgroup" style="margin-bottom:12px">
+            <label class="lm-flabel">Admin Note</label>
+            <input class="lm-input" id="rq-note" placeholder="Note visible to the requester"/>
+        </div>
+        <div class="lm-fgroup" style="margin-bottom:12px">
+            <label class="lm-flabel">Status</label>
+            <select class="lm-input" id="rq-status">
+                <option value="pending">Pending</option>
+                <option value="approved">Approved</option>
+                <option value="declined">Declined</option>
+            </select>
+        </div>
+        <div class="lm-modal-btns">
+            <button class="lm-btn lm-btn-ghost" onclick="closeReqModal()">Cancel</button>
+            <button class="lm-btn lm-btn-primary" onclick="saveReqEdit()"><i class="fa-solid fa-check"></i> Save</button>
+        </div>
+    </div>
+</div>
+
 <div class="lm-toast" id="lm-toast"></div>
 {% endblock %}
 
@@ -1461,13 +1520,18 @@ function renderApprovals() {
     const badges = { pending:'bpending', approved:'bapproved', declined:'bdeclined' };
     body.innerHTML = rows.map((r,i) => {
         const leave = [r.lvType, r.lvType2].filter(Boolean).join(' + ');
-        const actions = r.status==='pending'
-            ? `<input class="lm-input" id="anote-${r.id}" placeholder="Note" style="width:100%;margin-bottom:5px;font-size:11px">
-               <div style="display:flex;gap:5px">
-                 <button class="lm-btn lm-btn-primary lm-btn-sm" style="flex:1;justify-content:center" onclick="reviewReq(${r.id},'approve')"><i class="fa-solid fa-check"></i> Approve</button>
-                 <button class="lm-btn lm-btn-danger lm-btn-sm" style="flex:1;justify-content:center" onclick="reviewReq(${r.id},'decline')"><i class="fa-solid fa-xmark"></i> Decline</button>
-               </div>`
-            : '<span style="color:var(--muted);font-size:11px">—</span>';
+        const acts = [];
+        if (r.status==='pending') {
+            acts.push(`<input class="lm-input" id="anote-${r.id}" placeholder="Note" style="width:100%;margin-bottom:5px;font-size:11px">`);
+            acts.push(`<div style="display:flex;gap:5px;margin-bottom:5px">
+                <button class="lm-btn lm-btn-primary lm-btn-sm" style="flex:1;justify-content:center" onclick="reviewReq(${r.id},'approve')"><i class="fa-solid fa-check"></i> Approve</button>
+                <button class="lm-btn lm-btn-danger lm-btn-sm" style="flex:1;justify-content:center" onclick="reviewReq(${r.id},'decline')"><i class="fa-solid fa-xmark"></i> Decline</button>
+            </div>`);
+        }
+        acts.push(`<div style="display:flex;gap:5px">
+            <button class="lm-btn lm-btn-ghost lm-btn-sm" style="flex:1;justify-content:center" onclick="openEditReq(${r.id})"><i class="fa-solid fa-pen"></i> Edit</button>
+            <button class="lm-btn lm-btn-danger lm-btn-sm" style="flex:1;justify-content:center" onclick="deleteReq(${r.id})"><i class="fa-solid fa-trash"></i> Delete</button>
+        </div>`);
         return `<tr>
             <td style="font-family:var(--mono);color:var(--muted)">${i+1}</td>
             <td><div style="font-weight:600">${escHtml(r.empName)}</div><div style="font-size:10px;color:var(--muted);font-family:var(--mono)">${escHtml(r.empId)} · ${escHtml(r.dept)}</div></td>
@@ -1478,7 +1542,7 @@ function renderApprovals() {
             <td style="font-size:11px">${escHtml(r.requester)||'-'}</td>
             <td><span class="lm-badge ${badges[r.status]||'bpro'}" style="text-transform:uppercase">${r.status}</span></td>
             <td style="font-size:11px;color:var(--warning)">${escHtml(r.adminNote)||'-'}</td>
-            <td>${actions}</td>
+            <td>${acts.join('')}</td>
         </tr>`;
     }).join('');
 }
@@ -1492,6 +1556,135 @@ async function reviewReq(id, action) {
     });
     if (!res.success) { lmToast(res.message||'Action failed','err'); return; }
     lmToast(action==='approve' ? 'Request approved — leave added to tracker' : 'Request declined', action==='approve'?'ok':'info');
+    await loadRequests();
+    await loadLeaves(curYear);
+    renderApprovals();
+    renderGrid();
+    if (curView==='dashboard') renderDash();
+}
+
+// ── EDIT / DELETE LEAVE REQUEST (admin) ──
+let _editingReqId = null;
+
+function rqShowErr(msg) {
+    const el = document.getElementById('rq-err');
+    if (!el) return;
+    if (!msg) { el.style.display='none'; return; }
+    el.textContent = msg; el.style.display='block';
+}
+
+function openEditReq(id) {
+    const r = REQUESTS.find(x => x.id === id);
+    if (!r) return;
+    _editingReqId = id;
+    rqShowErr('');
+
+    // Employee select
+    const empSel = document.getElementById('rq-emp');
+    empSel.innerHTML = DB.employees.map(e => `<option value="${e.empId}" ${e.empId===r.empId?'selected':''}>${escHtml(e.name)} (${e.empId})</option>`).join('');
+    if (!empSel.value) empSel.innerHTML = '<option value="">— no employees —</option>';
+
+    // Year / Month / Day
+    const yrSel = document.getElementById('rq-year');
+    let yOpts = '';
+    for (let y = new Date().getFullYear()-1; y <= new Date().getFullYear()+2; y++) yOpts += `<option value="${y}" ${y===r.year?'selected':''}>${y}</option>`;
+    yrSel.innerHTML = yOpts;
+    const moSel = document.getElementById('rq-month');
+    moSel.innerHTML = MNS.map(m => `<option value="${m}" ${m===r.month?'selected':''}>${m}</option>`).join('');
+    const mi = MNS.indexOf(r.month);
+    const dim = getDIM(r.year)[mi];
+    const dySel = document.getElementById('rq-day');
+    let dOpts = '';
+    for (let d = 1; d <= dim; d++) dOpts += `<option value="${d}" ${d===r.day?'selected':''}>${d}</option>`;
+    dySel.innerHTML = dOpts;
+
+    // Leave type
+    const cfg = LM_CFG || { types: {}, allow_two_half_days: true, permission_max_hours: 4 };
+    const tSel = document.getElementById('rq-type');
+    tSel.innerHTML = Object.entries(cfg.types)
+        .filter(([c,t])=>t && t.enabled!==false)
+        .map(([c,t])=>`<option value="${c}" ${c===r.lvType?'selected':''}>${c} — ${t.label||c}</option>`).join('');
+    if (!tSel.value) tSel.innerHTML = '<option value="">— no types —</option>';
+
+    const type2Sel = document.getElementById('rq-type2');
+    type2Sel.innerHTML = '<option value="">None</option>' + Object.entries(cfg.types)
+        .filter(([c,t])=>t && t.enabled!==false && !t.full && ['HC','HS'].includes(c))
+        .map(([c,t])=>`<option value="${c}" ${c===r.lvType2?'selected':''}>${c} — ${t.label||c}</option>`).join('');
+
+    document.getElementById('rq-hours').value = r.hours != null ? r.hours : 2;
+    document.getElementById('rq-reason').value = r.reason || '';
+    document.getElementById('rq-note').value = r.adminNote || '';
+    document.getElementById('rq-status').value = r.status;
+    document.getElementById('rq-status').disabled = false;
+
+    rqTypeChanged();
+    document.getElementById('req-modal').classList.add('open');
+}
+
+function rqRebuildDays() {
+    const yr = parseInt(document.getElementById('rq-year').value);
+    const mi = MNS.indexOf(document.getElementById('rq-month').value);
+    const dim = getDIM(yr)[mi];
+    const cur = parseInt(document.getElementById('rq-day').value);
+    const sel = document.getElementById('rq-day');
+    let opts = '';
+    for (let d = 1; d <= dim; d++) opts += `<option value="${d}" ${d===cur?'selected':''}>${d}</option>`;
+    sel.innerHTML = opts;
+}
+
+function rqTypeChanged() {
+    const cfg = LM_CFG || { types: {}, allow_two_half_days: true, permission_max_hours: 4 };
+    const code = document.getElementById('rq-type').value;
+    const t = cfg.types[code] || {};
+    const slot2 = document.getElementById('rq-slot2-wrap');
+    const hours = document.getElementById('rq-hours-wrap');
+    slot2.style.display = (!t.full && cfg.allow_two_half_days && ['HC','HS'].includes(code)) ? '' : 'none';
+    hours.style.display = (code==='P') ? '' : 'none';
+    if (code==='P') document.getElementById('rq-hours').max = cfg.permission_max_hours || 4;
+}
+
+function closeReqModal() { document.getElementById('req-modal').classList.remove('open'); _editingReqId = null; }
+document.getElementById('req-modal').addEventListener('click', e => { if (e.target === document.getElementById('req-modal')) closeReqModal(); });
+
+async function saveReqEdit() {
+    if (_editingReqId == null) return;
+    rqShowErr('');
+    const payload = {
+        empId: document.getElementById('rq-emp').value,
+        year: parseInt(document.getElementById('rq-year').value),
+        month: document.getElementById('rq-month').value,
+        day: parseInt(document.getElementById('rq-day').value),
+        lvType: document.getElementById('rq-type').value,
+        lvType2: document.getElementById('rq-type2').value,
+        hours: document.getElementById('rq-type').value==='P' ? parseFloat(document.getElementById('rq-hours').value) : null,
+        reason: document.getElementById('rq-reason').value.trim(),
+        adminNote: document.getElementById('rq-note').value.trim(),
+        status: document.getElementById('rq-status').value,
+    };
+    if (!payload.empId) { rqShowErr('Select an employee'); return; }
+    if (!payload.lvType) { rqShowErr('Select a leave type'); return; }
+    if (payload.lvType==='P' && (!payload.hours || isNaN(payload.hours) || payload.hours<=0)) { rqShowErr('Enter valid permission hours'); return; }
+    const res = await lmApi('/api/lm/requests/' + _editingReqId + '/edit', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(payload)
+    });
+    if (!res.success) { rqShowErr(res.message || 'Could not save request'); return; }
+    lmToast('Leave request updated','ok');
+    closeReqModal();
+    await loadRequests();
+    await loadLeaves(curYear);
+    renderApprovals();
+    renderGrid();
+    if (curView==='dashboard') renderDash();
+}
+
+async function deleteReq(id) {
+    const r = REQUESTS.find(x => x.id === id);
+    if (!r) return;
+    if (!confirm('Delete this leave request' + (r.status==='approved' ? ' and its tracker leave entry' : '') + '?')) return;
+    const res = await lmApi('/api/lm/requests/' + id + '/delete', { method:'POST' });
+    if (!res.success) { lmToast(res.message || 'Could not delete request','err'); return; }
+    lmToast('Leave request deleted','err');
     await loadRequests();
     await loadLeaves(curYear);
     renderApprovals();

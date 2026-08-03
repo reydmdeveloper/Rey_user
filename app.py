@@ -4586,6 +4586,150 @@ def api_lm_review_request(req_id, action):
     return jsonify({"success": True})
 
 
+def _lm_insert_request_leaves(cur, emp_id, yr, mon, dy, lv_type, lv_type2, hours):
+    """Insert tracker lm_leaves rows for an approved request (single-part rows)."""
+    types = [lv_type]
+    if lv_type2:
+        types.append(lv_type2)
+    for t in types:
+        h = hours if t == "P" else None
+        cur.execute(
+            """INSERT INTO lm_leaves (emp_id, yr, mon, dy, lv_type, hours)
+               VALUES (%s, %s, %s, %s, %s, %s)
+               ON DUPLICATE KEY UPDATE lv_type = VALUES(lv_type), hours = VALUES(hours)""",
+            (emp_id, yr, mon, dy, t, h),
+        )
+
+
+def _lm_delete_request_leaves(cur, emp_id, yr, mon, dy, lv_type, lv_type2):
+    """Remove tracker lm_leaves rows created by an approved request."""
+    types = [lv_type]
+    if lv_type2:
+        types.append(lv_type2)
+    placeholders = ", ".join(["%s"] * len(types))
+    cur.execute(
+        f"""DELETE FROM lm_leaves
+            WHERE emp_id = %s AND yr = %s AND mon = %s AND dy = %s AND lv_type IN ({placeholders})""",
+        (emp_id, yr, mon, dy, *types),
+    )
+
+
+@app.route("/api/lm/requests/<int:req_id>/edit", methods=["POST"])
+@login_required
+@tool_required("leavemanager")
+def api_lm_edit_request(req_id):
+    if session.get("role") != "admin":
+        return jsonify({"success": False, "message": "Admin only"}), 403
+
+    valid_months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    data = request.get_json() or {}
+
+    emp_id = str(data.get("empId", "")).strip().upper()
+    try:
+        yr = int(data.get("year", 0) or 0)
+        dy = int(data.get("day", 0) or 0)
+    except (TypeError, ValueError):
+        yr = dy = 0
+    mon = str(data.get("month", "")).strip()
+    lv_type = str(data.get("lvType", "")).strip().upper()
+    lv_type2 = str(data.get("lvType2", "") or "").strip().upper()
+    reason = str(data.get("reason", "") or "").strip()[:500]
+    admin_note = str(data.get("adminNote", "") or "").strip()[:255]
+    new_status = str(data.get("status", "") or "").strip().lower()
+    raw_hours = data.get("hours")
+
+    if not emp_id or yr < 2000 or mon not in valid_months or dy < 1 or dy > 31:
+        return jsonify({"success": False, "message": "Invalid date or employee"}), 400
+    if not lv_type:
+        return jsonify({"success": False, "message": "Leave type is required"}), 400
+    if new_status and new_status not in ("pending", "approved", "declined"):
+        return jsonify({"success": False, "message": "Invalid status"}), 400
+
+    cfg = get_lm_config()
+    valid_types = [t for t, tv in cfg["types"].items() if tv.get("enabled") is not False]
+    for t in [lv_type] + ([lv_type2] if lv_type2 else []):
+        if t not in valid_types:
+            return jsonify({"success": False,
+                            "message": f"Leave type {t} is not enabled"}), 400
+
+    hours = None
+    if lv_type == "P" or lv_type2 == "P":
+        try:
+            hours = float(raw_hours)
+        except (TypeError, ValueError):
+            return jsonify({"success": False, "message": "Hours are required for Permission"}), 400
+        if hours <= 0 or hours > int(cfg.get("permission_max_hours", 4)):
+            return jsonify({"success": False,
+                            "message": f"Permission must be 1–{int(cfg.get('permission_max_hours', 4))} hours"}), 400
+
+    conn = get_db()
+    cur = conn.cursor(dictionary=True)
+    cur.execute("SELECT * FROM lm_leave_requests WHERE id = %s", (req_id,))
+    req = cur.fetchone()
+    if not req:
+        cur.close()
+        conn.close()
+        return jsonify({"success": False, "message": "Request not found"}), 404
+
+    cur.execute("SELECT emp_id FROM lm_employees WHERE emp_id = %s", (emp_id,))
+    if not cur.fetchone():
+        cur.close()
+        conn.close()
+        return jsonify({"success": False, "message": "Employee not found"}), 404
+
+    old_status = req["status"]
+    old = {"emp_id": req["emp_id"], "yr": req["yr"], "mon": req["mon"],
+           "dy": req["dy"], "lv_type": req["lv_type"], "lv_type2": req["lv_type2"]}
+    final_status = new_status if new_status else old_status
+
+    # Re-sync tracker leaves when an approved request is edited.
+    if old_status == "approved":
+        _lm_delete_request_leaves(cur, old["emp_id"], old["yr"], old["mon"],
+                                  old["dy"], old["lv_type"], old["lv_type2"])
+    if final_status == "approved":
+        _lm_insert_request_leaves(cur, emp_id, yr, mon, dy, lv_type, lv_type2, hours)
+
+    cur.execute(
+        """UPDATE lm_leave_requests
+           SET emp_id = %s, yr = %s, mon = %s, dy = %s, lv_type = %s, lv_type2 = %s,
+               hours = %s, reason = %s, admin_note = %s, status = %s,
+               reviewed_by = %s, reviewed_at = NOW()
+           WHERE id = %s""",
+        (emp_id, yr, mon, dy, lv_type, lv_type2, hours, reason, admin_note,
+         final_status, session["user_id"], req_id),
+    )
+    conn.commit()
+    cur.close()
+    conn.close()
+    return jsonify({"success": True})
+
+
+@app.route("/api/lm/requests/<int:req_id>/delete", methods=["POST"])
+@login_required
+@tool_required("leavemanager")
+def api_lm_delete_request(req_id):
+    if session.get("role") != "admin":
+        return jsonify({"success": False, "message": "Admin only"}), 403
+
+    conn = get_db()
+    cur = conn.cursor(dictionary=True)
+    cur.execute("SELECT * FROM lm_leave_requests WHERE id = %s", (req_id,))
+    req = cur.fetchone()
+    if not req:
+        cur.close()
+        conn.close()
+        return jsonify({"success": False, "message": "Request not found"}), 404
+
+    if req["status"] == "approved":
+        _lm_delete_request_leaves(cur, req["emp_id"], req["yr"], req["mon"],
+                                  req["dy"], req["lv_type"], req["lv_type2"])
+    cur.execute("DELETE FROM lm_leave_requests WHERE id = %s", (req_id,))
+    conn.commit()
+    cur.close()
+    conn.close()
+    return jsonify({"success": True})
+
+
 # ═══════════════════════════════════════════════════════════════════════
 # ADMIN: SETTINGS, DB STATS, CACHE CLEAR
 # ═══════════════════════════════════════════════════════════════════════
