@@ -329,6 +329,7 @@ table.appr tr:last-child td { border-bottom: none; }
             <button class="lm-ntab active" data-view="tracker" onclick="goView('tracker')"><i class="fa-solid fa-table"></i> Tracker</button>
             <button class="lm-ntab" data-view="dashboard" onclick="goView('dashboard')"><i class="fa-solid fa-chart-bar"></i> Dashboard</button>
             <button class="lm-ntab" data-view="request" onclick="goView('request')"><i class="fa-solid fa-paper-plane"></i> Request Leave</button>
+            <button class="lm-ntab" data-view="myrequests" onclick="goView('myrequests')"><i class="fa-solid fa-list-check"></i> My Requests <span id="myreq-badge" style="background:#fff;color:var(--accent);border-radius:10px;padding:0 6px;font-size:10px;font-weight:700">0</span></button>
             {% if session.get('role') == 'admin' %}
             <button class="lm-ntab" data-view="approvals" onclick="goView('approvals')"><i class="fa-solid fa-clipboard-check"></i> Approvals <span id="appr-badge" style="background:#fff;color:var(--accent);border-radius:10px;padding:0 6px;font-size:10px;font-weight:700">0</span></button>
             {% endif %}
@@ -549,12 +550,36 @@ table.appr tr:last-child td { border-bottom: none; }
                 </div>
             </div>
             <div class="lm-panel">
-                <div class="lm-phdr"><i class="fa-solid fa-list-check"></i> My Requests</div>
-                <div class="lm-pbody" id="req-list"></div>
+                <div class="lm-phdr"><i class="fa-solid fa-circle-info"></i> Track Your Requests</div>
+                <div class="lm-pbody">
+                    <p style="font-size:12px;color:var(--muted);margin:0 0 12px">
+                        Submitted requests are shown in the <b>My Requests</b> tab where you can track their
+                        Pending / Approved / Declined status.
+                    </p>
+                    <button class="lm-btn lm-btn-secondary" style="width:100%;justify-content:center" onclick="goView('myrequests')">
+                        <i class="fa-solid fa-list-check"></i> Open My Requests
+                    </button>
+                </div>
             </div>
         </div>
     </div>
 </div><!-- /request -->
+
+<!-- ═══ MY REQUESTS ═══ -->
+<div id="view-myrequests" class="lm-page">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px">
+        <h3 style="font-size:18px;font-weight:700">My Requests
+            <span style="font-size:13px;font-weight:400;color:var(--muted)">Status of submitted leave requests</span>
+        </h3>
+        <button class="lm-btn lm-btn-secondary" style="justify-content:center" onclick="goView('request')">
+            <i class="fa-solid fa-paper-plane"></i> New Request
+        </button>
+    </div>
+    <div class="lm-panel">
+        <div class="lm-phdr"><i class="fa-solid fa-list-check"></i> Requests</div>
+        <div class="lm-pbody" id="req-list"></div>
+    </div>
+</div><!-- /myrequests -->
 
 <!-- ═══ APPROVALS (ADMIN) ═══ -->
 {% if session.get('role') == 'admin' %}
@@ -743,8 +768,11 @@ async function loadMyEmps() {
 async function loadRequests() {
     const data = await lmApi('/api/lm/requests');
     REQUESTS = Array.isArray(data) ? data : [];
+    const pending = REQUESTS.filter(r => r.status === 'pending').length;
     const badge = document.getElementById('appr-badge');
-    if (badge) badge.textContent = REQUESTS.filter(r => r.status === 'pending').length;
+    if (badge) badge.textContent = pending;
+    const mbadge = document.getElementById('myreq-badge');
+    if (mbadge) mbadge.textContent = pending;
 }
 
 async function loadUsers() {
@@ -897,7 +925,7 @@ function setEmpFilter(f) {
 
 function goView(v) {
     curView = v;
-    ['tracker','dashboard','import','request','approvals'].forEach(x => {
+    ['tracker','dashboard','import','request','approvals','myrequests'].forEach(x => {
         const el = document.getElementById('view-'+x);
         if (el) el.classList.toggle('active', x===v);
     });
@@ -908,6 +936,7 @@ function goView(v) {
         renderDash();
     }
     if (v==='request') renderReq();
+    if (v==='myrequests') renderReqList();
     if (v==='approvals') renderApprovals();
 }
 
@@ -1504,7 +1533,7 @@ function renderReqList() {
     const badges = { pending:'bpending', approved:'bapproved', declined:'bdeclined' };
     el.innerHTML = REQUESTS.map(r => `
         <div style="padding:10px 14px;border-bottom:1px solid var(--border)">
-            <div style="font-weight:600;font-size:12px">${r.month} ${r.day}, ${r.year}
+            <div style="font-weight:600;font-size:12px">${r.empName?escHtml(r.empName)+' — ':''}${r.month} ${r.day}, ${r.year}
                 <span class="lm-badge ${badges[r.status]||'bpro'}" style="text-transform:uppercase">${r.status}</span></div>
             <div style="font-size:11px;color:var(--muted);margin-top:2px">
                 ${[r.lvType, r.lvType2].filter(Boolean).join(' + ')}${r.hours?` · ${r.hours}h`:''}${r.reason?` — ${escHtml(r.reason)}`:''}
