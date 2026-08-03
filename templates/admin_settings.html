@@ -105,6 +105,56 @@
     </div>
 </div>
 
+<!-- LEAVE MANAGER POLICY -->
+<div class="set-card" style="margin-bottom:20px">
+    <h3><i class="fa-solid fa-calendar-check"></i> Leave Manager — Policy &amp; Leave Types</h3>
+    <div class="desc">
+        Configure which leave types are available, half-day rules, permission (hours), and the
+        maximum number of employees allowed on leave per day. These apply to the Leave Manager
+        request tab and the tracker.
+    </div>
+    <form method="POST" action="{{ url_for('admin_leave_settings') }}">
+        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Leave Types (enable / rename)</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px">
+            {% for tkey, tcfg in lm_config.types.items() %}
+            <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-md);padding:12px">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+                    <strong style="font-family:var(--mono);color:var(--accent2);font-size:15px">{{ tkey }}</strong>
+                    <span class="smtp-pill" style="{{ 'background:var(--success-soft);color:var(--success)' if tcfg.full else 'background:var(--info-soft);color:var(--info)' }}">{{ 'Full day' if tcfg.full else 'Half day' }}</span>
+                </div>
+                <input type="text" name="types[{{ tkey }}][label]" value="{{ tcfg.label }}"
+                       placeholder="Leave type label" class="form-control" style="margin-bottom:8px">
+                <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer">
+                    <input type="checkbox" name="types[{{ tkey }}][enabled]" value="1" {% if tcfg.enabled %}checked{% endif %}>
+                    Enabled
+                </label>
+            </div>
+            {% endfor %}
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-top:16px">
+            <div>
+                <label style="font-size:11px;color:var(--muted);font-weight:600;display:block;margin-bottom:4px">Max employees on leave per day</label>
+                <input type="number" name="max_leave_per_day" min="1" max="20" class="form-control"
+                       value="{{ lm_config.max_leave_per_day }}" required>
+            </div>
+            <div>
+                <label style="font-size:11px;color:var(--muted);font-weight:600;display:block;margin-bottom:4px">Permission — max hours per day</label>
+                <input type="number" name="permission_max_hours" min="1" max="12" class="form-control"
+                       value="{{ lm_config.permission_max_hours }}" required>
+            </div>
+            <div style="display:flex;align-items:flex-end;padding-bottom:8px">
+                <label style="display:flex;align-items:center;gap:7px;font-size:12px;cursor:pointer">
+                    <input type="checkbox" name="allow_two_half_days" value="1" {% if lm_config.allow_two_half_days %}checked{% endif %}>
+                    Allow two half-day leaves in one day
+                </label>
+            </div>
+        </div>
+        <div style="margin-top:16px">
+            <button type="submit" class="btn btn-primary btn-sm"><i class="fa-solid fa-save"></i> Save Leave Settings</button>
+        </div>
+    </form>
+</div>
+
 <!-- CACHE & CLEANUP -->
 <div class="set-card">
     <h3><i class="fa-solid fa-broom"></i> Cache &amp; Data Cleanup</h3>

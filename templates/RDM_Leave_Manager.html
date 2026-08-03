@@ -190,6 +190,7 @@ table.ytd tr:last-child td { border-bottom: none; }
 .tb-L  { background: rgba(248,81,73,.15);  color: var(--danger);  border-color: var(--danger);  }
 .tb-HC { background: rgba(88,166,255,.15); color: var(--info);    border-color: var(--info);    }
 .tb-HS { background: rgba(210,153,34,.12); color: var(--warning); border-color: var(--warning); }
+.tb-P  { background: rgba(139,92,246,.15); color: #a78bfa;        border-color: #a78bfa;        }
 .tb-clr{ background: var(--surface2); color: var(--muted); border-color: var(--border); grid-column: span 3; font-size: 10px; }
 .popup-bal { font-size: 10px; color: var(--muted); margin-top: 6px; padding: 6px 8px; background: var(--surface2); border-radius: var(--radius-sm); line-height: 1.6; }
 
@@ -232,6 +233,45 @@ table.lm-dt tr:hover td { background: var(--accent-soft); }
 .bqc  { background: var(--info-soft);    color: var(--info);    border: 1px solid var(--info);    }
 .bpro { background: rgba(139,92,246,.12); color: #a78bfa;        border: 1px solid #a78bfa;        }
 .blop { background: var(--danger-soft);  color: var(--danger);  border: 1px solid var(--danger);  }
+.bpending  { background: var(--warning-soft); color: var(--warning); border: 1px solid var(--warning); }
+.bapproved { background: var(--success-soft); color: var(--success); border: 1px solid var(--success); }
+.bdeclined { background: var(--danger-soft);  color: var(--danger);  border: 1px solid var(--danger);  }
+
+/* Half-day pair + permission cell colours */
+.td-day.v-P { background: rgba(139,92,246,.2) !important; color: #a78bfa; }
+.td-day.v-PAIR {
+    background: linear-gradient(135deg, rgba(56,139,253,.22), rgba(210,153,34,.18)) !important;
+    color: var(--text); font-size: 8px; line-height: 1.15;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+    font-family: var(--mono);
+}
+[data-theme="dark"] .td-day.v-P { color: #c4b5fd; }
+
+/* REQUEST PAGE */
+.req-types { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 8px; }
+.req-type {
+    border: 1px solid var(--border); background: var(--surface2);
+    border-radius: var(--radius-sm); padding: 8px; cursor: pointer;
+    text-align: center; transition: all var(--transition); font-family: var(--font);
+}
+.req-type:hover { border-color: var(--accent); }
+.req-type.sel { border-color: var(--accent2); background: var(--accent-soft); box-shadow: 0 0 0 2px var(--accent-soft); }
+.req-type .rc { font-size: 15px; font-weight: 700; }
+.req-type .rl { font-size: 9px; color: var(--muted); }
+.req-type.disabled { opacity: .45; cursor: not-allowed; }
+.req-cap {
+    font-size: 12px; padding: 9px 12px; border-radius: var(--radius-sm); margin-bottom: 12px;
+    background: var(--surface2); border: 1px solid var(--border);
+}
+.req-cap.full { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
+
+/* APPROVALS PAGE */
+.appr-wrap { overflow-x: auto; border-radius: var(--radius-md); border: 1px solid var(--border); box-shadow: var(--shadow-md); }
+table.appr { border-collapse: collapse; background: var(--surface); width: 100%; }
+table.appr th { background: var(--accent); color: #fff; padding: 8px 10px; font-size: 10px; font-weight: 700; text-align: left; letter-spacing: .4px; border-right: 1px solid rgba(255,255,255,.15); white-space: nowrap; }
+table.appr td { padding: 8px 10px; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); font-size: 12px; vertical-align: middle; }
+table.appr tr:hover td { background: var(--accent-soft); }
+table.appr tr:last-child td { border-bottom: none; }
 
 /* IMPORT */
 .imp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
@@ -286,9 +326,13 @@ table.lm-dt tr:hover td { background: var(--accent-soft); }
     </div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <div class="lm-nav-tabs">
-            <button class="lm-ntab active" onclick="goView('tracker')"><i class="fa-solid fa-table"></i> Tracker</button>
-            <button class="lm-ntab" onclick="goView('dashboard')"><i class="fa-solid fa-chart-bar"></i> Dashboard</button>
-            <button class="lm-ntab" onclick="goView('import')"><i class="fa-solid fa-upload"></i> Import</button>
+            <button class="lm-ntab active" data-view="tracker" onclick="goView('tracker')"><i class="fa-solid fa-table"></i> Tracker</button>
+            <button class="lm-ntab" data-view="dashboard" onclick="goView('dashboard')"><i class="fa-solid fa-chart-bar"></i> Dashboard</button>
+            <button class="lm-ntab" data-view="request" onclick="goView('request')"><i class="fa-solid fa-paper-plane"></i> Request Leave</button>
+            {% if session.get('role') == 'admin' %}
+            <button class="lm-ntab" data-view="approvals" onclick="goView('approvals')"><i class="fa-solid fa-clipboard-check"></i> Approvals <span id="appr-badge" style="background:#fff;color:var(--accent);border-radius:10px;padding:0 6px;font-size:10px;font-weight:700">0</span></button>
+            {% endif %}
+            <button class="lm-ntab" data-view="import" onclick="goView('import')"><i class="fa-solid fa-upload"></i> Import</button>
         </div>
         <button class="btn btn-primary btn-sm" onclick="openAddEmp()"><i class="fa-solid fa-plus"></i> Employee</button>
         <button class="btn btn-secondary btn-sm" onclick="exportXLSX()"><i class="fa-solid fa-file-excel"></i> Export Excel</button>
@@ -324,7 +368,8 @@ table.lm-dt tr:hover td { background: var(--accent-soft); }
                 <div class="leg"><div class="leg-box" style="background:rgba(248,81,73,.25);color:var(--danger)">L</div>Loss of Pay</div>
                 <div class="leg"><div class="leg-box" style="background:rgba(56,139,253,.18);color:var(--info)">HC</div>½ Casual</div>
                 <div class="leg"><div class="leg-box" style="background:rgba(210,153,34,.18);color:var(--warning)">HS</div>½ Sick</div>
-                <span style="font-size:11px;color:var(--muted)">· Click any day to enter leave · Double-click name to edit</span>
+                <div class="leg"><div class="leg-box" style="background:rgba(139,92,246,.2);color:#a78bfa">P</div>Permission</div>
+                <span style="font-size:11px;color:var(--muted)">· Click any day to enter leave · Two ½ days can share one day · Double-click name to edit</span>
             </div>
         </div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -423,7 +468,7 @@ table.lm-dt tr:hover td { background: var(--accent-soft); }
                     <div class="dz-s">Leave records will be merged</div>
                 </div>
                 <input type="file" id="f-lv" accept=".xlsx,.xls,.csv" style="display:none" onchange="fLv(this)"/>
-                <div class="lm-code">Emp ID, Month, Day, Type<br><span style="color:var(--muted);font-size:10px">Type: C / S / L / HC / HS</span></div>
+                <div class="lm-code">Emp ID, Month, Day, Type<br><span style="color:var(--muted);font-size:10px">Type: C / S / L / HC / HS / P · two halves join with + (e.g. HC+HS)</span></div>
                 <div style="margin-top:10px;display:flex;gap:8px">
                     <button class="lm-btn lm-btn-ghost lm-btn-sm" onclick="dlLvTpl()"><i class="fa-solid fa-download"></i> Template</button>
                 </div>
@@ -443,6 +488,108 @@ table.lm-dt tr:hover td { background: var(--accent-soft); }
     </div>
 </div><!-- /import -->
 
+<!-- ═══ REQUEST LEAVE ═══ -->
+<div id="view-request" class="lm-page">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px">
+        <h3 style="font-size:18px;font-weight:700">Request Leave
+            <span style="font-size:13px;font-weight:400;color:var(--muted)">Submit for admin approval</span>
+        </h3>
+        <div id="req-bal-info" style="font-size:12px;color:var(--muted)"></div>
+    </div>
+    <div id="req-no-link" style="display:none;padding:22px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);font-size:13px;color:var(--muted);margin-bottom:16px">
+        <i class="fa-solid fa-circle-info" style="color:var(--accent2)"></i>
+        No employee record is linked to your login account. Ask an admin to open
+        <b>Employee</b> and link your account in <b>Add/Edit Employee → Linked Login</b> before you can request leave.
+    </div>
+    <div id="req-body" style="display:none">
+        <div class="imp-grid">
+            <div class="lm-panel">
+                <div class="lm-phdr"><i class="fa-solid fa-user"></i> Request Details</div>
+                <div style="padding:16px">
+                    <div class="lm-fgroup" id="req-emp-group" style="margin-bottom:12px">
+                        <label class="lm-flabel">Employee</label>
+                        <select class="lm-input" id="req-emp" onchange="updateReqBalance();updateReqCapacity()"></select>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px">
+                        <div class="lm-fgroup">
+                            <label class="lm-flabel">Year</label>
+                            <select class="lm-input" id="req-year" onchange="changeYear(this.value);renderReqDays();updateReqBalance();updateReqCapacity()"></select>
+                        </div>
+                        <div class="lm-fgroup">
+                            <label class="lm-flabel">Month</label>
+                            <select class="lm-input" id="req-month" onchange="renderReqDays();updateReqBalance();updateReqCapacity()"></select>
+                        </div>
+                        <div class="lm-fgroup">
+                            <label class="lm-flabel">Day</label>
+                            <select class="lm-input" id="req-day" onchange="updateReqCapacity()"></select>
+                        </div>
+                    </div>
+                    <div class="req-cap" id="req-cap"></div>
+                    <div class="lm-fgroup" style="margin-bottom:12px">
+                        <label class="lm-flabel">Leave Type</label>
+                        <div class="req-types" id="req-types"></div>
+                    </div>
+                    <div id="req-slot2-wrap" class="lm-fgroup" style="margin-bottom:12px;display:none">
+                        <label class="lm-flabel">Second half-day (same date)</label>
+                        <select class="lm-input" id="req-slot2" onchange="updateReqBalance()"></select>
+                        <div style="font-size:10px;color:var(--muted);margin-top:4px">Allows two ½-day leaves (e.g. ½ Casual + ½ Sick) on one date.</div>
+                    </div>
+                    <div id="req-hours-wrap" class="lm-fgroup" style="margin-bottom:12px;display:none">
+                        <label class="lm-flabel">Hours</label>
+                        <input type="number" class="lm-input" id="req-hours" min="1" step="0.5" value="2"/>
+                    </div>
+                    <div class="lm-fgroup" style="margin-bottom:12px">
+                        <label class="lm-flabel">Reason</label>
+                        <textarea class="lm-input" id="req-reason" rows="2" placeholder="Reason for leave…"></textarea>
+                    </div>
+                    <button class="lm-btn lm-btn-primary" id="req-submit" style="width:100%;justify-content:center" onclick="submitRequest()">
+                        <i class="fa-solid fa-paper-plane"></i> Submit Request
+                    </button>
+                    <div id="req-err" style="font-size:12px;color:var(--danger);margin-top:8px;display:none"></div>
+                </div>
+            </div>
+            <div class="lm-panel">
+                <div class="lm-phdr"><i class="fa-solid fa-list-check"></i> My Requests</div>
+                <div class="lm-pbody" id="req-list"></div>
+            </div>
+        </div>
+    </div>
+</div><!-- /request -->
+
+<!-- ═══ APPROVALS (ADMIN) ═══ -->
+{% if session.get('role') == 'admin' %}
+<div id="view-approvals" class="lm-page">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px">
+        <h3 style="font-size:18px;font-weight:700">Leave Requests <span id="appr-count"></span></h3>
+        <div style="display:flex;gap:4px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:3px">
+            <button id="appr-Pending"   class="sf-chip lm-btn-sm" onclick="apprFilter('Pending')"   style="background:var(--accent);color:#fff;border-color:var(--accent)">Pending</button>
+            <button id="appr-Approved"  class="sf-chip lm-btn-sm" onclick="apprFilter('Approved')"  style="background:transparent;color:var(--muted);border:none">Approved</button>
+            <button id="appr-Declined"  class="sf-chip lm-btn-sm" onclick="apprFilter('Declined')"  style="background:transparent;color:var(--muted);border:none">Declined</button>
+            <button id="appr-All"       class="sf-chip lm-btn-sm" onclick="apprFilter('All')"       style="background:transparent;color:var(--muted);border:none">All</button>
+        </div>
+    </div>
+    <div class="appr-wrap">
+        <table class="appr">
+            <thead>
+                <tr>
+                    <th style="width:34px">#</th>
+                    <th>Employee</th>
+                    <th>Date</th>
+                    <th>Leave</th>
+                    <th>Hours</th>
+                    <th>Reason</th>
+                    <th>Requested By</th>
+                    <th>Status</th>
+                    <th>Admin Note</th>
+                    <th style="width:230px">Action</th>
+                </tr>
+            </thead>
+            <tbody id="appr-body"></tbody>
+        </table>
+    </div>
+</div><!-- /approvals -->
+{% endif %}
+
 <!-- Cell Popup -->
 <div class="popup-bg" id="pbg" onclick="closePopup()"></div>
 <div class="popup" id="cpop">
@@ -450,14 +597,7 @@ table.lm-dt tr:hover td { background: var(--accent-soft); }
         <div class="popup-ttl" id="ptitle">Select Leave Type</div>
         <button class="popup-x" onclick="closePopup()">×</button>
     </div>
-    <div class="type-grid">
-        <button class="type-btn tb-C"  onclick="setLv('C')">C<br><span style="font-size:8px;font-weight:400">Casual</span></button>
-        <button class="type-btn tb-S"  onclick="setLv('S')">S<br><span style="font-size:8px;font-weight:400">Sick</span></button>
-        <button class="type-btn tb-L"  onclick="setLv('L')">L<br><span style="font-size:8px;font-weight:400">LOP</span></button>
-        <button class="type-btn tb-HC" onclick="setLv('HC')">HC<br><span style="font-size:8px;font-weight:400">½ Casual</span></button>
-        <button class="type-btn tb-HS" onclick="setLv('HS')">HS<br><span style="font-size:8px;font-weight:400">½ Sick</span></button>
-        <button class="type-btn tb-clr" onclick="setLv('')"><i class="fa-solid fa-xmark"></i> Clear</button>
-    </div>
+    <div class="type-grid" id="type-grid"></div>
     <div class="popup-bal" id="pbal"></div>
 </div>
 
@@ -477,6 +617,14 @@ table.lm-dt tr:hover td { background: var(--accent-soft); }
             </div>
             <div class="lm-fgroup"><label class="lm-flabel">Status</label>
                 <select class="lm-input" id="em-stat"><option>Active</option><option>Inactive</option></select>
+            </div>
+        </div>
+        <div class="lm-fgrid-2">
+            <div class="lm-fgroup" style="grid-column:1/-1">
+                <label class="lm-flabel">Linked Login Account <span style="font-weight:400;color:var(--muted)">(enables the user to request leave for this employee)</span></label>
+                <select class="lm-input" id="em-user">
+                    <option value="">— Not linked —</option>
+                </select>
             </div>
         </div>
         <div class="lm-fgrid-2">
@@ -537,6 +685,13 @@ table.lm-dt tr:hover td { background: var(--accent-soft); }
 const IS_ADMIN = {{ 'true' if session.get('role') == 'admin' else 'false' }};
 const MNS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
+let LM_CFG = null;    // Leave Manager settings (from /api/lm/settings)
+let MY_EMPS = [];     // employee(s) the current user may request leave for
+let REQUESTS = [];    // leave requests (own for users, all for admins)
+let USERS = [];       // user accounts for employee → login linking
+let reqStatusFilter = 'Pending';
+let reqSelType = '';  // selected type in the request form
+
 function getDIM(year) {
     const leap = (year%4===0 && year%100!==0)||(year%400===0);
     return [31,leap?29:28,31,30,31,30,31,31,30,31,30,31];
@@ -574,6 +729,36 @@ async function loadLeaves(year) {
 // save() is now a no-op — persistence happens through the API on each mutation
 function save() { /* persisted server-side */ }
 
+async function loadConfig() {
+    const data = await lmApi('/api/lm/settings');
+    LM_CFG = (data && data.success === false) ? null : data;
+    if (!LM_CFG) LM_CFG = { types: {}, allow_two_half_days: true, max_leave_per_day: 2, permission_max_hours: 4 };
+}
+
+async function loadMyEmps() {
+    const data = await lmApi('/api/lm/me');
+    MY_EMPS = (data && Array.isArray(data.employees)) ? data.employees : [];
+}
+
+async function loadRequests() {
+    const data = await lmApi('/api/lm/requests');
+    REQUESTS = Array.isArray(data) ? data : [];
+    const badge = document.getElementById('appr-badge');
+    if (badge) badge.textContent = REQUESTS.filter(r => r.status === 'pending').length;
+}
+
+async function loadUsers() {
+    const data = await lmApi('/api/lm/users');
+    USERS = Array.isArray(data) ? data : [];
+}
+
+function fillUserSelect() {
+    const sel = document.getElementById('em-user');
+    if (!sel) return;
+    sel.innerHTML = '<option value="">— Not linked —</option>' +
+        USERS.map(u=>`<option value="${u.id}">${escHtml(u.name)} (${escHtml(u.email)})</option>`).join('');
+}
+
 async function changeYear(yr) {
     curYear = parseInt(yr); DIM = getDIM(curYear);
     await loadLeaves(curYear);
@@ -590,7 +775,22 @@ async function changeYear(yr) {
 // ════════════════════════════════════════
 function getLv(empId,month,day) { return (((DB.leaves[curYear]||{})[empId]||{})[month]||{})[day]||''; }
 
-async function setLvDB(empId,month,day,val) {
+// Cell display text: combined half-days are stacked.
+function cellText(v) {
+    if (!v) return '';
+    const parts = v.split('+');
+    if (parts.length === 1) return v;
+    return parts.map(p=>`<div>${p}</div>`).join('');
+}
+// Cell CSS class for colouring.
+function cellClass(v) {
+    v = (v||'').toUpperCase();
+    if (v.includes('+')) return 'v-PAIR';
+    if (v.charAt(0)==='P') return 'v-P';
+    return 'v-' + v.replace(/[^A-Z0-9]/g,'');
+}
+
+async function setLvDB(empId,month,day,val,hours) {
     // Optimistic local update
     if (!DB.leaves[curYear]) DB.leaves[curYear]={};
     if (!DB.leaves[curYear][empId]) DB.leaves[curYear][empId]={};
@@ -602,7 +802,7 @@ async function setLvDB(empId,month,day,val) {
     const res = await lmApi('/api/lm/leaves', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ empId, year: curYear, month, day, type: val })
+        body: JSON.stringify({ empId, year: curYear, month, day, type: val, hours: hours })
     });
     if (!res.success) {
         lmToast(res.message || 'Could not save leave', 'err');
@@ -612,13 +812,16 @@ async function setLvDB(empId,month,day,val) {
 
 function mTaken(empId,month) {
     const md = (((DB.leaves[curYear]||{})[empId])||{})[month]||{};
-    let C=0,S=0,L=0;
+    let C=0,S=0,L=0,P=0;
     for (const d in md) {
         const v = (md[d]||'').toUpperCase();
-        if (v==='C') C+=1; else if (v==='S') S+=1; else if (v==='L') L+=1;
-        else if (v==='HC'||v==='CH') C+=0.5; else if (v==='HS'||v==='SH') S+=0.5;
+        for (const p of v.split('+')) {
+            if (p==='C') C+=1; else if (p==='S') S+=1; else if (p==='L') L+=1;
+            else if (p==='HC'||p==='CH') C+=0.5; else if (p==='HS'||p==='SH') S+=0.5;
+            else if (p.charAt(0)==='P') { const h=parseFloat(p.slice(1)); P += isNaN(h)?0:h; }
+        }
     }
-    return {C,S,L};
+    return {C,S,L,P};
 }
 
 function joinStartMonth(emp) {
@@ -656,15 +859,15 @@ function updateJoinHint() {
 }
 
 function yrStats(empId) {
-    let totC=0,totS=0,totL=0;
-    MNS.forEach(m => { const tk=mTaken(empId,m); totC+=tk.C; totS+=tk.S; totL+=tk.L; });
+    let totC=0,totS=0,totL=0,totP=0;
+    MNS.forEach(m => { const tk=mTaken(empId,m); totC+=tk.C; totS+=tk.S; totL+=tk.L; totP+=tk.P; });
     const {aC,aS} = availUpTo(empId,11);
     const emp = DB.employees.find(e=>e.empId===empId)||{};
     const startM = joinStartMonth(emp);
     const months = startM>=999 ? 0 : 12-startM;
     const extraCL = parseFloat(emp.extraCL)||0;
     const extraSL = parseFloat(emp.extraSL)||0;
-    return {totC,totS,totL,aC,aS,totalCQuota:months+extraCL,totalSQuota:months+extraSL};
+    return {totC,totS,totL,totP,aC,aS,totalCQuota:months+extraCL,totalSQuota:months+extraSL};
 }
 
 // ════════════════════════════════════════
@@ -694,16 +897,18 @@ function setEmpFilter(f) {
 
 function goView(v) {
     curView = v;
-    ['tracker','dashboard','import'].forEach(x => {
+    ['tracker','dashboard','import','request','approvals'].forEach(x => {
         const el = document.getElementById('view-'+x);
         if (el) el.classList.toggle('active', x===v);
     });
-    document.querySelectorAll('.lm-ntab').forEach((t,i) => t.classList.toggle('active', ['tracker','dashboard','import'][i]===v));
+    document.querySelectorAll('.lm-ntab').forEach(t => t.classList.toggle('active', t.dataset.view===v));
     if (v==='dashboard') {
         const lbl = document.getElementById('dash-year-lbl');
         if (lbl) lbl.textContent = ` ${curYear} Leave Overview`;
         renderDash();
     }
+    if (v==='request') renderReq();
+    if (v==='approvals') renderApprovals();
 }
 
 function goMonth(el) {
@@ -733,15 +938,16 @@ function renderMonth(mn) {
         C = Casual &nbsp;·&nbsp; S = Sick &nbsp;·&nbsp; L = Loss of pay
       </th>`;
     for (let d=1; d<=dim; d++) h += `<th class="th-main col-day" style="padding:0"></th>`;
-    h += `<th class="th-taken" colspan="3">Taken</th><th class="th-avail" colspan="2">Avail</th></tr>
+    h += `<th class="th-taken" colspan="4">Taken</th><th class="th-avail" colspan="2">Avail</th></tr>
     <tr>`;
     for (let d=1; d<=dim; d++) h += `<th class="th-sub${wknd(mi,d)?' wk':''}">${DN[new Date(curYear,mi,d).getDay()]}</th>`;
     h += `<th class="th-taken" style="font-size:9px">C</th><th class="th-taken" style="font-size:9px">S</th>
           <th class="th-taken" style="font-size:9px">L</th>
+          <th class="th-taken" style="font-size:9px">P</th>
           <th class="th-avail" style="font-size:9px">C</th><th class="th-avail" style="font-size:9px">S</th></tr>
     <tr>`;
     for (let d=1; d<=dim; d++) h += `<th class="th-n${wknd(mi,d)?' wk':''}">${d}</th>`;
-    h += `<th class="th-taken" colspan="3"></th><th class="th-avail" colspan="2"></th></tr>
+    h += `<th class="th-taken" colspan="4"></th><th class="th-avail" colspan="2"></th></tr>
     </thead><tbody>`;
 
     for (let r=0; r<rows; r++) {
@@ -749,7 +955,7 @@ function renderMonth(mn) {
         if (!emp) {
             h += `<tr class="empty-row"><td class="td-sno">${r+1}</td><td class="td-name"></td>`;
             for (let d=1; d<=dim; d++) h += `<td class="td-day${wknd(mi,d)?' wk':''}"></td>`;
-            h += `<td class="dash-v">-</td><td class="dash-v">-</td><td class="dash-v">-</td>
+            h += `<td class="dash-v">-</td><td class="dash-v">-</td><td class="dash-v">-</td><td class="dash-v">-</td>
                   <td class="dash-v">-</td><td class="dash-v">-</td></tr>`;
             continue;
         }
@@ -763,13 +969,14 @@ function renderMonth(mn) {
           </td>`;
         for (let d=1; d<=dim; d++) {
             const v = getLv(emp.empId,mn,d);
-            const vc = v ? `v-${v.toUpperCase()}` : '';
+            const vc = v ? cellClass(v) : '';
             const isFocus = (focusedCell.empId===emp.empId && focusedCell.month===mn && focusedCell.day===d) ? ' kbd-focus' : '';
-            h += `<td class="td-day${wknd(mi,d)?' wk':''} ${vc}${isFocus}" data-eid="${emp.empId}" data-day="${d}" onclick="openPop(event,'${emp.empId}','${mn}',${d},${mi})">${v||''}</td>`;
+            h += `<td class="td-day${wknd(mi,d)?' wk':''} ${vc}${isFocus}" data-eid="${emp.empId}" data-day="${d}" onclick="openPop(event,'${emp.empId}','${mn}',${d},${mi})">${cellText(v)}</td>`;
         }
         h += `<td class="td-taken">${tk.C||'-'}</td>
               <td class="td-taken">${tk.S||'-'}</td>
               <td class="${tk.L>0?'td-lop':'td-taken'}">${tk.L||'-'}</td>
+              <td class="${tk.P>0?'td-lop':'td-taken'}" style="${tk.P>0?'color:#a78bfa':''}">${tk.P||'-'}</td>
               <td class="td-avail${aC<=0?' lo':''}">${aC>0?aC:'-'}</td>
               <td class="td-avail${aS<=0?' lo':''}">${aS>0?aS:'-'}</td>
         </tr>`;
@@ -787,7 +994,7 @@ function renderYTD() {
       <th style="width:80px">Emp ID</th>
       <th style="width:70px">Dept</th>`;
     MNS.forEach(m => h += `<th style="width:40px">${m}</th>`);
-    h += `<th colspan="3" style="background:var(--warning)">Year Taken</th>
+    h += `<th colspan="4" style="background:var(--warning)">Year Taken</th>
           <th colspan="2" style="background:var(--accent2)">Available</th></tr>
     <tr>
       <th></th><th class="left"></th><th></th><th></th>`;
@@ -795,6 +1002,7 @@ function renderYTD() {
     h += `<th style="background:var(--warning);font-size:9px">C</th>
           <th style="background:var(--warning);font-size:9px">S</th>
           <th style="background:var(--warning);font-size:9px">L</th>
+          <th style="background:var(--warning);font-size:9px">P</th>
           <th style="background:var(--accent2);font-size:9px">C</th>
           <th style="background:var(--accent2);font-size:9px">S</th>
     </tr></thead><tbody>`;
@@ -812,12 +1020,14 @@ function renderYTD() {
             if (tk.C) bits.push(`<span style="color:var(--accent2);font-weight:700">C${tk.C!==1?tk.C:''}</span>`);
             if (tk.S) bits.push(`<span style="color:var(--warning);font-weight:700">S${tk.S!==1?tk.S:''}</span>`);
             if (tk.L) bits.push(`<span style="color:var(--danger);font-weight:700">L${tk.L!==1?tk.L:''}</span>`);
+            if (tk.P) bits.push(`<span style="color:#a78bfa;font-weight:700">P${tk.P}</span>`);
             h += `<td>${bits.join(' ')||'<span style="color:var(--muted)">-</span>'}</td>`;
         });
         h += `
           <td style="background:var(--warning-soft);color:var(--accent2);font-weight:700">${ys.totC||'-'}</td>
           <td style="background:var(--warning-soft);color:var(--warning);font-weight:700">${ys.totS||'-'}</td>
           <td style="background:${ys.totL>0?'var(--danger-soft)':'var(--warning-soft)'};color:${ys.totL>0?'var(--danger)':'var(--muted)'};font-weight:${ys.totL>0?700:400}">${ys.totL||'-'}</td>
+          <td style="background:var(--warning-soft);color:#a78bfa;font-weight:700">${ys.totP||'-'}</td>
           <td style="background:var(--success-soft);font-weight:700;color:${ys.aC<=0?'var(--danger)':'var(--success)'}">${ys.aC>0?ys.aC:'-'}</td>
           <td style="background:var(--success-soft);font-weight:700;color:${ys.aS<=0?'var(--danger)':'var(--success)'}">${ys.aS>0?ys.aS:'-'}</td>
         </tr>`;
@@ -831,14 +1041,42 @@ function renderYTD() {
 // ════════════════════════════════════════
 let PS = { empId:'', month:'', day:0, mi:0 };
 
-// Whether a leave type is still available for an employee up to month index mi.
-function lvTypeAvailable(type, empId, mi) {
-    const t = (type||'').toUpperCase();
-    if (t==='L' || t==='') return true;              // LOP (loss of pay) always allowed
+// Whether a single leave type is still available for an employee up to month index mi.
+function singleLvAvailable(t, empId, mi) {
+    t = (t||'').toUpperCase();
+    if (!t || t==='L' || t.charAt(0)==='P') return true;   // LOP & Permission always allowed
     const {aC,aS} = availUpTo(empId, mi);
-    if (t==='C' || t==='HC' || t==='CH') return aC > 0;  // consumes Casual balance
-    if (t==='S' || t==='HS' || t==='SH') return aS > 0;  // consumes Sick balance
+    if (t==='C' || t==='HC' || t==='CH') return aC > 0;    // consumes Casual balance
+    if (t==='S' || t==='HS' || t==='SH') return aS > 0;    // consumes Sick balance
     return true;
+}
+
+// Availability for a (possibly combined 'HC+HS') value.
+function lvTypeAvailable(type, empId, mi) {
+    return String(type||'').toUpperCase().split('+').every(t => singleLvAvailable(t, empId, mi));
+}
+
+// Renders the leave-type buttons in the cell popup from the enabled config.
+function renderTypeButtons() {
+    const grid = document.getElementById('type-grid');
+    if (!grid) return;
+    const cfg = LM_CFG || { types: {} };
+    const cur = getLv(PS.empId, PS.month, PS.day);
+    const curParts = cur ? cur.split('+') : [];
+    let h = '';
+    for (const [code, t] of Object.entries(cfg.types)) {
+        if (!t || t.enabled === false) continue;
+        const avail = singleLvAvailable(code, PS.empId, PS.mi);
+        let hidden = false;
+        if (['HC','HS'].includes(code) && curParts.length >= 2) hidden = true; // day already has two halves
+        const disp = t.full ? code : code;
+        h += `<button class="type-btn tb-${code}" style="display:${hidden?'none':''}" ${avail?'':'disabled'}
+                 onclick="setLv('${code}')">
+                 ${disp}<br><span style="font-size:8px;font-weight:400">${t.label||code}</span>
+               </button>`;
+    }
+    h += `<button class="type-btn tb-clr" onclick="setLv('')"><i class="fa-solid fa-xmark"></i> Clear</button>`;
+    grid.innerHTML = h;
 }
 
 function openPop(e,empId,month,day,mi) {
@@ -851,22 +1089,13 @@ function openPop(e,empId,month,day,mi) {
     const extraSL = parseFloat(emp?.extraSL)||0;
     const extraLine = (extraCL||extraSL) ? `<br><span style="color:var(--success)">➕ Extra granted: CL +${extraCL} · SL +${extraSL}</span>` : '';
 
-    // Show only the leave types the employee still has balance for.
-    // LOP (L) has no quota, so it is always available.
-    const canC  = aC > 0;
-    const canS  = aS > 0;
-    document.querySelectorAll('.type-btn.tb-C').forEach(b => b.style.display = canC  ? '' : 'none');
-    document.querySelectorAll('.type-btn.tb-HC').forEach(b => b.style.display = canC  ? '' : 'none');
-    document.querySelectorAll('.type-btn.tb-S').forEach(b => b.style.display = canS  ? '' : 'none');
-    document.querySelectorAll('.type-btn.tb-HS').forEach(b => b.style.display = canS  ? '' : 'none');
-    document.querySelectorAll('.type-btn.tb-L').forEach(b => b.style.display = '');  // always
-    document.querySelectorAll('.type-btn.tb-clr').forEach(b => b.style.display = ''); // always
+    renderTypeButtons();
 
-    const noBalanceNote = (!canC && !canS)
-        ? '<br><span style="color:var(--danger)">No CL/SL balance left — only LOP (L) can be marked.</span>'
+    const noBalanceNote = (aC<=0 && aS<=0)
+        ? '<br><span style="color:var(--danger)">No CL/SL balance left — only LOP (L) or Permission (P) can be marked.</span>'
         : '';
     document.getElementById('pbal').innerHTML =
-        `<b>This month taken:</b> C=${tk.C} &nbsp;S=${tk.S} &nbsp;L=${tk.L}<br>
+        `<b>This month taken:</b> C=${tk.C} &nbsp;S=${tk.S} &nbsp;L=${tk.L}${tk.P?` &nbsp;P=${tk.P}`:''}<br>
          <b>Available (incl. carry-fwd):</b> <span style="color:var(--accent2)">CL = ${aC}</span> &nbsp;·&nbsp; <span style="color:var(--warning)">SL = ${aS}</span>${extraLine}${noBalanceNote}`;
     const pop = document.getElementById('cpop');
     pop.style.display = 'block';
@@ -880,11 +1109,28 @@ function closePopup() {
     document.getElementById('pbg').classList.remove('open');
 }
 async function setLv(val) {
-    if (val && !lvTypeAvailable(val, PS.empId, PS.mi)) {
+    const cur = getLv(PS.empId, PS.month, PS.day);
+    const curParts = cur ? cur.split('+') : [];
+    if (val && LM_CFG && LM_CFG.allow_two_half_days) {
+        // Adding a second, different half-day to a day that already has one → combine
+        if (['HC','HS'].includes(val) && curParts.length === 1 &&
+            ['HC','HS'].includes(curParts[0]) && curParts[0] !== val) {
+            val = curParts[0] + '+' + val;
+        }
+    }
+    if (!lvTypeAvailable(val, PS.empId, PS.mi)) {
         lmToast(val + ' not available — no balance left', 'err');
         return;
     }
-    await setLvDB(PS.empId, PS.month, PS.day, val);
+    let hours = null;
+    if (val === 'P') {
+        const max = (LM_CFG && LM_CFG.permission_max_hours) || 4;
+        const h = prompt(`Permission hours (1–${max}):`, '2');
+        if (h === null) return;                     // cancelled
+        hours = parseFloat(h);
+        if (isNaN(hours) || hours <= 0 || hours > max) { lmToast(`Permission must be 1–${max} hours`, 'err'); return; }
+    }
+    await setLvDB(PS.empId, PS.month, PS.day, val, hours);
     closePopup(); renderGrid();
     lmToast(val ? `Set: ${val} for ${PS.month} ${PS.day}` : 'Cleared', 'ok');
 }
@@ -897,8 +1143,8 @@ function renderDash() {
     const mf   = document.getElementById('d-month').value;
     const emps = DB.employees.filter(e => e.status==='Active' && (!dept||e.dept===dept));
     const months = mf ? [mf] : MNS;
-    let tC=0,tS=0,tL=0;
-    emps.forEach(emp => months.forEach(m => { const tk=mTaken(emp.empId,m); tC+=tk.C; tS+=tk.S; tL+=tk.L; }));
+    let tC=0,tS=0,tL=0,tP=0;
+    emps.forEach(emp => months.forEach(m => { const tk=mTaken(emp.empId,m); tC+=tk.C; tS+=tk.S; tL+=tk.L; tP+=tk.P; }));
     const lopN = emps.filter(emp=>months.some(m=>mTaken(emp.empId,m).L>0)).length;
     const curMi = mf ? MNS.indexOf(mf) : new Date().getMonth();
 
@@ -907,7 +1153,7 @@ function renderDash() {
         <div class="lm-sc" style="border-left-color:var(--accent2)"><div class="lm-sc-lbl">Casual Taken</div><div class="lm-sc-val" style="color:var(--accent2)">${tC}</div><div class="lm-sc-sub">${mf||'All months'}</div></div>
         <div class="lm-sc" style="border-left-color:var(--warning)"><div class="lm-sc-lbl">Sick Taken</div><div class="lm-sc-val" style="color:var(--warning)">${tS}</div><div class="lm-sc-sub">${mf||'All months'}</div></div>
         <div class="lm-sc" style="border-left-color:var(--danger)"><div class="lm-sc-lbl">Loss of Pay</div><div class="lm-sc-val" style="color:var(--danger)">${tL}</div><div class="lm-sc-sub">${lopN} employee(s)</div></div>
-        <div class="lm-sc" style="border-left-color:var(--warning)"><div class="lm-sc-lbl">Total Leaves</div><div class="lm-sc-val" style="color:var(--warning)">${tC+tS+tL}</div><div class="lm-sc-sub">C + S + L</div></div>
+        <div class="lm-sc" style="border-left-color:var(--warning)"><div class="lm-sc-lbl">Total Leaves</div><div class="lm-sc-val" style="color:var(--warning)">${tC+tS+tL}</div><div class="lm-sc-sub">C + S + L${tP?` · P ${tP}h`:''}</div></div>
         <div class="lm-sc" style="border-left-color:var(--success)"><div class="lm-sc-lbl">Policy: Per Month</div><div class="lm-sc-val" style="color:var(--success);font-size:20px">1C + 1S</div><div class="lm-sc-sub">Unused carries forward</div></div>
     `;
 
@@ -984,6 +1230,7 @@ function openAddEmp() {
     document.getElementById('em-title').textContent = 'Add Employee';
     ['em-eid','em-name','em-id','em-dept','em-join','em-extra-note'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
     document.getElementById('em-stat').value = 'Active';
+    document.getElementById('em-user').value = '';
     document.getElementById('em-extra-cl').value = '0';
     document.getElementById('em-extra-sl').value = '0';
     document.getElementById('em-join-hint').textContent = '— select joining date —';
@@ -1006,6 +1253,7 @@ function openEditEmp(empId) {
     document.getElementById('em-extra-cl').value   = e.extraCL||0;
     document.getElementById('em-extra-sl').value   = e.extraSL||0;
     document.getElementById('em-extra-note').value = e.extraNote||'';
+    document.getElementById('em-user').value = e.userId || '';
     updateJoinHint();
     document.getElementById('em-err').style.display = 'none';
     document.getElementById('em-del').style.display = 'inline-flex';
@@ -1026,6 +1274,7 @@ async function saveEmp() {
     const extraCL  = parseFloat(document.getElementById('em-extra-cl').value)||0;
     const extraSL  = parseFloat(document.getElementById('em-extra-sl').value)||0;
     const extraNote= document.getElementById('em-extra-note').value.trim();
+    const userId   = document.getElementById('em-user').value || null;
     const editId   = document.getElementById('em-eid').value;
     const errEl    = document.getElementById('em-err');
     if (!name||!empId||!dept) { errEl.textContent='All fields required.'; errEl.style.display='block'; return; }
@@ -1033,7 +1282,7 @@ async function saveEmp() {
     const dup = DB.employees.find(e=>e.empId===empId && e.empId!==editId);
     if (dup) { errEl.textContent='Employee ID already exists.'; errEl.style.display='block'; return; }
 
-    const payload = { empId, name, dept, status, joinDate, extraCL, extraSL, extraNote };
+    const payload = { empId, name, dept, status, joinDate, extraCL, extraSL, extraNote, userId };
     let res;
     if (editId) {
         res = await lmApi('/api/lm/employees/' + encodeURIComponent(editId), {
@@ -1079,6 +1328,212 @@ async function reactivateEmp() {
     renderGrid();
     lmToast(`${e.name} reactivated ✅`,'ok');
     closeModal();
+}
+
+// ════════════════════════════════════════
+// LEAVE REQUESTS & APPROVALS
+// ════════════════════════════════════════
+function escHtml(s) {
+    return String(s==null?'':s).replace(/[&<>"']/g, c =>
+        c==='&'?'&amp;':c==='<'?'&lt;':c==='>'?'&gt;':c==='"'?'&quot;':'&#39;');
+}
+
+function reqSelEmp() { return document.getElementById('req-emp').value; }
+
+function fillReqYear() {
+    const sel = document.getElementById('req-year');
+    if (!sel) return;
+    let opts = '';
+    for (let y=curYear-1; y<=curYear+2; y++) opts += `<option value="${y}" ${y===curYear?'selected':''}>${y}</option>`;
+    sel.innerHTML = opts;
+}
+
+function fillReqMonths() {
+    const sel = document.getElementById('req-month');
+    if (!sel) return;
+    sel.innerHTML = MNS.map(m => `<option value="${m}">${m}</option>`).join('');
+    sel.value = MNS[new Date().getMonth()];
+}
+
+function renderReqDays() {
+    const sel = document.getElementById('req-day');
+    if (!sel) return;
+    const mi = MNS.indexOf(document.getElementById('req-month').value);
+    const dim = getDIM(curYear)[mi];
+    const today = new Date().getDate();
+    const cur = parseInt(sel.value);
+    sel.innerHTML = '';
+    for (let d=1; d<=dim; d++) {
+        const o = document.createElement('option');
+        o.value = d; o.textContent = d;
+        if (cur === d) o.selected = true;
+        sel.appendChild(o);
+    }
+    if (!cur) sel.value = today;
+}
+
+function renderReqTypes() {
+    const wrap = document.getElementById('req-types');
+    if (!wrap) return;
+    const cfg = LM_CFG || { types: {} };
+    let h = '';
+    for (const [code, t] of Object.entries(cfg.types)) {
+        if (!t || t.enabled === false) continue;
+        h += `<div class="req-type${reqSelType===code?' sel':''}" id="rtype-${code}" onclick="reqPickType('${code}')">
+                <div class="rc">${code}</div>
+                <div class="rl">${t.label||code}</div>
+              </div>`;
+    }
+    wrap.innerHTML = h;
+}
+
+function reqPickType(code) {
+    reqSelType = code;
+    renderReqTypes();
+    const cfg = LM_CFG || { types: {}, allow_two_half_days: true, permission_max_hours: 4 };
+    const t = cfg.types[code] || {};
+    const slot2 = document.getElementById('req-slot2-wrap');
+    const hours = document.getElementById('req-hours-wrap');
+    if (slot2) {
+        const show2 = (!t.full && cfg.allow_two_half_days && ['HC','HS'].includes(code));
+        slot2.style.display = show2 ? '' : 'none';
+        if (show2) {
+            const sel = document.getElementById('req-slot2');
+            sel.innerHTML = '<option value="">None</option>' + Object.entries(cfg.types)
+                .filter(([c,x])=>x && x.enabled!==false && !x.full && c!==code && ['HC','HS'].includes(c))
+                .map(([c,x])=>`<option value="${c}">${c} — ${x.label||c}</option>`).join('');
+        }
+    }
+    if (hours) {
+        hours.style.display = (code==='P') ? '' : 'none';
+        if (code==='P') document.getElementById('req-hours').max = cfg.permission_max_hours || 4;
+    }
+    updateReqBalance();
+}
+
+function updateReqBalance() {
+    const empId = reqSelEmp();
+    const info = document.getElementById('req-bal-info');
+    if (!empId || !info) return;
+    const mi = MNS.indexOf(document.getElementById('req-month').value);
+    const {aC,aS} = availUpTo(empId, mi);
+    info.innerHTML = `<i class="fa-solid fa-scale-balanced"></i> <b style="color:var(--accent2)">CL ${aC}</b> &nbsp;·&nbsp; <b style="color:var(--warning)">SL ${aS}</b> available`;
+}
+
+// Employees (approved) + pending/approved requests already occupying the day.
+function dayLeaveCount(yr, mon, dy, excludeEmp) {
+    let n = 0;
+    DB.employees.forEach(emp => {
+        if (emp.empId === excludeEmp) return;
+        if (getLv(emp.empId, mon, dy)) n++;
+    });
+    REQUESTS.forEach(r => {
+        if (r.empId === excludeEmp) return;
+        if (r.year===yr && r.month===mon && r.day===dy && (r.status==='pending'||r.status==='approved')) n++;
+    });
+    return n;
+}
+
+function updateReqCapacity() {
+    const capEl = document.getElementById('req-cap');
+    if (!capEl) return;
+    const yr = parseInt(document.getElementById('req-year').value);
+    const mon = document.getElementById('req-month').value;
+    const dy = parseInt(document.getElementById('req-day').value);
+    const empId = reqSelEmp();
+    const max = (LM_CFG && LM_CFG.max_leave_per_day) || 2;
+    const n = dayLeaveCount(yr, mon, dy, empId);
+    const full = n >= max;
+    capEl.className = 'req-cap' + (full ? ' full' : '');
+    capEl.innerHTML = `<i class="fa-solid fa-users"></i> <b>${n}</b> of <b>${max}</b> employee(s) already on leave this day`
+        + (full ? ' — <b>day full, request blocked</b>' : '');
+    const btn = document.getElementById('req-submit');
+    if (btn) btn.disabled = full;
+}
+
+function showReqErr(msg) {
+    const el = document.getElementById('req-err');
+    if (!el) return;
+    if (!msg) { el.style.display='none'; return; }
+    el.textContent = msg; el.style.display='block';
+}
+
+function renderReq() {
+    fillReqYear();
+    fillReqMonths();
+    renderReqDays();
+    const sel = document.getElementById('req-emp');
+    if (!sel) return;
+    const hasEmp = IS_ADMIN
+        ? DB.employees.some(e=>e.status==='Active')
+        : MY_EMPS.length > 0;
+    if (IS_ADMIN) {
+        sel.innerHTML = DB.employees.filter(e=>e.status==='Active')
+            .map(e=>`<option value="${e.empId}">${escHtml(e.name)} (${e.empId})</option>`).join('')
+            || '<option value="">No active employees</option>';
+        document.getElementById('req-emp-group').style.display = '';
+    } else {
+        sel.innerHTML = MY_EMPS.map(e=>`<option value="${e.empId}">${escHtml(e.name)} (${e.empId})</option>`).join('')
+            || '<option value="">— no linked account —</option>';
+        document.getElementById('req-emp-group').style.display = MY_EMPS.length ? 'none' : '';
+    }
+    document.getElementById('req-no-link').style.display = (!hasEmp && !IS_ADMIN) ? 'block' : 'none';
+    document.getElementById('req-body').style.display = hasEmp ? 'block' : 'none';
+    if (hasEmp) {
+        reqSelType = '';
+        renderReqTypes();
+        updateReqBalance();
+        updateReqCapacity();
+    }
+    renderReqList();
+}
+
+function renderReqList() {
+    const el = document.getElementById('req-list');
+    if (!el) return;
+    if (!REQUESTS.length) { el.innerHTML = '<div style="padding:24px;text-align:center;color:var(--muted)">No requests yet</div>'; return; }
+    const badges = { pending:'bpending', approved:'bapproved', declined:'bdeclined' };
+    el.innerHTML = REQUESTS.map(r => `
+        <div style="padding:10px 14px;border-bottom:1px solid var(--border)">
+            <div style="font-weight:600;font-size:12px">${r.month} ${r.day}, ${r.year}
+                <span class="lm-badge ${badges[r.status]||'bpro'}" style="text-transform:uppercase">${r.status}</span></div>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px">
+                ${[r.lvType, r.lvType2].filter(Boolean).join(' + ')}${r.hours?` · ${r.hours}h`:''}${r.reason?` — ${escHtml(r.reason)}`:''}
+            </div>
+            ${r.adminNote?`<div style="font-size:10px;color:var(--warning);margin-top:2px">Admin note: ${escHtml(r.adminNote)}</div>`:''}
+        </div>`).join('');
+}
+
+async function submitRequest() {
+    showReqErr('');
+    const empId = reqSelEmp();
+    const yr = parseInt(document.getElementById('req-year').value);
+    const mon = document.getElementById('req-month').value;
+    const dy = parseInt(document.getElementById('req-day').value);
+    const lvType = reqSelType;
+    const lvType2 = (document.getElementById('req-slot2')||{}).value || '';
+    const hours = lvType==='P' ? parseFloat(document.getElementById('req-hours').value) : null;
+    const reason = document.getElementById('req-reason').value.trim();
+    if (!empId) { showReqErr('Select an employee first'); return; }
+    if (!lvType) { showReqErr('Select a leave type'); return; }
+    if (lvType==='P' && (!hours || isNaN(hours) || hours<=0)) { showReqErr('Enter permission hours'); return; }
+    const mi = MNS.indexOf(mon);
+    const {aC,aS} = availUpTo(empId, mi);
+    for (const t of [lvType, lvType2].filter(Boolean)) {
+        if ((t==='C'||t==='HC') && aC<=0) { showReqErr('Not enough Casual balance for ' + t); return; }
+        if ((t==='S'||t==='HS') && aS<=0) { showReqErr('Not enough Sick balance for ' + t); return; }
+    }
+    const res = await lmApi('/api/lm/requests', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ empId, year:yr, month:mon, day:dy, lvType, lvType2, hours, reason })
+    });
+    if (!res.success) { showReqErr(res.message || 'Could not submit request'); return; }
+    document.getElementById('req-reason').value = '';
+    lmToast('Leave request submitted for approval','ok');
+    await loadRequests();
+    renderReqList();
+    renderApprovals();
+    updateReqCapacity();
 }
 
 // ════════════════════════════════════════
@@ -1181,7 +1636,7 @@ async function impLvRows(rows) {
     const di=hdr.findIndex(h=>h.includes('day'));
     const ti=hdr.findIndex(h=>h.includes('type'));
     if(ii<0||mi<0||di<0||ti<0) { lmToast('File needs: Emp ID, Month, Day, Type','err'); return; }
-    const valid=['C','S','L','HC','HS','CH','SH'];
+    const valid=['C','S','L','HC','HS','CH','SH','P'];
     const leaves=[];
     rows.slice(1).forEach(r => {
         const empId=String(r[ii]||'').toUpperCase().trim();
@@ -1246,6 +1701,80 @@ async function clrAll() {
 }
 
 // ════════════════════════════════════════
+// APPROVALS (admin)
+// ════════════════════════════════════════
+function apprFilter(f) {
+    reqStatusFilter = f;
+    const styles = {
+        Pending:  {bg:'var(--accent)',color:'#fff',border:'var(--accent)'},
+        Approved: {bg:'var(--success-soft)',color:'var(--success)',border:'var(--success)'},
+        Declined: {bg:'var(--danger-soft)',color:'var(--danger)',border:'var(--danger)'},
+        All:      {bg:'var(--surface2)',color:'var(--text-secondary)',border:'var(--border)'}
+    };
+    ['Pending','Approved','Declined','All'].forEach(k => {
+        const el = document.getElementById('appr-'+k);
+        if (!el) return;
+        const s = styles[k]; const on = k===f;
+        el.style.background = on ? s.bg : 'transparent';
+        el.style.color = on ? s.color : 'var(--muted)';
+        el.style.border = on ? '1px solid ' + s.border : 'none';
+    });
+    renderApprovals();
+}
+
+function renderApprovals() {
+    const body = document.getElementById('appr-body');
+    if (!body) return;
+    const rows = REQUESTS.filter(r => reqStatusFilter==='All' || r.status===reqStatusFilter);
+    const cnt = document.getElementById('appr-count');
+    if (cnt) cnt.textContent = REQUESTS.length ? '(' + REQUESTS.length + ')' : '';
+    if (!rows.length) {
+        body.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:30px">No requests</td></tr>';
+        return;
+    }
+    const badges = { pending:'bpending', approved:'bapproved', declined:'bdeclined' };
+    body.innerHTML = rows.map((r,i) => {
+        const leave = [r.lvType, r.lvType2].filter(Boolean).join(' + ');
+        const actions = r.status==='pending'
+            ? `<input class="lm-input" id="anote-${r.id}" placeholder="Note" style="width:100%;margin-bottom:5px;font-size:11px">
+               <div style="display:flex;gap:5px">
+                 <button class="lm-btn lm-btn-primary lm-btn-sm" style="flex:1;justify-content:center" onclick="reviewReq(${r.id},'approve')"><i class="fa-solid fa-check"></i> Approve</button>
+                 <button class="lm-btn lm-btn-danger lm-btn-sm" style="flex:1;justify-content:center" onclick="reviewReq(${r.id},'decline')"><i class="fa-solid fa-xmark"></i> Decline</button>
+               </div>`
+            : '<span style="color:var(--muted);font-size:11px">—</span>';
+        return `<tr>
+            <td style="font-family:var(--mono);color:var(--muted)">${i+1}</td>
+            <td><div style="font-weight:600">${escHtml(r.empName)}</div><div style="font-size:10px;color:var(--muted);font-family:var(--mono)">${escHtml(r.empId)} · ${escHtml(r.dept)}</div></td>
+            <td style="font-weight:600;white-space:nowrap">${r.month} ${r.day}, ${r.year}</td>
+            <td><span class="lm-badge bpro">${escHtml(leave)}</span></td>
+            <td style="font-family:var(--mono)">${r.hours!=null ? r.hours + 'h' : '-'}</td>
+            <td style="font-size:11px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r.reason||'')}">${escHtml(r.reason)||'-'}</td>
+            <td style="font-size:11px">${escHtml(r.requester)||'-'}</td>
+            <td><span class="lm-badge ${badges[r.status]||'bpro'}" style="text-transform:uppercase">${r.status}</span></td>
+            <td style="font-size:11px;color:var(--warning)">${escHtml(r.adminNote)||'-'}</td>
+            <td>${actions}</td>
+        </tr>`;
+    }).join('');
+}
+
+async function reviewReq(id, action) {
+    const noteEl = document.getElementById('anote-'+id);
+    const note = noteEl ? noteEl.value.trim() : '';
+    const res = await lmApi('/api/lm/requests/' + id + '/' + action, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ adminNote: note })
+    });
+    if (!res.success) { lmToast(res.message||'Action failed','err'); return; }
+    lmToast(action==='approve' ? 'Request approved — leave added to tracker' : 'Request declined', action==='approve'?'ok':'info');
+    await loadRequests();
+    await loadLeaves(curYear);
+    renderApprovals();
+    renderGrid();
+    if (curView==='dashboard') renderDash();
+    if (curView==='request') renderReqList();
+}
+
+// ════════════════════════════════════════
 // TOAST
 // ════════════════════════════════════════
 let _lmtt = null;
@@ -1307,8 +1836,8 @@ document.addEventListener('keydown', (e) => {
 
     // When popup is open: number/letter shortcuts to set leave type
     if (popupOpen) {
-        const map = { '1':'C','2':'S','3':'L','4':'HC','5':'HS','0':'',
-                      'c':'C','s':'S','l':'L' };
+        const map = { '1':'C','2':'S','3':'L','4':'HC','5':'HS','6':'P','0':'',
+                      'c':'C','s':'S','l':'L','p':'P' };
         const k = e.key.toLowerCase();
         if (map.hasOwnProperty(k)) { e.preventDefault(); setLv(map[k]); return; }
         if (e.key === 'Escape') { closePopup(); return; }
@@ -1387,7 +1916,12 @@ async function quickSet(val) {
         '<div style="padding:40px;text-align:center;color:var(--muted)">⏳ Loading leave data…</div>';
 
     await loadEmployees();
+    await loadConfig();
     await loadLeaves(curYear);
+    await loadMyEmps();
+    await loadRequests();
+    await loadUsers();
+    fillUserSelect();
     renderGrid();
 })();
 </script>

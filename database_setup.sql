@@ -128,6 +128,7 @@ CREATE TABLE IF NOT EXISTS lm_employees (
     extra_cl DECIMAL(5,2) DEFAULT 0,
     extra_sl DECIMAL(5,2) DEFAULT 0,
     extra_note VARCHAR(255) DEFAULT '',
+    user_id INT DEFAULT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -138,9 +139,31 @@ CREATE TABLE IF NOT EXISTS lm_leaves (
     mon VARCHAR(5) NOT NULL,
     dy INT NOT NULL,
     lv_type VARCHAR(4) NOT NULL,
+    hours DECIMAL(4,1) DEFAULT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE KEY unique_emp_date (emp_id, yr, mon, dy),
+    UNIQUE KEY unique_emp_date_type (emp_id, yr, mon, dy, lv_type),
     INDEX idx_year (yr)
+);
+
+CREATE TABLE IF NOT EXISTS lm_leave_requests (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    emp_id VARCHAR(30) NOT NULL,
+    yr INT NOT NULL,
+    mon VARCHAR(5) NOT NULL,
+    dy INT NOT NULL,
+    lv_type VARCHAR(4) NOT NULL,
+    lv_type2 VARCHAR(4) DEFAULT NULL,
+    hours DECIMAL(4,1) DEFAULT NULL,
+    reason VARCHAR(500) DEFAULT '',
+    status ENUM('pending', 'approved', 'declined') DEFAULT 'pending',
+    admin_note VARCHAR(255) DEFAULT '',
+    reviewed_by INT DEFAULT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    reviewed_at DATETIME DEFAULT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_status (status),
+    INDEX idx_date (yr, mon, dy)
 );
 
 -- ─── ADMIN SETTINGS ──────────────────────────────────────────────
