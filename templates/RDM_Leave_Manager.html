@@ -1065,9 +1065,10 @@ function renderTypeButtons() {
         if (!t || t.enabled === false) continue;
         const avail = singleLvAvailable(code, PS.empId, PS.mi);
         let hidden = false;
+        if (!avail) hidden = true;                                // no balance → hide entirely
         if (['HC','HS'].includes(code) && curParts.length >= 2) hidden = true; // day already has two halves
         const disp = t.full ? code : code;
-        h += `<button class="type-btn tb-${code}" style="display:${hidden?'none':''}" ${avail?'':'disabled'}
+        h += `<button class="type-btn tb-${code}" style="display:${hidden?'none':''}"
                  onclick="setLv('${code}')">
                  ${disp}<br><span style="font-size:8px;font-weight:400">${t.label||code}</span>
                </button>`;
@@ -1536,10 +1537,12 @@ function renderApprovals() {
     body.innerHTML = rows.map((r,i) => {
         const cat = catNames[r.category] || r.category || [r.lvType, r.lvType2].filter(Boolean).join(' + ');
         const catList = (LM_CFG&&LM_CFG.types)||{};
+        const rmi = Math.max(0, MNS.indexOf(r.month));
         const typeOpts = '<option value="">— select type —</option>' + Object.entries(catList)
             .filter(([,t])=>t && t.enabled!==false)
             .filter(([c])=> r.category==='permission' ? c==='P' : (r.category==='half' ? !catList[c].full : true))
-            .map(([c,t])=>`<option value="${c}">${c} — ${t.label||c}</option>`).join('');
+            .filter(([c])=>singleLvAvailable(c, r.empId, rmi))
+            .map(([c,t])=>`<option value="${c}">${c} — ${t.label||c}${singleLvAvailable(c,r.empId,rmi)?'':' (no balance)'}</option>`).join('');
         const acts = [];
         if (r.status==='pending') {
             acts.push(`<select class="lm-input" id="rtypeselect-${r.id}" style="width:100%;margin-bottom:5px;font-size:11px">${typeOpts}</select>`);
@@ -1628,15 +1631,18 @@ function openEditReq(id) {
 
     // Leave type
     const cfg = LM_CFG || { types: {}, allow_two_half_days: true, permission_max_hours: 4 };
+    const rmi = Math.max(0, MNS.indexOf(r.month));
     const tSel = document.getElementById('rq-type');
     tSel.innerHTML = Object.entries(cfg.types)
         .filter(([c,t])=>t && t.enabled!==false)
+        .filter(([c])=>singleLvAvailable(c, r.empId, rmi))
         .map(([c,t])=>`<option value="${c}" ${c===r.lvType?'selected':''}>${c} — ${t.label||c}</option>`).join('');
     if (!tSel.value) tSel.innerHTML = '<option value="">— no types —</option>';
 
     const type2Sel = document.getElementById('rq-type2');
     type2Sel.innerHTML = '<option value="">None</option>' + Object.entries(cfg.types)
         .filter(([c,t])=>t && t.enabled!==false && !t.full && ['HC','HS'].includes(c))
+        .filter(([c])=>singleLvAvailable(c, r.empId, rmi))
         .map(([c,t])=>`<option value="${c}" ${c===r.lvType2?'selected':''}>${c} — ${t.label||c}</option>`).join('');
 
     document.getElementById('rq-start').value = r.startTime || '09:00';
