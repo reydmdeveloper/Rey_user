@@ -1,0 +1,175 @@
+{% extends "app_base.html" %}
+{% block title %}Document Trimmer – REYDM{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/doctrimmer.css') }}">
+<style>
+.dtrim-wrap{max-width:1500px}
+.dtrim-wrap .preview-box{height:520px}
+@media (max-width:1000px){ .dtrim-wrap .preview-box{height:420px} }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2><i class="fa-solid fa-scissors"></i> Document Trimmer</h2>
+    <p>High-fidelity page-range trimming for Word documents and PDFs</p>
+</div>
+
+<div class="dtrim-wrap">
+
+    <main class="layout">
+        <section class="left">
+            <div class="card card-active" id="step1">
+                <h2>1. Select Documents</h2>
+                <div id="uploadContainer">
+                    <div class="dropzone" id="dropzone">
+                        <p>Drag &amp; drop Word (.docx/.doc/.rtf) or PDF files here, or click to upload</p>
+                        <button type="button" class="btn" id="pickFilesBtn">+ Add Files</button>
+                        <input type="file" id="fileInput" multiple accept=".docx,.doc,.docm,.dotx,.dotm,.rtf,.pdf" hidden />
+                    </div>
+                </div>
+                <ul id="fileList" class="file-list"></ul>
+            </div>
+
+            <div class="card">
+                <h2>2. Configure Page Export Range</h2>
+                <label class="field">
+                    <span>Preset</span>
+                    <select id="presetSelect">
+                        <option value="all">All Pages (Single Doc)</option>
+                        <option value="individual">Every Page as Separate Document</option>
+                        <option value="even">Even Pages Only</option>
+                        <option value="odd">Odd Pages Only</option>
+                        <option value="custom">Custom Page Range</option>
+                    </select>
+                </label>
+                <label class="field">
+                    <span>Range Spec</span>
+                    <input type="text" id="rangeInput" value="1-end" placeholder="e.g. 1-3, 5, 8-end" />
+                </label>
+                <div id="rangeAnalysisBadge" class="range-analysis-badge" style="margin-top:8px;padding:10px 14px;border-radius:8px;font-size:0.88rem;background:rgba(43,127,255,0.12);color:#a5b4fc;border:1px solid rgba(43,127,255,0.3);display:flex;align-items:center;gap:8px;">
+                    <span style="font-size:1.1rem;">&#9889;</span>
+                    <div>
+                        <strong>Cut Analysis:</strong> <span id="rangeAnalysisText">Extracts entire document (Pages 1 to End) into 1 single output file.</span>
+                    </div>
+                </div>
+                <p class="muted hint" style="margin-top:6px;">Supported formats: '1-3' (range), '1, 5, 8' (list), '3-end', 'even', 'odd', 'all-individual'</p>
+            </div>
+
+            <div class="card">
+                <h2>3. Target Export Settings</h2>
+                <label class="field">
+                    <span>Export Format</span>
+                    <select id="formatSelect">
+                        <option value="same" selected>Match Source Format (Same as Source)</option>
+                        <option value="docx">DOCX</option>
+                        <option value="pdf">PDF</option>
+                        <option value="doc">DOC</option>
+                        <option value="rtf">RTF</option>
+                        <option value="docm">DOCM</option>
+                    </select>
+                </label>
+                <p class="muted hint">PDF input files are always exported as PDF.</p>
+                <label class="field">
+                    <span>Naming Template</span>
+                    <input type="text" id="namingInput" value="{original_name}_pages_{start_page}-{end_page}" />
+                </label>
+                <div class="chips">
+                    <button type="button" class="chip" data-token="{original_name}">+ Name</button>
+                    <button type="button" class="chip" data-token="{range}">+ Range</button>
+                    <button type="button" class="chip" data-token="{start_page}">+ Start</button>
+                    <button type="button" class="chip" data-token="{end_page}">+ End</button>
+                    <button type="button" class="chip" data-token="{timestamp}">+ Time</button>
+                </div>
+                <p class="muted">Sample filename: <strong id="namingPreview" class="accent">…</strong></p>
+                <label class="check">
+                    <input type="checkbox" id="overwriteCheck" checked /> Overwrite existing files
+                </label>
+                <label class="check" style="margin-top:6px;">
+                    <input type="checkbox" id="autoZipCheck" checked /> Auto-save results as a single ZIP archive (.zip)
+                </label>
+            </div>
+
+            <div class="card">
+                <h2>4. Advanced Engine Options</h2>
+                <label class="field">
+                    <span>Extraction Engine</span>
+                    <select id="engineSelect">
+                        <option value="trimming">Trimming (high fidelity)</option>
+                        <option value="aspose">Aspose.Words Layout Engine (high accuracy)</option>
+                        <option value="selection">Selection Copy (fast)</option>
+                    </select>
+                </label>
+                <label class="check">
+                    <input type="checkbox" id="visibleCheck" /> Show MS Word window while running (debug)
+                </label>
+                <label class="check" style="margin-top:6px;">
+                    <input type="checkbox" id="quickModeCheck" checked /> Fast export: skip slow pixel-perfect render verification (recommended)
+                </label>
+            </div>
+        </section>
+
+        <section class="right">
+            <div class="card">
+                <h2>Export Control &amp; Progress <button type="button" class="chip" id="resetBtn">Clear Session</button></h2>
+                <div class="progress-wrap">
+                    <div class="progress-bar"><div id="progressFill" class="progress-fill"></div></div>
+                    <span id="progressLabel">0 / 0</span>
+                </div>
+                <p id="statusText" class="status info">Ready to export.</p>
+                <div class="action-row">
+                    <button type="button" class="btn start" id="startBtn">START EXPORT</button>
+                    <button type="button" class="btn cancel" id="cancelBtn" disabled>Cancel</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Results</h2>
+                <div id="resultsBox" class="results muted">No exports completed yet.</div>
+            </div>
+
+            <div class="card">
+                <h2>Document Preview <button type="button" class="chip" id="closePreviewBtn">Close</button></h2>
+                <div class="preview-nav">
+                    <button type="button" class="chip" id="prevPageBtn" disabled>&#9664; Prev</button>
+                    <span id="pageLabel" class="muted">Page - / -</span>
+                    <div class="goto">
+                        <input type="number" id="gotoPageInput" min="1" placeholder="Page #" />
+                        <button type="button" class="chip" id="gotoPageBtn">Go</button>
+                    </div>
+                    <button type="button" class="chip" id="nextPageBtn" disabled>Next &#9654;</button>
+                </div>
+                <div id="previewBox" class="preview-box muted">Select a document and click Preview to see it here.</div>
+            </div>
+
+            <div class="card">
+                <h2>Execution Logs <button type="button" class="chip" id="clearLogsBtn">Clear</button></h2>
+                <div id="logConsole" class="log-console"></div>
+            </div>
+        </section>
+    </main>
+
+    <div id="previewModal" class="modal hidden">
+        <div class="modal-header">
+            <span id="modalTitle" class="modal-title">Preview</span>
+            <div class="modal-nav">
+                <button type="button" class="chip" id="modalPrevBtn" disabled>&#9664; Prev</button>
+                <span id="modalPageLabel" class="muted">Page - / -</span>
+                <div class="goto">
+                    <input type="number" id="modalGotoPageInput" min="1" placeholder="Page #" />
+                    <button type="button" class="chip" id="modalGotoPageBtn">Go</button>
+                </div>
+                <button type="button" class="chip" id="modalNextBtn" disabled>Next &#9654;</button>
+                <button type="button" class="chip danger" id="modalCloseBtn">Close</button>
+            </div>
+        </div>
+        <div id="modalBox" class="modal-box"><img id="modalImg" alt="Preview" /></div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/doctrimmer.js') }}"></script>
+{% endblock %}

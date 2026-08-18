@@ -129,6 +129,12 @@
                     <span class="nav-icon"><i class="{{ tool.icon }}"></i></span>
                     PDF to Image
                 </a>
+                {% elif tool.key == 'doctrimmer' %}
+                <a href="{{ url_for('doctrimmer') }}"
+                   class="{% if request.endpoint == 'doctrimmer' %}active{% endif %}">
+                    <span class="nav-icon"><i class="{{ tool.icon }}"></i></span>
+                    Document Trimmer
+                </a>
                 {% endif %}
             {% endfor %}
 

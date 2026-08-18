@@ -33,6 +33,8 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
+from document_trimmer import bp as doctrimmer_bp
+
 # ─── Timezone (IST) ──────────────────────────────────────────────────
 IST = pytz.timezone("Asia/Kolkata")
 
@@ -52,6 +54,9 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "change-this-to-a-random-secret-key")
 app.permanent_session_lifetime = timedelta(hours=8)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max upload
+
+# ─── Document Trimmer tool (Word & PDF page exporter) ────────────────
+app.register_blueprint(doctrimmer_bp)
 
 # ─── Database Configuration ──────────────────────────────────────────
 DB_CONFIG = {
@@ -145,6 +150,11 @@ AVAILABLE_TOOLS = {
         "name": "PDF to Image",
         "icon": "fa-solid fa-file-image",
         "description": "Convert PDF pages to PNG / JPEG / WEBP images with ZIP export",
+    },
+    "doctrimmer": {
+        "name": "Document Trimmer",
+        "icon": "fa-solid fa-scissors",
+        "description": "Split Word / PDF documents by page range with high-fidelity trimming",
     },
 }
 
@@ -1757,6 +1767,13 @@ def referencecheck_export():
 @tool_required("pdfconverter")
 def pdfconverter():
     return render_template("pdfconverter.html")
+
+
+@app.route("/doctrimmer")
+@login_required
+@tool_required("doctrimmer")
+def doctrimmer():
+    return render_template("doctrimmer.html")
 
 
 # ═══════════════════════════════════════════════════════════════════════
