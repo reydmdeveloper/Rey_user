@@ -26,7 +26,7 @@ RUNTIME_ROOT = os.path.join(tempfile.gettempdir(), "reydm_doc_trimmer")
 os.environ.setdefault("RUNTIME_DIR", RUNTIME_ROOT)
 os.makedirs(RUNTIME_ROOT, exist_ok=True)
 
-from engine import convert, naming, paginate, pdf_split, ranges, docx_trim, verify  # noqa: E402
+from engine import convert, naming, paginate, pdf_split, ranges, docx_trim, verify, word_com  # noqa: E402
 from engine.renderer import Renderer  # noqa: E402
 
 bp = Blueprint("doctrimmer", __name__)
@@ -349,11 +349,21 @@ def _check_cancel(job):
 
 
 def _verify_enabled(job=None):
-    env = os.environ.get("VERIFY_EXPORT", "0")
-    if env not in ("0", "false", "off"):
+    env = os.environ.get("VERIFY_EXPORT")
+    if env is not None and env not in ("0", "false", "off"):
         return True
     if job and job["request"].get("verify") in (True, 1, "1", "true", "on"):
         return True
+    # Without a real layout engine (MS Word / LibreOffice) page boundaries are
+    # estimated, so verify every export page count against the self-consistent
+    # Python renderer by default; verify_export auto-corrects drift by trimming
+    # trailing breaks or re-splitting with adjusted boundaries.
+    if env is None or env in ("0", "false", "off"):
+        try:
+            if not word_com.word_available() and not convert.soffice_available():
+                return True
+        except Exception:
+            pass
     return False
 
 

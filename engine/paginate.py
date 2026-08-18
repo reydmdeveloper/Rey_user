@@ -5,7 +5,10 @@ Engine selection (in priority order):
   2. PDF-backed   - LibreOffice/PyMuPDF layout reproduction (Linux/Render).
   3. Word markers - <w:lastRenderedPageBreak/> markers Word embeds in docx
                     files, reproducing Word's pagination on Linux/Render.
-  4. Explicit breaks - fallback counting explicit page/section breaks.
+  4. Layout estimate - measured pure-Python fallback (python_renderer) when no
+                    real layout engine or Word markers are available, so docs
+                    authored outside Word (WPS/Google Docs/DTs) still split by
+                    natural text flow instead of explicit breaks only.
 
 Results are cached on disk (keyed by file identity) so repeated exports of
 the same document skip the layout engine entirely.
@@ -63,6 +66,22 @@ def _cache_save(docx_path, page_count, boundaries):
 
 
 def _explicit_break_pagination(docx_path):
+    """Last-resort pagination: estimate natural text flow from the document's
+    own layout (page size, margins, run sizes and wrap math) instead of only
+    counting explicit breaks.
+
+    Explicit-break counting alone collapses documents whose pages flow
+    naturally (no w:br/pageBreakBefore/sectPr per page) into a single page,
+    which makes every subsequent range split land on the wrong content.
+    """
+    try:
+        from . import python_renderer
+        res = python_renderer.paginate_units(docx_path)
+        if res is not None:
+            return res
+    except Exception:
+        pass
+
     root = docx_trim.load_document_xml(docx_path)
     body = root.find(_q("body"))
     units = build_units(body)

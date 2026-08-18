@@ -511,9 +511,16 @@ def _build_new_body(original_body, us, ue, break_unit_indices, boundaries, start
     for nc in new_children:
         new_body.append(nc)
     if final_sectpr is not None:
-        type_elem = final_sectpr.find(_q("type"))
-        if type_elem is not None and type_elem.get(_q("val")) in ("nextPage", "oddPage", "evenPage"):
-            type_elem.set(_q("val"), "continuous")
+        # Only collapse a page-starting break to "continuous" when this
+        # trailing sectPr is the sole section of the output (nothing earlier
+        # in the body to break away from). If an earlier section break
+        # survived the trim (output_sections is non-empty), the break here is
+        # real and must be kept, or the two kept sections silently merge onto
+        # the same page.
+        if not output_sections:
+            type_elem = final_sectpr.find(_q("type"))
+            if type_elem is not None and type_elem.get(_q("val")) in ("nextPage", "oddPage", "evenPage"):
+                type_elem.set(_q("val"), "continuous")
         new_body.append(final_sectpr)
         output_sections.append((final_sectpr, final_src_index))
 
