@@ -8,6 +8,7 @@ Runs only on Windows with Microsoft Word installed. Used for:
 Every function degrades gracefully when Word is unavailable.
 """
 
+import difflib
 import os
 import re
 import threading
@@ -130,11 +131,123 @@ def _norm(text):
     return re.findall(r"[a-z0-9]+", text)
 
 
-def paginate(docx_path):
+def _pair_units_to_entries(units, entries):
+    """Align XML units to Word COM entries and return a per-unit page list.
+
+    Both sequences walk the document in the same reading order, so this
+    builds a token per non-empty unit/row and per non-empty entry (its
+    normalized text) and aligns the two token sequences with
+    difflib.SequenceMatcher instead of either:
+
+      * a raw index-for-index zip, which silently corrupts everything
+        downstream of the first spot where the two sides' empty-item counts
+        or placement disagree (form fields, spacer paragraphs, vertical-merge
+        continuation cells rarely line up exactly even when the totals
+        happen to match), or
+      * a small fixed-lookahead text search, which locks onto the wrong
+        occurrence on documents with many near-duplicate paragraphs (repeated
+        form rows, boilerplate) and then drifts, collapsing many source pages
+        onto one.
+
+    SequenceMatcher finds matching blocks - runs of tokens that are exactly
+    equal on both sides, in order - by search over the *whole* remaining
+    sequence rather than a small window, so nearby duplicates don't fool it.
+    Content between two matched blocks (or outside all of them) doesn't need
+    the two sides' counts to agree there: it just inherits the nearest
+    matched page number, so a local mismatch degrades gracefully instead of
+    corrupting the rest of the document.
+
+    Returns a list of per-unit page numbers, or None if nothing could be
+    anchored at all (e.g. the document has no text content).
+    """
+    from .docx_trim import _element_text
+
+    unit_idx = []
+    unit_tokens = []
+    for i, u in enumerate(units):
+        node = u["node"] if u["kind"] == "p" else (u["row"] if u["kind"] == "row" else u.get("table"))
+        if node is None:
+            continue
+        text = "".join(_norm(_element_text(node)))
+        if text:
+            unit_idx.append(i)
+            unit_tokens.append(text[:80])
+
+    entry_idx = []
+    entry_tokens = []
+    for i, e in enumerate(entries):
+        text = "".join(e[1])
+        if text:
+            entry_idx.append(i)
+            entry_tokens.append(text[:80])
+
+    if not unit_idx or not entry_idx:
+        return None
+
+    unit_page = [None] * len(units)
+    sm = difflib.SequenceMatcher(None, unit_tokens, entry_tokens, autojunk=False)
+    for a, b, n in sm.get_matching_blocks():
+        for k in range(n):
+            unit_page[unit_idx[a + k]] = entries[entry_idx[b + k]][2]
+
+    # Forward-fill from each anchor, then back-fill the leading gap (if any)
+    # before the first anchor from the first known page.
+    last = None
+    for i in range(len(unit_page)):
+        if unit_page[i] is not None:
+            last = unit_page[i]
+        elif last is not None:
+            unit_page[i] = last
+    nxt = None
+    for i in range(len(unit_page) - 1, -1, -1):
+        if unit_page[i] is not None:
+            nxt = unit_page[i]
+        elif nxt is not None:
+            unit_page[i] = nxt
+
+    if any(p is None for p in unit_page):
+        return None
+    return unit_page
+
+
+def _pagination_looks_sane(page_count, boundaries):
+    """Reject results where too many pages ended up with no content of their own.
+
+    Range.Information(wdActiveEndPageNumber) is queried against an invisible,
+    headless Word window here, and has been observed to intermittently report
+    a stale page number for a stretch of paragraphs even though the exact
+    same query sequence returns correct values on a different run against the
+    same document. When that happens several consecutive pages collapse onto
+    the same boundary (all their content gets attributed to one earlier
+    page), which silently corrupts every split touching that region. A run of
+    a few genuinely blank pages is normal; a systematic collapse is not.
+    """
+    if not boundaries or len(boundaries) != page_count:
+        return False
+    distinct = len(set(boundaries))
+    allowed_blank = max(1, page_count // 15)
+    return distinct >= page_count - allowed_blank
+
+
+def paginate(docx_path, max_attempts=3):
     """Return (page_count, boundaries) using MS Word's real layout engine.
 
-    boundaries[page0] = last content-unit index on that page.
+    boundaries[page0] = last content-unit index on that page. Retries a few
+    times when the result fails a basic sanity check (see
+    _pagination_looks_sane) since a fresh Word session sometimes succeeds
+    where the previous one returned stale per-paragraph page numbers. If
+    every attempt fails the check, returns None rather than a known-bad
+    result, so the caller (engine.paginate) falls back to the PDF-export-
+    backed engine instead of silently shipping corrupt boundaries.
     """
+    for attempt in range(max_attempts):
+        result = _paginate_once(docx_path)
+        if result is not None and _pagination_looks_sane(*result):
+            return result
+    return None
+
+
+def _paginate_once(docx_path):
     with _WORD_LOCK:
         word = _open_word()
         doc = None
@@ -170,21 +283,72 @@ def paginate(docx_path):
                     pass
 
             try:
-                for t in range(1, main_story.Tables.Count + 1):
+                table_count = main_story.Tables.Count
+            except Exception:
+                table_count = 0
+            for t in range(1, table_count + 1):
+                try:
                     tbl = main_story.Tables(t)
-                    for r in range(1, tbl.Rows.Count + 1):
-                        row = tbl.Rows(r)
-                        rng = row.Range
+                except Exception:
+                    continue
+                try:
+                    row_count = tbl.Rows.Count
+                except Exception:
+                    row_count = None
+                if row_count is not None:
+                    got_all_rows = True
+                    for r in range(1, row_count + 1):
+                        try:
+                            row = tbl.Rows(r)
+                            rng = row.Range
+                            text = (rng.Text or "").rstrip("\r\x07")
+                            page = int(rng.Information(3))
+                            entries.append((int(rng.Start), _norm(text), page))
+                        except Exception:
+                            got_all_rows = False
+                            break
+                    if got_all_rows:
+                        continue
+                    # A row raised mid-loop (merge boundary hit lazily) -
+                    # discard the partial rows just added and use the
+                    # paragraph-based fallback below for this table instead.
+                    entries = [e for e in entries if e[0] < int(tbl.Range.Start)]
+                # tbl.Rows is unusable on tables with vertically merged
+                # cells ("Cannot access individual rows in this collection
+                # because the table has vertically merged cells."). Rebuild
+                # rows by grouping the table's paragraphs by their row index
+                # (wdEndOfRangeRowNumber = 14), which stays valid even when
+                # rows/cells are merged, instead of skipping the whole table
+                # (and every table after it, since a bare except around the
+                # full loop used to abort the rest of the document).
+                try:
+                    row_map = {}
+                    row_order = []
+                    for para in tbl.Range.Paragraphs:
+                        rng = para.Range
+                        try:
+                            ridx = int(rng.Information(14))  # wdEndOfRangeRowNumber
+                        except Exception:
+                            continue
                         text = (rng.Text or "").rstrip("\r\x07")
                         page = int(rng.Information(3))
-                        entries.append((int(rng.Start), _norm(text), page))
-            except Exception:
-                pass
+                        if ridx not in row_map:
+                            row_map[ridx] = [int(rng.Start), [], page]
+                            row_order.append(ridx)
+                        entry = row_map[ridx]
+                        if text:
+                            entry[1].append(text)
+                        entry[2] = page
+                    for ridx in row_order:
+                        start, parts, page = row_map[ridx]
+                        entries.append((start, _norm(" ".join(parts)), page))
+                except Exception:
+                    pass
 
             entries.sort(key=lambda e: e[0])
 
-            # Fingerprint match XML units to Word COM entries
-            from .docx_trim import build_units, load_document_xml, _strip_punct, _element_text, _q
+            # Align XML units to Word COM entries
+            from .docx_trim import build_units, load_document_xml, _q
             root = load_document_xml(docx_path)
             body = root.find(_q("body"))
             units = build_units(body) if body is not None else []
@@ -194,50 +358,11 @@ def paginate(docx_path):
                 page_count = max(page_count, max([p for _, p in items] + [1]))
                 return page_count, _unit_end_pages_to_boundaries(items, page_count)
 
-            unit_page = []
-            entry_idx = 0
-            num_entries = len(entries)
-            for u in units:
-                node = u["node"] if u["kind"] == "p" else (u["row"] if u["kind"] == "row" else u.get("table"))
-                if node is None:
-                    p = entries[entry_idx][2] if entry_idx < num_entries else (unit_page[-1] if unit_page else 1)
-                    unit_page.append(p)
-                    continue
-                u_words = _norm(" ".join(_element_text(node)))
-                u_text_str = "".join(u_words)
-                if not u_text_str:
-                    p = entries[entry_idx][2] if entry_idx < num_entries else (unit_page[-1] if unit_page else 1)
-                    if entry_idx < num_entries and not "".join(entries[entry_idx][1]):
-                        entry_idx += 1
-                    unit_page.append(p)
-                    continue
+            unit_page = _pair_units_to_entries(units, entries)
+            if unit_page is None:
+                return None
 
-                best_ei = None
-                for ei in range(entry_idx, min(entry_idx + 10, num_entries)):
-                    e_words = entries[ei][1]
-                    e_text_str = "".join(e_words)
-                    if not e_text_str:
-                        continue
-                    if (e_text_str in u_text_str) or (u_text_str in e_text_str) or (u_words[:3] and e_words[:3] and u_words[:3] == e_words[:3]):
-                        best_ei = ei
-                        break
-
-                if best_ei is not None:
-                    matched_page = entries[best_ei][2]
-                    entry_idx = best_ei + 1
-                    while entry_idx < num_entries:
-                        nxt_str = "".join(entries[entry_idx][1])
-                        if nxt_str and nxt_str in u_text_str:
-                            matched_page = entries[entry_idx][2]
-                            entry_idx += 1
-                        else:
-                            break
-                    unit_page.append(matched_page)
-                else:
-                    p = entries[entry_idx][2] if entry_idx < num_entries else (unit_page[-1] if unit_page else 1)
-                    unit_page.append(p)
-
-            page_count = max([page_count] + unit_page + [1])
+            page_count = max([page_count] + unit_page)
             by_page = {}
             for i, p in enumerate(unit_page):
                 by_page.setdefault(p, []).append(i)

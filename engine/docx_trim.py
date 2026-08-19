@@ -94,57 +94,6 @@ def _make_page_break_paragraph():
     return p
 
 
-def _has_explicit_break(unit):
-    """True if the paragraph/row already forces a page break before it or at its end."""
-    if unit["kind"] == "p":
-        node = unit["node"]
-        pPr = node.find(_q("pPr"))
-        if pPr is not None:
-            if pPr.find(_q("pageBreakBefore")) is not None:
-                return True
-            if pPr.find(_q("sectPr")) is not None:
-                return True  # section break starts a new page
-        # an explicit page break run at the end of the paragraph forces the next
-        # unit onto a fresh page (nothing after it). Scan runs backwards and
-        # inspect run children so a trailing page break inside the last run is
-        # found even when the same run also carries text before it.
-        for r in reversed(node.findall(_q("r"))):
-            for child in reversed(list(r)):
-                if child.tag == _q("rPr"):
-                    continue
-                if child.tag == _q("t"):
-                    if (child.text or "").strip():
-                        return False  # trailing text -> no trailing break
-                    continue
-                if child.tag == _q("br"):
-                    if child.get(_q("type")) == "page":
-                        return True
-                    continue  # line break, keep scanning backwards
-                # drawing / pict / object / other content -> no trailing break
-                return False
-    return False
-
-
-def _needs_forced_break(units, fu):
-    """Decide whether a page break must be inserted before unit index fu.
-
-    If the source already begins a new page there naturally (explicit page
-    break paragraph, pageBreakBefore, section break), inserting another break
-    would produce a blank page, so we return False.
-    """
-    if fu <= 0 or fu >= len(units):
-        return False
-    # Break already expressed on the unit itself.
-    if _has_explicit_break(units[fu]):
-        return False
-    # Previous unit is an explicit page-break paragraph -> next unit is a new page.
-    prev = units[fu - 1]
-    if prev["kind"] == "p":
-        if _has_explicit_break(prev):
-            return False
-    return True
-
-
 def _add_page_break_before(paragraph):
     pPr = paragraph.find(_q("pPr"))
     if pPr is None:
@@ -584,12 +533,30 @@ def split_docx_range(src_docx, start_page, end_page, boundaries, out_path, packa
         root, parts = package_cache
     root = deepcopy_or_none(root)
 
-    units = build_units(root.find(_q("body")))
+    # Deliberately not forcing a page break at every *internal* page boundary
+    # here. A forced break was previously inserted at every measured page
+    # boundary within the range so each output page would line up with the
+    # corresponding source page - but that makes every split as precise as
+    # the weakest page-boundary measurement in the whole range. Layout
+    # engines only ever estimate page boundaries (no reliable API reports
+    # Word's true layout without full page-image comparison), and even a
+    # single mis-measured boundary - e.g. a one- or two-word paragraph whose
+    # fingerprint is too short to place confidently - forces an artificial
+    # break where the source had none, which can shorten a page and push its
+    # tail content onto a spurious extra page (observed: a two-page range
+    # rendered as three pages because a low-confidence boundary forced a
+    # break before content that, in the source, shared the bottom of the
+    # previous page).
+    #
+    # The output keeps *exactly* the source's paragraphs/rows and section
+    # properties for [us, ue], unchanged and in order, with no forced breaks
+    # of our own - only whatever explicit page/section breaks the source
+    # itself already contains. Word's layout is deterministic given content
+    # and formatting, so reflowing that unchanged content from its own first
+    # page reproduces the source's internal page breaks on its own, without
+    # depending on our boundary measurement's precision at every page in the
+    # middle of the range - only at the two ends, to select the right slice.
     break_unit_indices = set()
-    for p in range(start_page + 1, end_page + 1):
-        fu = (boundaries[p - 2] + 1) if p > 1 else 0
-        if fu > us and fu <= ue and _needs_forced_break(units, fu):
-            break_unit_indices.add(fu)
 
     _rewrite_document_xml(root, parts, out_path, us, ue, break_unit_indices, start_page, end_page, boundaries)
 
