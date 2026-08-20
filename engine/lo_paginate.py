@@ -16,7 +16,7 @@ import tempfile
 import pymupdf
 
 from . import convert
-from .docx_trim import build_units, _q, _strip_punct, _element_text, load_document_xml
+from .docx_trim import build_units, _q, load_document_xml
 
 
 def _page_words(raw_text):
@@ -78,34 +78,57 @@ def paginate_pdf_backed(docx_path, renderer_inst=None):
             renderer_inst = Renderer(os.path.join(tempfile.gettempdir(), "doc_trim_lo_pag"))
         pdf_file, _ = renderer_inst._pdf_for(docx_path)
         with pymupdf.open(pdf_file) as doc:
-            page_texts = [" ".join(re.findall(r"[a-z0-9]+", page.get_text().lower())) for page in doc]
-        if not page_texts:
+            page_word_lists = [_page_words(page.get_text()) for page in doc]
+        if not page_word_lists:
             return None
 
         from .docx_trim import _element_words
-        unit_page = []
-        p_idx = 0
-        for u in units:
+
+        # For each unit, scan forward from the current page for the nearest
+        # page whose text contains a strong ordered match of the unit's
+        # fingerprint words - not the single best-scoring page in the whole
+        # document. Short, near-duplicate paragraphs (repeated attachment
+        # filenames, form boilerplate) routinely recur verbatim much later in
+        # the document (e.g. once in a document list, again in an upload
+        # table), so a global best-match search can latch onto that distant
+        # recurrence instead of the true, nearby occurrence. Taking the
+        # nearest page that clears the threshold - rather than the highest
+        # score - keeps the walk local. A unit whose fingerprint isn't found
+        # anywhere from the current page onward is left unresolved for
+        # interpolation instead of a forced (and possibly wrong) match, and
+        # unlike a naive forward-only scan, failing to place one unit doesn't
+        # block every later unit: the next unit's search still starts from
+        # the same, unmoved position.
+        unit_page = [None] * len(units)
+        last_pi = 0
+        for i, u in enumerate(units):
             node = u["node"] if u["kind"] == "p" else u["row"]
-            text_words = _element_words(node)
-            if not text_words:
-                unit_page.append(p_idx + 1)
-                continue
-
-            fp = " ".join(text_words[:12])
+            fp = _element_words(node)[:12]
             if not fp:
-                unit_page.append(p_idx + 1)
                 continue
+            threshold = max(3, (2 * len(fp)) // 3)
+            for pi in range(last_pi, len(page_word_lists)):
+                if _prefix_match_len(fp, page_word_lists[pi]) >= threshold:
+                    unit_page[i] = pi + 1
+                    last_pi = pi
+                    break
 
-            if p_idx + 1 < len(page_texts) and fp not in page_texts[p_idx]:
-                for pi in range(p_idx + 1, len(page_texts)):
-                    if fp in page_texts[pi]:
-                        p_idx = pi
-                        break
+        last = None
+        for i in range(len(unit_page)):
+            if unit_page[i] is not None:
+                last = unit_page[i]
+            elif last is not None:
+                unit_page[i] = last
+        nxt = None
+        for i in range(len(unit_page) - 1, -1, -1):
+            if unit_page[i] is not None:
+                nxt = unit_page[i]
+            elif nxt is not None:
+                unit_page[i] = nxt
+        if not unit_page or any(p is None for p in unit_page):
+            return None
 
-            unit_page.append(p_idx + 1)
-
-        page_count = max(len(page_texts), max(unit_page) if unit_page else 1)
+        page_count = max(len(page_word_lists), max(unit_page))
         by_page = {}
         for i, p in enumerate(unit_page):
             by_page.setdefault(p, []).append(i)
