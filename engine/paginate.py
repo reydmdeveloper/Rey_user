@@ -1,23 +1,48 @@
 """Page-boundary detection for Word documents.
 
-Engine selection (in priority order):
-  1. PDF-backed   - renders the document to PDF (MS Word's own export when
-                    available, else LibreOffice/PyMuPDF) and maps content
-                    units to the PDF page their text lands on. Preferred over
-                    #2 even on Windows with Word installed: it goes through
-                    Word's real, fully-committed layout (the same pipeline
-                    used to print/export) rather than live per-paragraph COM
-                    queries, which have been observed to return a stale or
-                    misplaced page number for a stretch of a document -
-                    notably around tables with vertically merged cells and
-                    image-heavy rows - even though the exact same query
-                    sequence is correct elsewhere in the same document.
-  2. MS Word COM  - live per-paragraph Information(wdActiveEndPageNumber)
-                    queries (Windows only). Exact when it works, but see #1;
-                    kept as a fallback for when a PDF export can't be
-                    produced.
-  3. Word markers - <w:lastRenderedPageBreak/> markers Word embeds in docx
-                    files, reproducing Word's pagination on Linux/Render.
+Engine priority depends on whether a *real* layout engine is available to
+render the document (MS Word COM on Windows, or LibreOffice/soffice on
+Linux - e.g. Render, if it's installed there):
+
+  With a real layout engine available:
+    1. PDF-backed   - renders to PDF through that real engine and maps
+                       content units to the PDF page their text lands on.
+                       Preferred even on Windows with Word installed: it goes
+                       through Word's real, fully-committed layout (the same
+                       pipeline used to print/export) rather than live
+                       per-paragraph COM queries, which have been observed to
+                       return a stale or misplaced page number for a stretch
+                       of a document - notably around tables with vertically
+                       merged cells and image-heavy rows - even though the
+                       exact same query sequence is correct elsewhere in the
+                       same document.
+    2. MS Word COM  - live per-paragraph Information(wdActiveEndPageNumber)
+                       queries (Windows only). Fallback for when a PDF export
+                       can't be produced.
+    3. Word markers - see below.
+    4. Layout estimate - see below.
+
+  With NO real layout engine available (e.g. deployed on Render without
+  LibreOffice installed - MS Word COM is Windows-only so is never available
+  there at all):
+    1. Word markers - <w:lastRenderedPageBreak/> markers Word embeds in a
+                       docx file the last time a real copy of Word rendered
+                       it. This needs no rendering at all here, so it isn't
+                       subject to the accuracy limits of whatever's rendering
+                       the PDF - it's tried first in this branch precisely
+                       because the PDF-backed engine below is only as good as
+                       its renderer, and without Word or LibreOffice that
+                       renderer is python_renderer (see next point), which is
+                       measurably less accurate: verified on a 19-page
+                       natural-flow test document where python_renderer's
+                       pagination was off by one page while word_markers
+                       matched Word exactly.
+    2. PDF-backed   - same as above, but the PDF can now only come from
+                       python_renderer's pure-Python approximation.
+    3. MS Word COM  - unavailable in this branch by definition; kept only so
+                       both branches share the same fallback list.
+    4. Layout estimate - see below.
+
   4. Layout estimate - measured pure-Python fallback (python_renderer) when no
                     real layout engine or Word markers are available, so docs
                     authored outside Word (WPS/Google Docs/DTs) still split by
@@ -247,37 +272,39 @@ def paginate_docx(docx_path, use_cache=True):
             return None
         return _enforce_forced_page_starts(res[0], res[1], forced_starts)
 
-    result = None
-    # 1) PDF-backed layout pagination (Word's own PDF export when available,
-    # else LibreOffice / PyMuPDF). Preferred over #2: it goes through a real,
-    # fully-committed layout pass instead of live per-paragraph COM queries.
-    try:
-        res = fixup(lo_paginate.paginate_pdf_backed(docx_path))
-        if res is not None and res[1] and res[1][0] != -1 and _boundaries_sane(*res):
-            result = res
-    except Exception:
-        pass
+    def try_pdf_backed():
+        return lo_paginate.paginate_pdf_backed(docx_path)
 
-    # 2) MS Word COM live per-paragraph queries (Windows). Fallback for when
-    # a PDF export couldn't be produced or its own mapping looked unreliable.
-    if result is None and word_com.word_available():
+    def try_word_com():
+        if not word_com.word_available():
+            return None
+        return word_com.paginate(docx_path)
+
+    def try_word_markers():
+        return word_markers.paginate(docx_path)
+
+    if word_com.word_available() or convert.soffice_available():
+        # A real layout engine can back the PDF render, so try that first.
+        engines = [try_pdf_backed, try_word_com, try_word_markers]
+    else:
+        # No real layout engine (e.g. deployed without LibreOffice): the
+        # PDF-backed engine would only be backed by python_renderer's
+        # approximate layout, which measured less accurate than Word's own
+        # embedded page-break markers on a natural-flow test document (see
+        # module docstring) - so try the markers first here instead.
+        engines = [try_word_markers, try_pdf_backed, try_word_com]
+
+    result = None
+    for engine in engines:
         try:
-            res = fixup(word_com.paginate(docx_path))
+            res = fixup(engine())
             if res is not None and res[1] and res[1][0] != -1 and _boundaries_sane(*res):
                 result = res
+                break
         except Exception:
             pass
 
-    # 3) Word's own recorded pagination markers.
-    if result is None:
-        try:
-            res = fixup(word_markers.paginate(docx_path))
-            if res is not None and res[1] and res[1][0] != -1:
-                result = res
-        except Exception:
-            pass
-
-    # 4) Explicit page/section break counting.
+    # Last resort: explicit page/section break counting.
     if result is None:
         result = fixup(_explicit_break_pagination(docx_path))
 
