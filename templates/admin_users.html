@@ -163,6 +163,14 @@
                             <button class="btn btn-secondary btn-sm" data-modal="modal-pwd-{{ u.id }}" title="Reset Password">
                                 <i class="fa-solid fa-key"></i>
                             </button>
+
+                            <!-- Delete User -->
+                            <form method="POST" action="{{ url_for('delete_user', user_id=u.id) }}" style="display:inline;">
+                                <button type="submit" class="btn btn-danger btn-sm"
+                                        data-confirm="Delete user '{{ u.full_name }}' permanently? This removes their attendance, leave, reminders and all records. This cannot be undone.">
+                                    <i class="fa-solid fa-trash"></i>
+                                </button>
+                            </form>
                         </div>
 
                         <!-- Password Reset Modal -->

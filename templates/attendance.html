@@ -102,6 +102,7 @@
             <div class="status-icon" style="color:var(--success)"><i class="fa-solid fa-circle-check"></i></div>
             <div class="status-text" style="color:var(--success)">Currently Logged In</div>
             <div class="status-sub">Since {{ active_session.login_time.strftime('%I:%M %p') }} on {{ active_session.login_date.strftime('%b %d, %Y') }}</div>
+            <div class="status-sub" style="margin-top:4px;color:var(--accent2)">{{ hours_elapsed }} hrs elapsed</div>
         </div>
         {% if can_logout %}
         <form method="POST" action="{{ url_for('attendance_logout') }}">
@@ -112,18 +113,19 @@
         {% else %}
         <div style="background:rgba(210,153,34,.12);border:1px solid var(--warning);border-radius:var(--radius-md);padding:14px;margin-bottom:12px">
             <div style="font-size:13px;font-weight:600;color:var(--warning);margin-bottom:6px">
-                <i class="fa-solid fa-triangle-exclamation"></i> 24-Hour Minimum Active
+                <i class="fa-solid fa-triangle-exclamation"></i> 9-Hour Minimum Active
             </div>
             <div style="font-size:12px;color:var(--muted);margin-bottom:8px">
-                You must remain logged in for at least 24 hours before logging out.
+                A shift must be at least 9 hours before you can log out.
                 Time remaining: <strong id="att-countdown" style="color:var(--text);font-family:var(--mono)">{{ hours_remaining }}h</strong>
             </div>
             <div style="height:6px;background:var(--surface2);border-radius:3px;overflow:hidden;margin-bottom:10px">
-                <div id="att-progress" style="height:100%;background:var(--warning);border-radius:3px;transition:width .6s;width:{{ ((hours_elapsed or 0) / 24 * 100)|round(1) }}%"></div>
+                <div id="att-progress" style="height:100%;background:var(--warning);border-radius:3px;transition:width .6s;width:{{ ((hours_elapsed or 0) / 23 * 100)|round(1) }}%"></div>
+                <div style="font-size:10px;color:var(--muted);margin-top:4px">9h min — 23h max</div>
             </div>
             <form method="POST" action="{{ url_for('attendance_logout') }}">
                 <button type="submit" class="btn att-btn-logout" style="opacity:.7;font-size:13px;padding:10px"
-                    onclick="return confirm('You have not yet completed the 24-hour minimum. A request will be sent to admin for approval. Continue?')">
+                    onclick="return confirm('You have not yet reached the 9-hour minimum. A request will be sent to admin for approval. Continue?')">
                     <i class="fa-solid fa-right-from-bracket"></i> Request Early Logout
                 </button>
             </form>
@@ -209,7 +211,7 @@
                         {% if log.logout_time %}
                             <span class="badge badge-success">Complete</span>
                         {% else %}
-                            <span class="badge badge-warning">In Progress</span>
+                            <span class="badge badge-warning">Active</span>
                         {% endif %}
                     </td>
                     {% if session.get('role') == 'admin' %}
@@ -459,7 +461,7 @@
 
 {% block scripts %}
 <script>
-// ── Countdown timer for 24h rule ──
+// ── Countdown timer for 9h minimum rule ──
 (function(){
     const cd = document.getElementById('att-countdown');
     const pg = document.getElementById('att-progress');
@@ -477,7 +479,8 @@
         const rm = Math.floor((remMs % 3600000) / 60000);
         const rs = Math.floor((remMs % 60000) / 1000);
         cd.textContent = rh + 'h ' + rm + 'm ' + rs + 's';
-        const pct = Math.min(100, ((elapsed + elapsedMs/3600000) / 24) * 100);
+        // progress toward 9h minimum (then 23h max shown as full width)
+        const pct = Math.min(100, ((elapsed + elapsedMs/3600000) / 9) * 100);
         pg.style.width = pct.toFixed(1) + '%';
         if (pct >= 100) pg.style.background = 'var(--success)';
         requestAnimationFrame(tick);
@@ -577,7 +580,7 @@ async function loadHist() {
     if (!HIST_LOGS.length) { list.innerHTML = '<div style="padding:24px;text-align:center;color:var(--muted)">No records found</div>'; return; }
     list.innerHTML = `<table class="att-table"><thead><tr><th>Date</th><th>Login</th><th>Logout</th><th>Hours</th><th>Status</th>${IS_ADMIN ? '<th>Actions</th>' : ''}</tr></thead><tbody>` +
         HIST_LOGS.map(r => {
-            const status = r.logout_time ? 'Complete' : 'In Progress';
+            const status = r.logout_time ? 'Complete' : 'Active';
             const badge = r.logout_time ? 'bapproved' : 'bpending';
             let acts = '';
             if (IS_ADMIN) {

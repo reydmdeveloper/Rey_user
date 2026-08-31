@@ -3200,6 +3200,20 @@ def attendance():
     )
     active_session = cur.fetchone()
 
+    # Auto-close any shift that has reached the 23h maximum so a session
+    # can never linger past max shift (prevents the "login button appears
+    # after 23h" bug where an open overnight session blocks re-login).
+    if active_session:
+        elapsed = (now_ist() - active_session["login_time"]).total_seconds() / 3600.0
+        if elapsed >= 23:
+            forced_logout = active_session["login_time"] + timedelta(hours=23)
+            cur.execute(
+                "UPDATE attendance_logs SET logout_time = %s, hours_spent = %s WHERE id = %s",
+                (forced_logout, 23.0, active_session["id"]),
+            )
+            conn.commit()
+            active_session = None
+
     # Today's completed log (if any)
     cur.execute(
         """SELECT * FROM attendance_logs
@@ -3233,16 +3247,23 @@ def attendance():
     cur.close()
     conn.close()
 
-    # Compute elapsed / remaining for the 24-hour rule
+    # Shift window: min 9h, max 23h.
     hours_elapsed = None
     hours_remaining = None
-    can_logout = False
+    can_logout = False      # elapsed is within [9h, 23h)
+    needs_request = False   # elapsed < 9h -> must request early logout
+    force_close = False     # elapsed >= 23h -> auto-close at max shift
     if active_session:
-        from datetime import datetime as _dt
         elapsed = (now_ist() - active_session["login_time"]).total_seconds() / 3600.0
         hours_elapsed = round(elapsed, 2)
-        hours_remaining = round(max(0, 24 - elapsed), 2)
-        can_logout = elapsed >= 24
+        if elapsed >= 23:
+            force_close = True
+        elif elapsed >= 9:
+            can_logout = True
+            hours_remaining = round(max(0, 23 - elapsed), 2)
+        else:
+            needs_request = True
+            hours_remaining = round(9 - elapsed, 2)
 
     return render_template(
         "attendance.html",
@@ -3254,6 +3275,8 @@ def attendance():
         hours_elapsed=hours_elapsed,
         hours_remaining=hours_remaining,
         can_logout=can_logout,
+        needs_request=needs_request,
+        force_close=force_close,
     )
 
 
@@ -3337,11 +3360,10 @@ def attendance_logout():
 
     diff_hours = (now - login_time).total_seconds() / 3600.0
 
-    # 24-hour minimum: user must wait at least 24 h from login_time before
-    # direct logout is allowed.  Otherwise create a pending attendance
-    # request for admin approval (covers both early-logout and overnight).
-    if diff_hours < 24:
-        remaining_h = 24 - diff_hours
+    # Shift window: min 9h, max 23h.
+    # Under 9h -> block direct logout, create a pending request for admin.
+    if diff_hours < 9:
+        remaining_h = 9 - diff_hours
         rem_h = int(remaining_h)
         rem_m = int((remaining_h - rem_h) * 60)
         cur.execute(
@@ -3350,29 +3372,36 @@ def attendance_logout():
                VALUES (%s, %s, %s, %s, %s)""",
             (session["user_id"], login_date, login_time, now,
              f"[Early Logout] Only {diff_hours:.1f}h elapsed — "
-             f"minimum 24h required. Admin review needed."),
+             f"minimum 9h required. Admin review needed."),
         )
         conn.commit()
         cur.close()
         conn.close()
         flash(
-            f"Cannot logout yet. You must wait ~{rem_h}h {rem_m}m more "
-            f"(24h minimum from login). A request has been sent to admin "
-            f"for approval.",
+            f"Cannot logout yet. A shift must be at least 9 hours; "
+            f"{rem_h}h {rem_m}m more required. A request has been sent "
+            f"to admin for approval.",
             "warning",
         )
         return redirect(url_for("attendance"))
+
+    # Max shift is 23h: clamp logout so hours never exceed 23h.
+    if diff_hours > 23:
+        logout_time = login_time + timedelta(hours=23)
+        diff_hours = 23.0
+    else:
+        logout_time = now
 
     hours_spent = round(diff_hours, 2)
 
     cur.execute(
         "UPDATE attendance_logs SET logout_time = %s, hours_spent = %s WHERE id = %s",
-        (now, hours_spent, active["id"]),
+        (logout_time, hours_spent, active["id"]),
     )
     conn.commit()
     cur.close()
     conn.close()
-    flash(f"Logged out at {now.strftime('%I:%M %p')} (IST). Hours: {hours_spent} hrs", "success")
+    flash(f"Logged out at {logout_time.strftime('%I:%M %p')} (IST). Hours: {hours_spent} hrs", "success")
     return redirect(url_for("attendance"))
 
 
@@ -4120,6 +4149,46 @@ def toggle_tool(user_id, tool_key):
         session["allowed_tools"] = tools
 
     flash(f"{AVAILABLE_TOOLS[tool_key]['name']} {action} for user.", "success")
+    return redirect(url_for("admin_users"))
+
+
+@app.route("/admin/users/delete/<int:user_id>", methods=["POST"])
+@admin_required
+def delete_user(user_id):
+    """Permanently delete a user and all cascaded records
+    (attendance, leave requests, reminders, macro imports)."""
+    if user_id == session.get("user_id"):
+        flash("You cannot delete your own account.", "danger")
+        return redirect(url_for("admin_users"))
+
+    conn = get_db()
+    cur = conn.cursor(dictionary=True)
+    cur.execute("SELECT * FROM users WHERE id = %s", (user_id,))
+    user = cur.fetchone()
+    if not user:
+        cur.close()
+        conn.close()
+        flash("User not found.", "danger")
+        return redirect(url_for("admin_users"))
+
+    if user["role"] == "admin":
+        # Prevent deleting admins to avoid locking out admin access.
+        admin_count = None
+        cur.execute("SELECT COUNT(*) AS cnt FROM users WHERE role = 'admin'")
+        row = cur.fetchone()
+        if row:
+            admin_count = row["cnt"]
+        if admin_count is not None and admin_count <= 1:
+            cur.close()
+            conn.close()
+            flash("Cannot delete the last admin account.", "danger")
+            return redirect(url_for("admin_users"))
+
+    cur.execute("DELETE FROM users WHERE id = %s", (user_id,))
+    conn.commit()
+    cur.close()
+    conn.close()
+    flash(f"User {user['full_name']} and all their records have been deleted.", "success")
     return redirect(url_for("admin_users"))
 
 
