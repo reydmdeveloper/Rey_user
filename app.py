@@ -3233,6 +3233,17 @@ def attendance():
     cur.close()
     conn.close()
 
+    # Compute elapsed / remaining for the 24-hour rule
+    hours_elapsed = None
+    hours_remaining = None
+    can_logout = False
+    if active_session:
+        from datetime import datetime as _dt
+        elapsed = (now_ist() - active_session["login_time"]).total_seconds() / 3600.0
+        hours_elapsed = round(elapsed, 2)
+        hours_remaining = round(max(0, 24 - elapsed), 2)
+        can_logout = elapsed >= 24
+
     return render_template(
         "attendance.html",
         active_session=active_session,
@@ -3240,6 +3251,9 @@ def attendance():
         recent_logs=recent_logs,
         pending_requests=pending_requests,
         my_requests=my_requests,
+        hours_elapsed=hours_elapsed,
+        hours_remaining=hours_remaining,
+        can_logout=can_logout,
     )
 
 
@@ -3320,27 +3334,36 @@ def attendance_logout():
     now = now_ist()
     login_time = active["login_time"]
     login_date = active["login_date"]
-    logout_date = now.date()
 
-    # If logout crosses to a different calendar day than login,
-    # create a pending attendance request for admin review instead of
-    # processing directly. This handles overnight shifts properly.
-    if logout_date != login_date:
+    diff_hours = (now - login_time).total_seconds() / 3600.0
+
+    # 24-hour minimum: user must wait at least 24 h from login_time before
+    # direct logout is allowed.  Otherwise create a pending attendance
+    # request for admin approval (covers both early-logout and overnight).
+    if diff_hours < 24:
+        remaining_h = 24 - diff_hours
+        rem_h = int(remaining_h)
+        rem_m = int((remaining_h - rem_h) * 60)
         cur.execute(
             """INSERT INTO attendance_requests
                (user_id, request_date, requested_login, requested_logout, reason)
                VALUES (%s, %s, %s, %s, %s)""",
             (session["user_id"], login_date, login_time, now,
-             "[Overnight] Pending admin review to adjust login date"),
+             f"[Early Logout] Only {diff_hours:.1f}h elapsed — "
+             f"minimum 24h required. Admin review needed."),
         )
         conn.commit()
         cur.close()
         conn.close()
-        flash("Overnight shift detected. A pending request has been sent for admin review.", "info")
+        flash(
+            f"Cannot logout yet. You must wait ~{rem_h}h {rem_m}m more "
+            f"(24h minimum from login). A request has been sent to admin "
+            f"for approval.",
+            "warning",
+        )
         return redirect(url_for("attendance"))
 
-    diff = (now - login_time).total_seconds() / 3600.0
-    hours_spent = round(diff, 2)
+    hours_spent = round(diff_hours, 2)
 
     cur.execute(
         "UPDATE attendance_logs SET logout_time = %s, hours_spent = %s WHERE id = %s",
@@ -3682,6 +3705,258 @@ def api_attendance_chart():
         {"date": r["login_date"].strftime("%Y-%m-%d"), "hours": float(r["total_hours"])}
         for r in rows
     ])
+
+
+# ── ATTENDANCE TRACKER (admin — full log management) ──
+@app.route("/api/attendance/tracker")
+@login_required
+@tool_required("attendance")
+def api_attendance_tracker():
+    """Return all attendance logs for a given month/year with user info.
+    Admin only.  Accepts ?year=YYYY&month=MM query params (defaults to
+    current month)."""
+    if session.get("role") != "admin":
+        return jsonify({"success": False, "message": "Admin only"}), 403
+
+    try:
+        year = int(request.args.get("year", datetime.now().year))
+        month = int(request.args.get("month", datetime.now().month))
+    except (ValueError, TypeError):
+        year, month = datetime.now().year, datetime.now().month
+
+    conn = get_db()
+    cur = conn.cursor(dictionary=True)
+    cur.execute(
+        """SELECT al.*, u.full_name, u.email
+           FROM attendance_logs al
+           JOIN users u ON al.user_id = u.id
+           WHERE YEAR(al.login_date) = %s AND MONTH(al.login_date) = %s
+           ORDER BY u.full_name ASC, al.login_date ASC, al.login_time ASC""",
+        (year, month),
+    )
+    rows = cur.fetchall()
+
+    # Also count pending requests for this month
+    cur.execute(
+        """SELECT COUNT(*) AS cnt
+           FROM attendance_requests
+           WHERE YEAR(request_date) = %s AND MONTH(request_date) = %s
+             AND status = 'pending'""",
+        (year, month),
+    )
+    pending = cur.fetchone()["cnt"]
+    cur.close()
+    conn.close()
+
+    return jsonify({"logs": rows, "pending_requests": pending})
+
+
+@app.route("/api/attendance/tracker/<int:log_id>/set", methods=["POST"])
+@login_required
+@tool_required("attendance")
+def api_attendance_tracker_set(log_id):
+    """Admin sets login/logout times for an existing log entry.
+    Also supports creating a new log for a user+date."""
+    if session.get("role") != "admin":
+        return jsonify({"success": False, "message": "Admin only"}), 403
+
+    data = request.get_json() or {}
+    login_str = data.get("loginTime", "")
+    logout_str = data.get("logoutTime", "")
+    hours = data.get("hours")
+
+    conn = get_db()
+    cur = conn.cursor(dictionary=True)
+    cur.execute("SELECT * FROM attendance_logs WHERE id = %s", (log_id,))
+    log = cur.fetchone()
+    if not log:
+        cur.close()
+        conn.close()
+        return jsonify({"success": False, "message": "Log not found"}), 404
+
+    new_login = log["login_time"]
+    new_logout = log["logout_time"]
+    new_hours = log["hours_spent"]
+
+    if login_str:
+        try:
+            new_login = datetime.strptime(login_str, "%Y-%m-%dT%H:%M")
+        except ValueError:
+            cur.close()
+            conn.close()
+            return jsonify({"success": False, "message": "Invalid login time"}), 400
+
+    if logout_str:
+        try:
+            new_logout = datetime.strptime(logout_str, "%Y-%m-%dT%H:%M")
+        except ValueError:
+            cur.close()
+            conn.close()
+            return jsonify({"success": False, "message": "Invalid logout time"}), 400
+    elif logout_str == "":
+        new_logout = None
+        new_hours = None
+
+    if hours is not None and hours != "":
+        try:
+            new_hours = float(hours)
+        except (TypeError, ValueError):
+            pass
+
+    if new_logout and new_login and new_logout < new_login:
+        cur.close()
+        conn.close()
+        return jsonify({"success": False, "message": "Logout must be after login"}), 400
+
+    if new_logout and new_login and new_hours is None:
+        new_hours = round((new_logout - new_login).total_seconds() / 3600.0, 2)
+
+    cur.execute(
+        """UPDATE attendance_logs
+           SET login_time = %s, logout_time = %s, hours_spent = %s
+           WHERE id = %s""",
+        (new_login, new_logout, new_hours, log_id),
+    )
+    conn.commit()
+    cur.close()
+    conn.close()
+    return jsonify({"success": True})
+
+
+@app.route("/api/attendance/tracker/create", methods=["POST"])
+@login_required
+@tool_required("attendance")
+def api_attendance_tracker_create():
+    """Admin creates a new attendance log entry for a user on a date."""
+    if session.get("role") != "admin":
+        return jsonify({"success": False, "message": "Admin only"}), 403
+
+    data = request.get_json() or {}
+    user_id = data.get("userId")
+    login_str = data.get("loginTime", "")
+    logout_str = data.get("logoutTime", "")
+
+    if not user_id or not login_str:
+        return jsonify({"success": False, "message": "userId and loginTime required"}), 400
+
+    try:
+        login_dt = datetime.strptime(login_str, "%Y-%m-%dT%H:%M")
+    except ValueError:
+        return jsonify({"success": False, "message": "Invalid login time"}), 400
+
+    logout_dt = None
+    hours = None
+    if logout_str:
+        try:
+            logout_dt = datetime.strptime(logout_str, "%Y-%m-%dT%H:%M")
+            hours = round((logout_dt - login_dt).total_seconds() / 3600.0, 2)
+        except ValueError:
+            return jsonify({"success": False, "message": "Invalid logout time"}), 400
+
+    conn = get_db()
+    cur = conn.cursor(dictionary=True)
+
+    # Check for existing log on that date
+    cur.execute(
+        "SELECT id FROM attendance_logs WHERE user_id = %s AND login_date = %s",
+        (user_id, login_dt.date()),
+    )
+    if cur.fetchone():
+        cur.close()
+        conn.close()
+        return jsonify({"success": False, "message": "A log already exists for this user on this date. Edit it instead."}), 409
+
+    cur.execute(
+        """INSERT INTO attendance_logs (user_id, login_date, login_time, logout_time, hours_spent)
+           VALUES (%s, %s, %s, %s, %s)""",
+        (user_id, login_dt.date(), login_dt, logout_dt, hours),
+    )
+    conn.commit()
+    new_id = cur.lastrowid
+    cur.close()
+    conn.close()
+    return jsonify({"success": True, "id": new_id})
+
+
+@app.route("/api/attendance/tracker/all-users")
+@login_required
+@tool_required("attendance")
+def api_attendance_tracker_users():
+    """Return all users for the admin tracker user selector."""
+    if session.get("role") != "admin":
+        return jsonify({"success": False, "message": "Admin only"}), 403
+
+    conn = get_db()
+    cur = conn.cursor(dictionary=True)
+    cur.execute("SELECT id, full_name, email FROM users WHERE is_active = 1 ORDER BY full_name")
+    users = cur.fetchall()
+    cur.close()
+    conn.close()
+    return jsonify(users)
+
+
+@app.route("/api/attendance/tracker/month-summary")
+@login_required
+@tool_required("attendance")
+def api_attendance_tracker_summary():
+    """Return per-user monthly summary for the tracker: total days, total hours."""
+    if session.get("role") != "admin":
+        return jsonify({"success": False, "message": "Admin only"}), 403
+
+    try:
+        year = int(request.args.get("year", datetime.now().year))
+        month = int(request.args.get("month", datetime.now().month))
+    except (ValueError, TypeError):
+        year, month = datetime.now().year, datetime.now().month
+
+    conn = get_db()
+    cur = conn.cursor(dictionary=True)
+    cur.execute(
+        """SELECT al.user_id, u.full_name,
+                  COUNT(*) AS total_days,
+                  COALESCE(SUM(al.hours_spent), 0) AS total_hours,
+                  SUM(CASE WHEN al.logout_time IS NULL THEN 1 ELSE 0 END) AS active_count
+           FROM attendance_logs al
+           JOIN users u ON al.user_id = u.id
+           WHERE YEAR(al.login_date) = %s AND MONTH(al.login_date) = %s
+           GROUP BY al.user_id, u.full_name
+           ORDER BY u.full_name""",
+        (year, month),
+    )
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return jsonify(rows)
+
+
+@app.route("/api/attendance/tracker/delete-all-month", methods=["POST"])
+@login_required
+@tool_required("attendance")
+def api_attendance_tracker_delete_month():
+    """Admin deletes all logs for a given user in a month."""
+    if session.get("role") != "admin":
+        return jsonify({"success": False, "message": "Admin only"}), 403
+
+    data = request.get_json() or {}
+    user_id = data.get("userId")
+    year = data.get("year")
+    month = data.get("month")
+
+    if not user_id or not year or not month:
+        return jsonify({"success": False, "message": "userId, year, month required"}), 400
+
+    conn = get_db()
+    cur = conn.cursor(dictionary=True)
+    cur.execute(
+        """DELETE FROM attendance_logs
+           WHERE user_id = %s AND YEAR(login_date) = %s AND MONTH(login_date) = %s""",
+        (user_id, year, month),
+    )
+    deleted = cur.rowcount
+    conn.commit()
+    cur.close()
+    conn.close()
+    return jsonify({"success": True, "deleted": deleted})
 
 
 # ═══════════════════════════════════════════════════════════════════════

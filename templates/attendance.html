@@ -58,6 +58,21 @@
 .att-toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 .att-toast.ok{border-color:rgba(63,185,80,.35);color:var(--success)}
 .att-toast.err{border-color:rgba(248,81,73,.35);color:var(--danger)}
+/* Modal + button styles (previously only defined in RDM_Leave_Manager.html) */
+.lm-btn{padding:6px 14px;border-radius:var(--radius-sm);font-size:12px;font-weight:600;cursor:pointer;border:1px solid transparent;transition:all var(--transition);display:inline-flex;align-items:center;gap:6px;font-family:var(--font)}
+.lm-btn-primary{background:var(--accent);color:#fff}
+.lm-btn-primary:hover{background:var(--accent2)}
+.lm-btn-ghost{background:transparent;color:var(--text-secondary);border:1px solid var(--border)}
+.lm-btn-ghost:hover{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+.lm-btn-danger{background:var(--danger-soft);color:var(--danger);border-color:var(--danger)}
+.lm-btn-danger:hover{background:var(--danger);color:#fff}
+.lm-btn-sm{padding:4px 10px;font-size:11px}
+.lm-modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:600;display:none;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+.lm-modal-bg.open{display:flex}
+.lm-modal{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-xl);padding:24px;width:min(480px,94vw);box-shadow:var(--shadow-lg)}
+.lm-modal-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}
+.lm-modal-body{display:flex;flex-direction:column}
+.lm-modal-btns{display:flex;gap:8px;justify-content:flex-end;margin-top:18px;padding-top:14px;border-top:1px solid var(--border)}
 </style>
 {% endblock %}
 
@@ -71,6 +86,9 @@
     <button class="att-tab active" id="att-tab-overview" onclick="attGo('overview')"><i class="fa-solid fa-clock"></i> Overview</button>
     <button class="att-tab" id="att-tab-history" onclick="attGo('history')"><i class="fa-solid fa-clock-rotate-left"></i> History</button>
     <button class="att-tab" id="att-tab-request" onclick="attGo('request')"><i class="fa-solid fa-paper-plane"></i> Request Leave</button>
+    {% if session.get('role') == 'admin' %}
+    <button class="att-tab" id="att-tab-tracker" onclick="attGo('tracker')"><i class="fa-solid fa-table"></i> Tracker</button>
+    {% endif %}
 </div>
 
 <div id="att-view-overview" class="att-view active">
@@ -85,11 +103,32 @@
             <div class="status-text" style="color:var(--success)">Currently Logged In</div>
             <div class="status-sub">Since {{ active_session.login_time.strftime('%I:%M %p') }} on {{ active_session.login_date.strftime('%b %d, %Y') }}</div>
         </div>
+        {% if can_logout %}
         <form method="POST" action="{{ url_for('attendance_logout') }}">
-            <button type="submit" class="btn att-btn-logout" data-confirm="Are you sure you want to logout?">
+            <button type="submit" class="btn att-btn-logout">
                 <i class="fa-solid fa-right-from-bracket"></i> LOGOUT NOW
             </button>
         </form>
+        {% else %}
+        <div style="background:rgba(210,153,34,.12);border:1px solid var(--warning);border-radius:var(--radius-md);padding:14px;margin-bottom:12px">
+            <div style="font-size:13px;font-weight:600;color:var(--warning);margin-bottom:6px">
+                <i class="fa-solid fa-triangle-exclamation"></i> 24-Hour Minimum Active
+            </div>
+            <div style="font-size:12px;color:var(--muted);margin-bottom:8px">
+                You must remain logged in for at least 24 hours before logging out.
+                Time remaining: <strong id="att-countdown" style="color:var(--text);font-family:var(--mono)">{{ hours_remaining }}h</strong>
+            </div>
+            <div style="height:6px;background:var(--surface2);border-radius:3px;overflow:hidden;margin-bottom:10px">
+                <div id="att-progress" style="height:100%;background:var(--warning);border-radius:3px;transition:width .6s;width:{{ ((hours_elapsed or 0) / 24 * 100)|round(1) }}%"></div>
+            </div>
+            <form method="POST" action="{{ url_for('attendance_logout') }}">
+                <button type="submit" class="btn att-btn-logout" style="opacity:.7;font-size:13px;padding:10px"
+                    onclick="return confirm('You have not yet completed the 24-hour minimum. A request will be sent to admin for approval. Continue?')">
+                    <i class="fa-solid fa-right-from-bracket"></i> Request Early Logout
+                </button>
+            </form>
+        </div>
+        {% endif %}
         {% else %}
         <div class="att-status-big">
             <div class="status-icon" style="color:var(--muted)"><i class="fa-solid fa-circle-xmark"></i></div>
@@ -323,11 +362,129 @@
         <div id="req-list" style="max-height:380px;overflow-y:auto"></div>
     </div>
 </div><!-- /att-view-request -->
+
+{% if session.get('role') == 'admin' %}
+<!-- Attendance Tracker (Admin) -->
+<div id="att-view-tracker" class="att-view">
+    <!-- Month Selector + Summary -->
+    <div class="att-grid" style="margin-bottom:16px">
+        <div class="att-card">
+            <h3><i class="fa-solid fa-table"></i> Attendance Tracker</h3>
+            <div style="display:flex;gap:10px;align-items:end;flex-wrap:wrap">
+                <div class="lm-fgroup">
+                    <label class="lm-flabel">Month</label>
+                    <select class="lm-input" id="trk-month" onchange="trackerLoad()" style="width:140px"></select>
+                </div>
+                <div class="lm-fgroup">
+                    <label class="lm-flabel">User</label>
+                    <select class="lm-input" id="trk-user" onchange="trackerLoad()" style="width:200px">
+                        <option value="">All users</option>
+                    </select>
+                </div>
+                <button class="btn btn-primary btn-sm" onclick="trackerLoad()" style="height:34px">
+                    <i class="fa-solid fa-arrows-rotate"></i> Refresh
+                </button>
+                <button class="btn btn-success btn-sm" onclick="trackerOpenCreate()" style="height:34px">
+                    <i class="fa-solid fa-plus"></i> Create Log
+                </button>
+            </div>
+        </div>
+        <div class="att-card" id="trk-summary">
+            <h3><i class="fa-solid fa-chart-simple"></i> Month Summary</h3>
+            <div id="trk-summary-body" style="font-size:12px;color:var(--muted)">Loading…</div>
+        </div>
+    </div>
+
+    <!-- Pending Requests Badge -->
+    <div id="trk-pending-badge" style="display:none;margin-bottom:12px;padding:10px 16px;background:rgba(210,153,34,.1);border:1px solid var(--warning);border-radius:var(--radius-md);font-size:13px;color:var(--warning)">
+        <i class="fa-solid fa-bell"></i> <span id="trk-pending-count">0</span> pending attendance request(s) this month
+        <a href="{{ url_for('admin_attendance_requests') }}" style="color:var(--warning);font-weight:600;margin-left:8px">Review</a>
+    </div>
+
+    <!-- Logs Table -->
+    <div class="att-card">
+        <div style="overflow-x:auto">
+            <table class="att-table" id="trk-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>User</th>
+                        <th>Login</th>
+                        <th>Logout</th>
+                        <th>Hours</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="trk-body">
+                    <tr><td colspan="7" style="text-align:center;padding:30px;color:var(--muted)">Loading…</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Create Log Modal -->
+    <div class="lm-modal-bg" id="trk-create-modal">
+        <div class="lm-modal" style="max-width:440px">
+            <div class="lm-modal-header">
+                <h3 style="margin:0;font-size:15px"><i class="fa-solid fa-plus"></i> Create Attendance Log</h3>
+                <button class="lm-btn lm-btn-ghost lm-btn-sm" onclick="trackerCloseCreate()">✕</button>
+            </div>
+            <div class="lm-modal-body">
+                <div class="lm-fgroup" style="margin-bottom:12px">
+                    <label class="lm-flabel">User</label>
+                    <select class="lm-input" id="trk-create-user"></select>
+                </div>
+                <div class="lm-fgroup" style="margin-bottom:12px">
+                    <label class="lm-flabel">Login Time</label>
+                    <input type="datetime-local" class="lm-input" id="trk-create-login"/>
+                </div>
+                <div class="lm-fgroup" style="margin-bottom:12px">
+                    <label class="lm-flabel">Logout Time <span style="font-size:10px;color:var(--muted)">(optional)</span></label>
+                    <input type="datetime-local" class="lm-input" id="trk-create-logout"/>
+                </div>
+                <div id="trk-create-err" style="font-size:12px;color:var(--danger);display:none"></div>
+            </div>
+            <div class="lm-modal-btns">
+                <button class="lm-btn lm-btn-ghost" onclick="trackerCloseCreate()">Cancel</button>
+                <button class="lm-btn lm-btn-primary" onclick="trackerSaveCreate()"><i class="fa-solid fa-check"></i> Create</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <div class="att-toast" id="att-toast"></div>
 {% endblock %}
 
 {% block scripts %}
 <script>
+// ── Countdown timer for 24h rule ──
+(function(){
+    const cd = document.getElementById('att-countdown');
+    const pg = document.getElementById('att-progress');
+    if (!cd || !pg) return;
+    const remaining = {{ hours_remaining or 0 }};
+    const elapsed = {{ hours_elapsed or 0 }};
+    if (remaining <= 0) return;
+    const start = Date.now();
+    const totalMs = remaining * 3600 * 1000;
+    function tick(){
+        const elapsedMs = Date.now() - start;
+        const remMs = totalMs - elapsedMs;
+        if (remMs <= 0){ location.reload(); return; }
+        const rh = Math.floor(remMs / 3600000);
+        const rm = Math.floor((remMs % 3600000) / 60000);
+        const rs = Math.floor((remMs % 60000) / 1000);
+        cd.textContent = rh + 'h ' + rm + 'm ' + rs + 's';
+        const pct = Math.min(100, ((elapsed + elapsedMs/3600000) / 24) * 100);
+        pg.style.width = pct.toFixed(1) + '%';
+        if (pct >= 100) pg.style.background = 'var(--success)';
+        requestAnimationFrame(tick);
+    }
+    tick();
+})();
+
 // Fetch chart data and render
 fetch('/api/attendance/chart')
     .then(r=>r.json())
@@ -718,5 +875,170 @@ async function submitRequest() {
     renderReqList();
     updateReqCapacity();
 }
+
+// ═══ ATTENDANCE TRACKER (admin) ═══
+let TRK_LOGS = [], TRK_USERS = [];
+
+function trackerInit() {
+    const sel = document.getElementById('trk-month');
+    if (!sel) return;
+    if (!sel.dataset.init) {
+        sel.dataset.init = '1';
+        const now = new Date();
+        let opts = '';
+        for (let m = 0; m < 12; m++) {
+            const d = new Date(now.getFullYear(), m + 1, 0);
+            const label = d.toLocaleString('en', {month:'long'}) + ' ' + now.getFullYear();
+            opts += `<option value="${now.getFullYear()}-${String(m+1).padStart(2,'0')}"${m===now.getMonth()?' selected':''}>${label}</option>`;
+        }
+        sel.innerHTML = opts;
+        trackerLoadUsers();
+    }
+    trackerLoad();
+}
+
+async function trackerLoadUsers() {
+    const sel = document.getElementById('trk-user');
+    if (!sel) return;
+    const d = await lmApi('/api/attendance/tracker/all-users');
+    TRK_USERS = Array.isArray(d) ? d : [];
+    sel.innerHTML = '<option value="">All users</option>' +
+        TRK_USERS.map(u => `<option value="${u.id}">${escHtml(u.full_name)} (${escHtml(u.email)})</option>`).join('');
+}
+
+async function trackerLoad() {
+    const sel = document.getElementById('trk-month');
+    if (!sel) return;
+    const [year, month] = sel.value.split('-').map(Number);
+    const userId = (document.getElementById('trk-user') || {}).value || '';
+    const body = document.getElementById('trk-body');
+    body.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--muted)">Loading…</td></tr>';
+
+    const [logsData, sumData] = await Promise.all([
+        lmApi(`/api/attendance/tracker?year=${year}&month=${month}`),
+        lmApi(`/api/attendance/tracker/month-summary?year=${year}&month=${month}`)
+    ]);
+
+    const logs = (logsData && logsData.logs) ? logsData.logs : [];
+    const pending = (logsData && logsData.pending_requests) || 0;
+    TRK_LOGS = userId ? logs.filter(l => l.user_id == userId) : logs;
+
+    // Pending badge
+    const badge = document.getElementById('trk-pending-badge');
+    const pCnt = document.getElementById('trk-pending-count');
+    if (badge && pCnt) {
+        badge.style.display = pending > 0 ? '' : 'none';
+        pCnt.textContent = pending;
+    }
+
+    // Summary
+    const sumBody = document.getElementById('trk-summary-body');
+    if (sumBody) {
+        const summaries = Array.isArray(sumData) ? sumData : [];
+        if (!summaries.length) {
+            sumBody.innerHTML = '<div style="text-align:center;padding:12px">No data for this month</div>';
+        } else {
+            sumBody.innerHTML = '<table class="att-table"><thead><tr><th>User</th><th>Days</th><th>Hours</th><th>Active</th></tr></thead><tbody>' +
+                summaries.map(s => `<tr>
+                    <td style="font-weight:500">${escHtml(s.full_name)}</td>
+                    <td style="font-family:var(--mono)">${s.total_days}</td>
+                    <td style="font-family:var(--mono);font-weight:600;color:var(--accent2)">${parseFloat(s.total_hours).toFixed(1)}h</td>
+                    <td>${s.active_count > 0 ? '<span class="badge badge-warning">Active</span>' : '<span class="badge badge-success">Done</span>'}</td>
+                </tr>`).join('') + '</tbody></table>';
+        }
+    }
+
+    // Render logs
+    if (!TRK_LOGS.length) {
+        body.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:30px;color:var(--muted)">No logs for this period</td></tr>';
+        return;
+    }
+    body.innerHTML = TRK_LOGS.map(r => {
+        const loginDT = r.login_time ? r.login_time.replace('T',' ').substring(0,16) : '—';
+        const logoutDT = r.logout_time ? r.logout_time.replace('T',' ').substring(0,16) : '';
+        const loginVal = r.login_time ? r.login_time.substring(0,16) : '';
+        const logoutVal = r.logout_time ? r.logout_time.substring(0,16) : '';
+        const hrs = r.hours_spent != null ? parseFloat(r.hours_spent).toFixed(2) : '—';
+        const status = r.logout_time
+            ? '<span class="badge badge-success">Complete</span>'
+            : '<span class="badge badge-warning">Active</span>';
+        return `<tr data-log-id="${r.id}">
+            <td style="font-family:var(--mono);font-size:12px;white-space:nowrap">${r.login_date}</td>
+            <td style="font-size:12px"><b>${escHtml(r.full_name)}</b></td>
+            <td><input type="datetime-local" class="lm-input trk-login" value="${loginVal}" style="width:190px;font-size:12px;padding:5px 8px"/></td>
+            <td><input type="datetime-local" class="lm-input trk-logout" value="${logoutVal}" style="width:190px;font-size:12px;padding:5px 8px"/></td>
+            <td style="font-family:var(--mono);font-weight:600;color:var(--accent2);font-size:12px">${hrs}</td>
+            <td>${status}</td>
+            <td>
+                <button class="lm-btn lm-btn-primary lm-btn-sm" onclick="trackerSaveRow(${r.id})" title="Save"><i class="fa-solid fa-check"></i></button>
+                <button class="lm-btn lm-btn-danger lm-btn-sm" onclick="trackerDeleteRow(${r.id})" title="Delete"><i class="fa-solid fa-trash"></i></button>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+async function trackerSaveRow(logId) {
+    const row = document.querySelector(`tr[data-log-id="${logId}"]`);
+    if (!row) return;
+    const login = row.querySelector('.trk-login').value;
+    const logout = row.querySelector('.trk-logout').value;
+    const payload = {};
+    if (login) payload.loginTime = login;
+    if (logout) payload.logoutTime = logout;
+    const res = await lmApi(`/api/attendance/tracker/${logId}/set`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    if (!res.success) { lmToast(res.message || 'Save failed', 'err'); return; }
+    lmToast('Log updated', 'ok');
+    trackerLoad();
+}
+
+async function trackerDeleteRow(logId) {
+    if (!confirm('Delete this attendance log entry?')) return;
+    const res = await lmApi(`/api/attendance/logs/${logId}/delete`, { method: 'POST' });
+    if (!res.success) { lmToast(res.message || 'Delete failed', 'err'); return; }
+    lmToast('Log deleted', 'ok');
+    trackerLoad();
+}
+
+function trackerOpenCreate() {
+    const sel = document.getElementById('trk-create-user');
+    if (sel) {
+        sel.innerHTML = TRK_USERS.map(u => `<option value="${u.id}">${escHtml(u.full_name)}</option>`).join('');
+    }
+    document.getElementById('trk-create-login').value = '';
+    document.getElementById('trk-create-logout').value = '';
+    document.getElementById('trk-create-err').style.display = 'none';
+    document.getElementById('trk-create-modal').classList.add('open');
+}
+
+function trackerCloseCreate() {
+    document.getElementById('trk-create-modal').classList.remove('open');
+}
+
+async function trackerSaveCreate() {
+    const userId = document.getElementById('trk-create-user').value;
+    const login = document.getElementById('trk-create-login').value;
+    const logout = document.getElementById('trk-create-logout').value;
+    const errEl = document.getElementById('trk-create-err');
+    errEl.style.display = 'none';
+    if (!userId || !login) { errEl.textContent = 'User and login time required'; errEl.style.display = 'block'; return; }
+    const res = await lmApi('/api/attendance/tracker/create', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: parseInt(userId), loginTime: login, logoutTime: logout || '' })
+    });
+    if (!res.success) { errEl.textContent = res.message || 'Create failed'; errEl.style.display = 'block'; return; }
+    trackerCloseCreate();
+    lmToast('Log created', 'ok');
+    trackerLoad();
+}
+
+// Init tracker when tab is shown
+const _origAttGo = attGo;
+attGo = function(v) {
+    _origAttGo(v);
+    if (v === 'tracker') trackerInit();
+};
 </script>
 {% endblock %}
