@@ -1,177 +1,883 @@
 {% extends "app_base.html" %}
-{% block title %}Attendance – REYDM{% endblock %}
+{% block title %}Attendance Management – REYDM{% endblock %}
 
 {% block head %}
 <style>
-.att-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px}
-@media(max-width:800px){.att-grid{grid-template-columns:1fr}}
-.att-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:22px}
-.att-card h3{font-size:15px;font-weight:600;margin-bottom:16px;display:flex;align-items:center;gap:8px}
-.att-status-big{text-align:center;padding:20px 0}
-.att-status-big .status-icon{font-size:48px;margin-bottom:10px}
-.att-status-big .status-text{font-size:16px;font-weight:600;margin-bottom:4px}
-.att-status-big .status-sub{font-size:13px;color:var(--muted);font-family:var(--mono)}
-.att-btn-login{background:var(--success);color:#fff;border-color:var(--success);width:100%;padding:12px;font-size:15px;font-weight:700}
-.att-btn-login:hover{background:#2ea043;color:#fff}
-.att-btn-logout{background:var(--danger);color:#fff;border-color:var(--danger);width:100%;padding:12px;font-size:15px;font-weight:700}
-.att-btn-logout:hover{background:#d73a49;color:#fff}
-.att-table{width:100%;border-collapse:collapse;font-size:13px;margin-top:10px}
-.att-table th{background:var(--surface2);color:var(--muted);padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid var(--border);font-weight:500}
-.att-table td{padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:middle}
-.att-table tr:hover td{background:rgba(31,111,235,.04)}
-.att-table tr:last-child td{border-bottom:none}
-.att-chart-wrap{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:22px;margin-bottom:20px}
-.att-chart{display:flex;align-items:flex-end;gap:8px;height:160px;padding-bottom:28px;position:relative}
-.att-bar-wrap{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%}
-.att-bar-col{width:100%;display:flex;align-items:flex-end;flex:1}
-.att-bar{width:100%;border-radius:4px 4px 0 0;background:var(--accent);min-height:2px;transition:height .3s}
-.att-bar-val{font-size:10px;font-weight:600;font-family:var(--mono);color:var(--text)}
-.att-bar-lbl{font-size:9px;color:var(--muted);font-family:var(--mono);white-space:nowrap}
-.att-req-form{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-@media(max-width:600px){.att-req-form{grid-template-columns:1fr}}
-.att-req-form .form-group{margin-bottom:0}
-.att-req-form .full{grid-column:1/-1}
-.att-tabs{display:flex;gap:2px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-md);padding:3px;margin-bottom:18px;flex-wrap:wrap}
-.att-tab{padding:6px 16px;border-radius:var(--radius-sm);font-size:12px;font-weight:600;cursor:pointer;border:none;background:transparent;color:var(--muted);transition:all var(--transition);font-family:var(--font);display:flex;align-items:center;gap:6px}
-.att-tab.active{background:var(--accent);color:#fff;box-shadow:var(--shadow-sm)}
-.att-tab:hover:not(.active){color:var(--accent2);background:var(--accent-soft)}
-.att-view{display:none}
-.att-view.active{display:block}
-.lm-input{background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:var(--radius-sm);font-size:13px;outline:none;transition:border-color var(--transition);width:100%;font-family:var(--font)}
-.lm-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
-.lm-flabel{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;display:block}
-.lm-fgroup{display:flex;flex-direction:column;gap:4px}
-.req-types{display:flex;flex-wrap:wrap;gap:8px}
-.req-type{flex:1;min-width:110px;padding:12px 10px;border:1px solid var(--border);border-radius:var(--radius-md);cursor:pointer;text-align:center;background:var(--surface2);transition:all .15s}
-.req-type:hover{border-color:var(--accent)}
-.req-type.sel{border-color:var(--accent);background:var(--accent-soft)}
-.req-type .rc{font-size:15px;font-weight:800;color:var(--accent2);font-family:var(--mono)}
-.req-type .rl{font-size:10px;color:var(--muted);margin-top:3px;text-transform:uppercase;letter-spacing:.4px}
-.req-cap{padding:9px 12px;border-radius:var(--radius-sm);background:var(--surface2);border:1px solid var(--border);font-size:12px;color:var(--muted);margin-bottom:12px}
-.req-cap.full{background:rgba(210,153,34,.12);border-color:var(--warning);color:var(--warning);font-weight:600}
-.lm-badge{display:inline-block;padding:2px 7px;border-radius:10px;font-size:9px;font-weight:700;margin-left:6px}
-.bpro{background:var(--accent-soft);color:var(--accent)}
-.bpending{background:rgba(210,153,34,.15);color:var(--warning)}
-.bapproved{background:var(--success-soft);color:var(--success)}
-.bdeclined{background:var(--danger-soft);color:var(--danger)}
-.att-toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(10px);background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);padding:10px 18px;font-size:13px;font-weight:500;z-index:600;box-shadow:var(--shadow-lg);opacity:0;transition:all .22s;pointer-events:none;white-space:nowrap}
-.att-toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
-.att-toast.ok{border-color:rgba(63,185,80,.35);color:var(--success)}
-.att-toast.err{border-color:rgba(248,81,73,.35);color:var(--danger)}
-/* Modal + button styles (previously only defined in RDM_Leave_Manager.html) */
-.lm-btn{padding:6px 14px;border-radius:var(--radius-sm);font-size:12px;font-weight:600;cursor:pointer;border:1px solid transparent;transition:all var(--transition);display:inline-flex;align-items:center;gap:6px;font-family:var(--font)}
-.lm-btn-primary{background:var(--accent);color:#fff}
-.lm-btn-primary:hover{background:var(--accent2)}
-.lm-btn-ghost{background:transparent;color:var(--text-secondary);border:1px solid var(--border)}
-.lm-btn-ghost:hover{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
-.lm-btn-danger{background:var(--danger-soft);color:var(--danger);border-color:var(--danger)}
-.lm-btn-danger:hover{background:var(--danger);color:#fff}
-.lm-btn-sm{padding:4px 10px;font-size:11px}
-.lm-modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:600;display:none;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
-.lm-modal-bg.open{display:flex}
-.lm-modal{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-xl);padding:24px;width:min(480px,94vw);box-shadow:var(--shadow-lg)}
-.lm-modal-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}
-.lm-modal-body{display:flex;flex-direction:column}
-.lm-modal-btns{display:flex;gap:8px;justify-content:flex-end;margin-top:18px;padding-top:14px;border-top:1px solid var(--border)}
+/* ═══════════════════════════════════════════════════════════════════
+   ATTENDANCE MODULE — Modern UI with Precision Shift Tracking
+   ═══════════════════════════════════════════════════════════════════ */
+.att-hero {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: linear-gradient(135deg, rgba(31, 111, 235, 0.12) 0%, rgba(56, 139, 253, 0.04) 100%);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 20px 24px;
+    margin-bottom: 22px;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+.att-hero-info h2 {
+    font-size: 20px;
+    font-weight: 700;
+    margin: 0 0 6px 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--text);
+}
+.att-hero-info p {
+    font-size: 13px;
+    color: var(--muted);
+    margin: 0;
+}
+.att-clock-card {
+    text-align: right;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 3px;
+}
+.att-digital-clock {
+    font-family: var(--mono);
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--accent2);
+    letter-spacing: 1px;
+}
+.att-clock-date {
+    font-size: 12px;
+    color: var(--muted);
+    font-weight: 500;
+}
+.att-tz-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--success);
+    margin-top: 4px;
+}
+.att-pulse-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--success);
+    box-shadow: 0 0 0 0 rgba(63, 185, 80, 0.7);
+    animation: pulseBeacon 1.8s infinite;
+}
+@keyframes pulseBeacon {
+    0% { box-shadow: 0 0 0 0 rgba(63, 185, 80, 0.7); }
+    70% { box-shadow: 0 0 0 6px rgba(63, 185, 80, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(63, 185, 80, 0); }
+}
+
+/* Stat Cards */
+.att-stat-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+    margin-bottom: 22px;
+}
+@media (max-width: 900px) {
+    .att-stat-row { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 500px) {
+    .att-stat-row { grid-template-columns: 1fr; }
+}
+.att-stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 16px 18px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    transition: transform 0.15s ease, border-color 0.15s ease;
+}
+.att-stat-card:hover {
+    border-color: var(--accent);
+    transform: translateY(-1px);
+}
+.att-stat-card .lbl {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+.att-stat-card .val {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text);
+    font-family: var(--mono);
+}
+.att-stat-card .sub {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 4px;
+}
+
+/* Two-Column Action Layout */
+.att-action-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 24px;
+}
+@media (max-width: 850px) {
+    .att-action-grid { grid-template-columns: 1fr; }
+}
+.att-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 22px;
+    position: relative;
+    box-shadow: var(--shadow-sm);
+}
+.att-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+}
+.att-card-header h3 {
+    font-size: 15px;
+    font-weight: 600;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text);
+}
+
+/* Punch Terminal */
+.att-terminal-body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 8px 0;
+}
+.att-terminal-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 14px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 14px;
+}
+.status-active-badge {
+    background: var(--success-soft);
+    color: var(--success);
+    border: 1px solid rgba(63, 185, 80, 0.3);
+}
+.status-idle-badge {
+    background: var(--surface2);
+    color: var(--muted);
+    border: 1px solid var(--border);
+}
+.att-timer-display {
+    font-family: var(--mono);
+    font-size: 38px;
+    font-weight: 700;
+    color: var(--accent2);
+    letter-spacing: 2px;
+    margin: 6px 0 14px;
+}
+.att-shift-meta {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 12px 16px;
+    width: 100%;
+    margin-bottom: 16px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    text-align: left;
+}
+.att-shift-meta .meta-item {
+    display: flex;
+    flex-direction: column;
+}
+.att-shift-meta .meta-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+.att-shift-meta .meta-value {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    font-family: var(--mono);
+}
+
+/* Progress toward 8h */
+.att-progress-wrap {
+    width: 100%;
+    margin-bottom: 18px;
+    text-align: left;
+}
+.att-progress-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    margin-bottom: 5px;
+}
+.att-progress-bar-bg {
+    height: 8px;
+    background: var(--surface2);
+    border-radius: 4px;
+    overflow: hidden;
+    position: relative;
+    border: 1px solid var(--border);
+}
+.att-progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent) 0%, var(--accent2) 100%);
+    border-radius: 4px;
+    transition: width 0.5s ease;
+}
+.att-progress-bar-fill.target-reached {
+    background: linear-gradient(90deg, #2ea043 0%, var(--success) 100%);
+}
+
+.night-shift-note {
+    background: rgba(88, 166, 255, 0.08);
+    border: 1px solid rgba(88, 166, 255, 0.25);
+    border-radius: var(--radius-md);
+    padding: 10px 14px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    width: 100%;
+    margin-bottom: 16px;
+    text-align: left;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.alert-forgot-banner {
+    background: rgba(210, 153, 34, 0.12);
+    border: 1px solid var(--warning);
+    border-radius: var(--radius-md);
+    padding: 12px 14px;
+    font-size: 12px;
+    color: var(--warning);
+    width: 100%;
+    margin-bottom: 16px;
+    text-align: left;
+    line-height: 1.5;
+}
+
+/* Action Buttons */
+.btn-punch-in {
+    background: linear-gradient(135deg, #238636 0%, #2ea043 100%);
+    color: #fff;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    width: 100%;
+    padding: 14px;
+    font-size: 15px;
+    font-weight: 700;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(46, 160, 67, 0.3);
+    transition: all var(--transition);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+.btn-punch-in:hover {
+    background: #2ea043;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px rgba(46, 160, 67, 0.45);
+}
+.btn-punch-out {
+    background: linear-gradient(135deg, #da3633 0%, #f85149 100%);
+    color: #fff;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    width: 100%;
+    padding: 14px;
+    font-size: 15px;
+    font-weight: 700;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(218, 54, 51, 0.3);
+    transition: all var(--transition);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+.btn-punch-out:hover {
+    background: #e5534b;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px rgba(218, 54, 51, 0.45);
+}
+
+/* Regularization / Forgot Logout Form */
+.req-chips {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+}
+.req-chip {
+    padding: 6px 12px;
+    border-radius: var(--radius-sm);
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
+    cursor: pointer;
+    transition: all var(--transition);
+}
+.req-chip.active {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    color: var(--accent2);
+}
+.att-req-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+@media (max-width: 600px) {
+    .att-req-grid { grid-template-columns: 1fr; }
+}
+.att-req-full {
+    grid-column: 1 / -1;
+}
+.calc-hours-preview {
+    background: var(--surface2);
+    border: 1px dashed var(--border-medium);
+    border-radius: var(--radius-sm);
+    padding: 10px 14px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+.quick-reasons {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 6px;
+}
+.quick-reason-pill {
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 10px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.quick-reason-pill:hover {
+    border-color: var(--accent);
+    color: var(--text);
+}
+
+/* Tabs & Table Section */
+.att-tabs-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+.att-nav-pills {
+    display: flex;
+    gap: 4px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 3px;
+    flex-wrap: wrap;
+}
+.att-nav-pill {
+    padding: 7px 16px;
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    transition: all var(--transition);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font);
+}
+.att-nav-pill.active {
+    background: var(--accent);
+    color: #fff;
+    box-shadow: var(--shadow-sm);
+}
+.att-nav-pill:hover:not(.active) {
+    color: var(--accent2);
+    background: var(--accent-soft);
+}
+
+/* Complete Table Structure */
+.att-table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+}
+.att-modern-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    text-align: left;
+}
+.att-modern-table thead th {
+    background: var(--surface2);
+    color: var(--muted);
+    padding: 10px 14px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+}
+.att-modern-table tbody td {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+    color: var(--text);
+}
+.att-modern-table tbody tr:hover td {
+    background: rgba(31, 111, 235, 0.04);
+}
+.att-modern-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+/* Badges */
+.badge-shift-day {
+    background: rgba(210, 153, 34, 0.12);
+    color: var(--warning);
+    border: 1px solid rgba(210, 153, 34, 0.3);
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+.badge-shift-night {
+    background: rgba(88, 166, 255, 0.12);
+    color: var(--accent2);
+    border: 1px solid rgba(88, 166, 255, 0.3);
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+.badge-hours {
+    font-family: var(--mono);
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+}
+.badge-hours-green {
+    background: var(--success-soft);
+    color: var(--success);
+}
+.badge-hours-amber {
+    background: var(--warning-soft);
+    color: var(--warning);
+}
+.badge-next-day {
+    font-size: 10px;
+    background: rgba(163, 113, 247, 0.15);
+    color: #a371f7;
+    border: 1px solid rgba(163, 113, 247, 0.3);
+    padding: 1px 5px;
+    border-radius: 4px;
+    margin-left: 4px;
+    font-weight: 600;
+    font-family: var(--font);
+}
+
+/* Chart */
+.att-chart-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 20px;
+    margin-bottom: 24px;
+}
+.att-chart-bar-container {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    height: 160px;
+    padding-bottom: 24px;
+    position: relative;
+    border-bottom: 1px solid var(--border);
+}
+.att-target-line {
+    position: absolute;
+    left: 0;
+    right: 0;
+    border-top: 1px dashed var(--accent2);
+    opacity: 0.6;
+    pointer-events: none;
+    z-index: 1;
+}
+.att-target-line-lbl {
+    position: absolute;
+    right: 8px;
+    top: -14px;
+    font-size: 10px;
+    color: var(--accent2);
+    font-family: var(--mono);
+}
+
+.att-view-pane { display: none; }
+.att-view-pane.active { display: block; }
+
+.att-toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(10px);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 10px 20px;
+    font-size: 13px;
+    font-weight: 500;
+    z-index: 700;
+    box-shadow: var(--shadow-lg);
+    opacity: 0;
+    transition: all 0.22s;
+    pointer-events: none;
+}
+.att-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.att-toast.ok { border-color: rgba(63, 185, 80, 0.4); color: var(--success); }
+.att-toast.err { border-color: rgba(248, 81, 73, 0.4); color: var(--danger); }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <h2><i class="fa-solid fa-clock"></i> Attendance</h2>
-    <p>Track your daily login and logout times</p>
+<!-- Top Hero & Live Real-Time Clock -->
+<div class="att-hero">
+    <div class="att-hero-info">
+        <h2><i class="fa-solid fa-clock"></i> Attendance Management</h2>
+        <p>Daily shift punch tracker, overnight shift handler, and missed punch regularization</p>
+    </div>
+    <div class="att-clock-card">
+        <div class="att-digital-clock" id="live-ist-clock">--:--:-- --</div>
+        <div class="att-clock-date" id="live-ist-date">--</div>
+        <div class="att-tz-badge">
+            <span class="att-pulse-dot"></span>
+            <span>IST (UTC+05:30)</span>
+        </div>
+    </div>
 </div>
 
-<div class="att-tabs">
-    <button class="att-tab active" id="att-tab-overview" onclick="attGo('overview')"><i class="fa-solid fa-clock"></i> Overview</button>
-    <button class="att-tab" id="att-tab-history" onclick="attGo('history')"><i class="fa-solid fa-clock-rotate-left"></i> History</button>
-    <button class="att-tab" id="att-tab-request" onclick="attGo('request')"><i class="fa-solid fa-paper-plane"></i> Request Leave</button>
-    {% if session.get('role') == 'admin' %}
-    <button class="att-tab" id="att-tab-tracker" onclick="attGo('tracker')"><i class="fa-solid fa-table"></i> Tracker</button>
-    {% endif %}
-</div>
-
-<div id="att-view-overview" class="att-view active">
-
-<!-- Login/Logout Card + Status -->
-<div class="att-grid">
-    <div class="att-card">
-        <h3><i class="fa-solid fa-right-to-bracket"></i> Today's Session</h3>
-        {% if active_session %}
-        <div class="att-status-big">
-            <div class="status-icon" style="color:var(--success)"><i class="fa-solid fa-circle-check"></i></div>
-            <div class="status-text" style="color:var(--success)">Currently Logged In</div>
-            <div class="status-sub">Since {{ active_session.login_time.strftime('%I:%M %p') }} on {{ active_session.login_date.strftime('%b %d, %Y') }}</div>
-            <div class="status-sub" style="margin-top:4px;color:var(--accent2)">{{ hours_elapsed }} hrs elapsed</div>
+<!-- Stat Row -->
+<div class="att-stat-row">
+    <div class="att-stat-card">
+        <div class="lbl"><i class="fa-solid fa-signal"></i> Current Status</div>
+        <div class="val" style="font-size:16px">
+            {% if active_session %}
+                <span style="color:var(--success)"><i class="fa-solid fa-circle-check"></i> Punched In</span>
+            {% elif today_log %}
+                <span style="color:var(--accent2)"><i class="fa-solid fa-circle-dot"></i> Completed</span>
+            {% else %}
+                <span style="color:var(--muted)"><i class="fa-solid fa-circle-xmark"></i> Punched Out</span>
+            {% endif %}
         </div>
-        {% if can_logout %}
-        <form method="POST" action="{{ url_for('attendance_logout') }}">
-            <button type="submit" class="btn att-btn-logout">
-                <i class="fa-solid fa-right-from-bracket"></i> LOGOUT NOW
-            </button>
-        </form>
-        {% else %}
-        <div style="background:rgba(210,153,34,.12);border:1px solid var(--warning);border-radius:var(--radius-md);padding:14px;margin-bottom:12px">
-            <div style="font-size:13px;font-weight:600;color:var(--warning);margin-bottom:6px">
-                <i class="fa-solid fa-triangle-exclamation"></i> 9-Hour Minimum Active
-            </div>
-            <div style="font-size:12px;color:var(--muted);margin-bottom:8px">
-                A shift must be at least 9 hours before you can log out.
-                Time remaining: <strong id="att-countdown" style="color:var(--text);font-family:var(--mono)">{{ hours_remaining }}h</strong>
-            </div>
-            <div style="height:6px;background:var(--surface2);border-radius:3px;overflow:hidden;margin-bottom:10px">
-                <div id="att-progress" style="height:100%;background:var(--warning);border-radius:3px;transition:width .6s;width:{{ ((hours_elapsed or 0) / 23 * 100)|round(1) }}%"></div>
-                <div style="font-size:10px;color:var(--muted);margin-top:4px">9h min — 23h max</div>
-            </div>
-            <form method="POST" action="{{ url_for('attendance_logout') }}">
-                <button type="submit" class="btn att-btn-logout" style="opacity:.7;font-size:13px;padding:10px"
-                    onclick="return confirm('You have not yet reached the 9-hour minimum. A request will be sent to admin for approval. Continue?')">
-                    <i class="fa-solid fa-right-from-bracket"></i> Request Early Logout
-                </button>
-            </form>
+        <div class="sub">
+            {% if active_session %}
+                Since {{ active_session.login_time.strftime('%I:%M %p') }}
+            {% elif today_log %}
+                {{ "%.2f"|format(today_log.hours_spent) }} hrs shift
+            {% else %}
+                Ready to punch in
+            {% endif %}
         </div>
-        {% endif %}
-        {% else %}
-        <div class="att-status-big">
-            <div class="status-icon" style="color:var(--muted)"><i class="fa-solid fa-circle-xmark"></i></div>
-            <div class="status-text" style="color:var(--muted)">Not Logged In</div>
-            <div class="status-sub">Click below to start your session</div>
-        </div>
-        <form method="POST" action="{{ url_for('attendance_login') }}">
-            <button type="submit" class="btn att-btn-login">
-                <i class="fa-solid fa-right-to-bracket"></i> LOGIN NOW
-            </button>
-        </form>
-        {% endif %}
     </div>
 
-    <!-- Request Time Change -->
+    <div class="att-stat-card">
+        <div class="lbl"><i class="fa-solid fa-bullseye"></i> Standard Shift</div>
+        <div class="val" style="color:var(--accent2)">8.00 <span style="font-size:12px;font-weight:400;color:var(--muted)">hrs</span></div>
+        <div class="sub">Full-day work schedule</div>
+    </div>
+
+    <div class="att-stat-card">
+        <div class="lbl"><i class="fa-solid fa-stopwatch"></i> Shift Hours</div>
+        <div class="val" id="top-card-hours" style="color:var(--text)">
+            {% if active_session %}
+                {{ "%.2f"|format(hours_elapsed) }} <span style="font-size:12px;font-weight:400;color:var(--muted)">hrs</span>
+            {% elif today_log %}
+                {{ "%.2f"|format(today_log.hours_spent) }} <span style="font-size:12px;font-weight:400;color:var(--muted)">hrs</span>
+            {% else %}
+                0.00 <span style="font-size:12px;font-weight:400;color:var(--muted)">hrs</span>
+            {% endif %}
+        </div>
+        <div class="sub">
+            {% if active_session %}
+                {% if hours_remaining > 0 %}
+                    {{ "%.2f"|format(hours_remaining) }}h left to 8h target
+                {% else %}
+                    ✓ 8h Target Completed
+                {% endif %}
+            {% elif today_log %}
+                Shift finalized
+            {% else %}
+                Not started
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="att-stat-card">
+        <div class="lbl"><i class="fa-solid fa-calendar-check"></i> This Month</div>
+        <div class="val" style="color:var(--success)">{{ month_days }} <span style="font-size:12px;font-weight:400;color:var(--muted)">days</span></div>
+        <div class="sub">{{ "%.1f"|format(month_hours) }} total hrs worked</div>
+    </div>
+</div>
+
+<!-- Two-Column Action Section: Left = Punch Terminal, Right = Forgot Logout Hub -->
+<div class="att-action-grid">
+    <!-- LEFT: Punch In / Punch Out Terminal -->
     <div class="att-card">
-        <h3><i class="fa-solid fa-pen-to-square"></i> Request Time Change</h3>
-        <p style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.6">
-            Forgot to login/logout? Submit a request with the correct times. Admin will review and approve.
+        <div class="att-card-header">
+            <h3><i class="fa-solid fa-fingerprint"></i> Shift Punch Terminal</h3>
+            {% if active_session %}
+                <span class="att-terminal-status status-active-badge">
+                    <span class="att-pulse-dot"></span> Active Shift
+                </span>
+            {% else %}
+                <span class="att-terminal-status status-idle-badge">
+                    <i class="fa-solid fa-power-off"></i> Idle
+                </span>
+            {% endif %}
+        </div>
+
+        <div class="att-terminal-body">
+            {% if active_session %}
+                <div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;font-weight:600">
+                    Session Duration
+                </div>
+                <!-- Live Elapsed Stopwatch -->
+                <div class="att-timer-display" id="active-stopwatch">00:00:00</div>
+
+                <!-- Shift Details Grid -->
+                <div class="att-shift-meta">
+                    <div class="meta-item">
+                        <span class="meta-label">Shift Date (Credited)</span>
+                        <span class="meta-value">{{ active_session.login_date.strftime('%b %d, %Y') }}</span>
+                    </div>
+                    <div class="meta-item">
+                        <span class="meta-label">Punched In At</span>
+                        <span class="meta-value">{{ active_session.login_time.strftime('%I:%M %p') }}</span>
+                    </div>
+                    <div class="meta-item">
+                        <span class="meta-label">Elapsed Time</span>
+                        <span class="meta-value" id="elapsed-hours-text">{{ "%.2f"|format(hours_elapsed) }} hrs</span>
+                    </div>
+                    <div class="meta-item">
+                        <span class="meta-label">Remaining to 8h</span>
+                        <span class="meta-value" id="remaining-hours-text" style="color:var(--accent2)">{{ "%.2f"|format(hours_remaining) }} hrs</span>
+                    </div>
+                </div>
+
+                <!-- Progress bar towards 8h -->
+                <div class="att-progress-wrap">
+                    <div class="att-progress-labels">
+                        <span style="color:var(--muted)">Target: <b>8.0 Hours</b></span>
+                        <span id="progress-pct-text" style="font-weight:600;color:var(--text)">{{ (((hours_elapsed or 0)/8)*100)|round(0)|int }}%</span>
+                    </div>
+                    <div class="att-progress-bar-bg">
+                        <div id="shift-progress-fill" class="att-progress-bar-fill {% if hours_elapsed >= 8 %}target-reached{% endif %}"
+                             style="width: {{ [(((hours_elapsed or 0)/8)*100), 100]|min }}%"></div>
+                    </div>
+                </div>
+
+                <!-- Cross-Midnight Night Shift Banner -->
+                {% if active_session.login_time.hour >= 17 or active_session.login_time.hour <= 5 or active_session.login_date < today %}
+                <div class="night-shift-note">
+                    <i class="fa-solid fa-moon" style="font-size:16px;color:#a371f7"></i>
+                    <div>
+                        <b>Overnight Shift:</b> Punched in on <b>{{ active_session.login_date.strftime('%b %d, %Y') }}</b>.
+                        When you punch out (even after midnight), your hours are recorded for <b>{{ active_session.login_date.strftime('%b %d, %Y') }}</b>.
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Forgotten session alert -->
+                {% if is_forgotten_session %}
+                <div class="alert-forgot-banner">
+                    <i class="fa-solid fa-triangle-exclamation"></i>
+                    <b>Unclosed Session Detected:</b> This session was started on
+                    <b>{{ active_session.login_date.strftime('%b %d, %Y') }}</b> at {{ active_session.login_time.strftime('%I:%M %p') }}
+                    ({{ hours_elapsed }} hrs elapsed). Did you forget to punch out?
+                    You can punch out now, or submit a <b>Forgot Logout Request</b> on the right to set your exact departure time.
+                </div>
+                {% endif %}
+
+                <!-- Punch Out Form -->
+                <form method="POST" action="{{ url_for('attendance_logout') }}" style="width:100%"
+                      onsubmit="return confirmPunchOut()">
+                    <button type="submit" class="btn-punch-out">
+                        <i class="fa-solid fa-right-from-bracket"></i> PUNCH OUT NOW
+                    </button>
+                </form>
+                <div style="font-size:11px;color:var(--muted);margin-top:8px">
+                    Records your departure time and finalizes hours for {{ active_session.login_date.strftime('%b %d, %Y') }}.
+                </div>
+
+            {% else %}
+                <!-- IDLE / READY TO PUNCH IN -->
+                <div style="padding:16px 0;width:100%">
+                    <div style="font-size:48px;color:var(--muted);margin-bottom:12px;opacity:0.6">
+                        <i class="fa-solid fa-clock"></i>
+                    </div>
+                    <div style="font-size:16px;font-weight:600;margin-bottom:6px">Ready to Begin Your Shift</div>
+                    <div style="font-size:12px;color:var(--muted);margin-bottom:18px">
+                        Click below to mark your punch-in for today <b>{{ today.strftime('%A, %b %d, %Y') }}</b>.
+                    </div>
+
+                    {% if today_log %}
+                    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-md);padding:12px 16px;margin-bottom:18px;text-align:left">
+                        <div style="font-size:11px;font-weight:700;color:var(--success);margin-bottom:4px">
+                            <i class="fa-solid fa-circle-check"></i> Today's Completed Shift
+                        </div>
+                        <div style="font-size:12px;color:var(--muted);display:flex;justify-content:space-between">
+                            <span>In: <b style="color:var(--text);font-family:var(--mono)">{{ today_log.login_time.strftime('%I:%M %p') }}</b></span>
+                            <span>Out: <b style="color:var(--text);font-family:var(--mono)">{{ today_log.logout_time.strftime('%I:%M %p') }}</b></span>
+                            <span>Hours: <b style="color:var(--accent2);font-family:var(--mono)">{{ "%.2f"|format(today_log.hours_spent) }} hrs</b></span>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <form method="POST" action="{{ url_for('attendance_login') }}" style="width:100%">
+                        <button type="submit" class="btn-punch-in">
+                            <i class="fa-solid fa-right-to-bracket"></i> PUNCH IN / LOGIN
+                        </button>
+                    </form>
+                    <div style="font-size:11px;color:var(--muted);margin-top:8px">
+                        Punches in at current IST time. Standard shift: 8 hours.
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- RIGHT: Forgot to Logout / Regularization Request Form -->
+    <div class="att-card">
+        <div class="att-card-header">
+            <h3><i class="fa-solid fa-pen-to-square"></i> Forgot to Logout? Regularize</h3>
+            <span style="font-size:11px;color:var(--muted);font-weight:500">Admin Approval Required</span>
+        </div>
+
+        <p style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.5">
+            Forgot to punch out before leaving, or missed a shift punch? Submit your actual timings. Admin will review and update your record.
         </p>
-        <form method="POST" action="{{ url_for('attendance_request') }}">
-            <div class="att-req-form">
+
+        <!-- Mode selector chips -->
+        <div class="req-chips">
+            <div class="req-chip active" id="chip-forgot-logout" onclick="setReqMode('forgot_logout')">
+                <i class="fa-solid fa-right-from-bracket"></i> Forgot to Punch Out
+            </div>
+            <div class="req-chip" id="chip-missed-punch" onclick="setReqMode('missed_punch')">
+                <i class="fa-solid fa-calendar-plus"></i> Missed Entire Shift
+            </div>
+        </div>
+
+        <form method="POST" action="{{ url_for('attendance_request') }}" id="reg-form">
+            <input type="hidden" name="request_type" id="request_type_input" value="forgot_logout">
+
+            <div class="att-req-grid">
                 <div class="form-group">
-                    <label>Date</label>
-                    <input type="date" name="request_date" class="form-control" required>
+                    <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase">Shift Date</label>
+                    <input type="date" name="request_date" id="req_date" class="form-control"
+                           value="{% if active_session and active_session.login_date < today %}{{ active_session.login_date.strftime('%Y-%m-%d') }}{% else %}{{ today.strftime('%Y-%m-%d') }}{% endif %}"
+                           required onchange="calcReqHours()">
                 </div>
+
+                <div class="form-group" id="req_login_group">
+                    <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase">
+                        Punch In Time <span id="req_login_hint" style="font-size:10px;color:var(--muted)">(Optional if exists)</span>
+                    </label>
+                    <input type="time" name="request_login" id="req_login" class="form-control"
+                           value="{% if active_session %}{{ active_session.login_time.strftime('%H:%M') }}{% endif %}"
+                           onchange="calcReqHours()">
+                </div>
+
                 <div class="form-group">
-                    <label>Login Time <span style="font-size:11px;color:var(--muted)">(blank if login exists)</span></label>
-                    <input type="time" name="request_login" class="form-control">
+                    <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase">
+                        Actual Punch Out Time <span style="color:var(--danger)">*</span>
+                    </label>
+                    <input type="time" name="request_logout" id="req_logout" class="form-control" required onchange="calcReqHours()">
                 </div>
-                <div class="form-group">
-                    <label>Logout Time</label>
-                    <input type="time" name="request_logout" class="form-control" required>
+
+                <div class="form-group" style="display:flex;align-items:center;padding-top:22px">
+                    <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;user-select:none">
+                        <input type="checkbox" name="is_next_day" id="is_next_day" onchange="calcReqHours()">
+                        <span><i class="fa-solid fa-moon" style="color:#a371f7"></i> Punched out next day (after midnight)</span>
+                    </label>
                 </div>
-                <div class="form-group">
-                    <label>Reason</label>
-                    <input type="text" name="reason" class="form-control" placeholder="e.g. Forgot to login">
+
+                <!-- Estimated Duration Preview -->
+                <div class="att-req-full">
+                    <div class="calc-hours-preview">
+                        <span><i class="fa-solid fa-calculator"></i> Estimated Shift Duration:</span>
+                        <b id="calc_hours_val" style="font-family:var(--mono);color:var(--accent2);font-size:14px">-- hrs</b>
+                    </div>
                 </div>
-                <div class="full">
-                    <button type="submit" class="btn btn-primary" style="width:100%">
-                        <i class="fa-solid fa-paper-plane"></i> Submit Request
+
+                <div class="att-req-full form-group">
+                    <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase">Reason</label>
+                    <input type="text" name="reason" id="req_reason" class="form-control" placeholder="e.g. Forgot to punch out before leaving" required>
+                    <div class="quick-reasons">
+                        <span class="quick-reason-pill" onclick="setQuickReason('Forgot to punch out before leaving office')">Forgot before leaving</span>
+                        <span class="quick-reason-pill" onclick="setQuickReason('Power / Internet outage at logout')">Power / Net outage</span>
+                        <span class="quick-reason-pill" onclick="setQuickReason('Worked late shift, closed browser')">Overnight shift</span>
+                        <span class="quick-reason-pill" onclick="setQuickReason('Offsite client work / Meeting')">Client meeting</span>
+                    </div>
+                </div>
+
+                <div class="att-req-full" style="margin-top:4px">
+                    <button type="submit" class="btn btn-primary" style="width:100%;padding:11px">
+                        <i class="fa-solid fa-paper-plane"></i> Submit Regularization Request
                     </button>
                 </div>
             </div>
@@ -179,805 +885,689 @@
     </div>
 </div>
 
-<!-- Hours Chart (Last 30 days) -->
-<div class="att-chart-wrap">
-    <h3 style="font-size:15px;font-weight:600;margin-bottom:14px"><i class="fa-solid fa-chart-bar"></i> Daily Hours (Last 30 Days)</h3>
-    <div class="att-chart" id="att-chart">
-        <div style="color:var(--muted);font-size:13px;width:100%;text-align:center;padding:40px 0">Loading chart...</div>
+<!-- Navigation Tabs for Tables, Requests, and Admin Tracker -->
+<div class="att-tabs-header">
+    <div class="att-nav-pills">
+        <button class="att-nav-pill active" id="tab-table" onclick="switchAttView('table')">
+            <i class="fa-solid fa-table"></i> Attendance Records Table
+        </button>
+        <button class="att-nav-pill" id="tab-requests" onclick="switchAttView('requests')">
+            <i class="fa-solid fa-clipboard-list"></i> My Requests
+            {% if pending_requests > 0 %}
+                <span class="badge badge-warning" style="margin-left:4px">{{ pending_requests }}</span>
+            {% endif %}
+        </button>
+        <button class="att-nav-pill" id="tab-chart" onclick="switchAttView('chart')">
+            <i class="fa-solid fa-chart-bar"></i> 30-Day Hours Chart
+        </button>
+        {% if session.get('role') == 'admin' %}
+        <button class="att-nav-pill" id="tab-tracker" onclick="switchAttView('tracker')">
+            <i class="fa-solid fa-users-gear"></i> Admin Tracker
+        </button>
+        {% endif %}
+    </div>
+
+    <!-- Quick Search for Table -->
+    <div style="display:flex;gap:8px;align-items:center">
+        <input type="text" id="att-table-search" placeholder="Search date or status..." class="form-control"
+               style="font-size:12px;padding:6px 12px;max-width:200px" onkeyup="filterAttTable()">
     </div>
 </div>
 
-<!-- Recent Logs -->
-<div class="att-card" style="margin-bottom:20px">
-    <h3><i class="fa-solid fa-list"></i> Recent Attendance Logs</h3>
-    {% if recent_logs | length > 0 %}
-    <div style="overflow-x:auto">
-        <table class="att-table">
-            <thead>
-                <tr><th>Date</th><th>Login</th><th>Logout</th><th>Hours</th><th>Status</th>{% if session.get('role') == 'admin' %}<th>Actions</th>{% endif %}</tr>
-            </thead>
-            <tbody>
-                {% for log in recent_logs %}
-                <tr>
-                    <td>{{ log.login_date.strftime('%b %d, %Y') }}</td>
-                    <td style="font-family:var(--mono)">{{ log.login_time.strftime('%I:%M %p') }}</td>
-                    <td style="font-family:var(--mono)">
-                        {% if log.logout_time %}{{ log.logout_time.strftime('%I:%M %p') }}{% else %}<span class="badge badge-warning">Active</span>{% endif %}
-                    </td>
-                    <td style="font-family:var(--mono);font-weight:600;color:var(--accent2)">
-                        {% if log.hours_spent %}{{ "%.2f"|format(log.hours_spent) }} hrs{% else %}—{% endif %}
-                    </td>
-                    <td>
-                        {% if log.logout_time %}
-                            <span class="badge badge-success">Complete</span>
-                        {% else %}
-                            <span class="badge badge-warning">Active</span>
+<!-- VIEW 1: Complete Attendance Records Table Structure -->
+<div id="view-table" class="att-view-pane active">
+    <div class="att-card" style="padding:16px 20px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:10px">
+            <div>
+                <h3 style="font-size:15px;font-weight:600;margin:0"><i class="fa-solid fa-list-check"></i> Attendance History</h3>
+                <span style="font-size:12px;color:var(--muted)">Showing shift records for the last 60 days</span>
+            </div>
+            <div style="font-size:12px;color:var(--muted)">
+                Total Records: <strong style="color:var(--text)">{{ recent_logs | length }}</strong>
+            </div>
+        </div>
+
+        {% if recent_logs | length > 0 %}
+        <div class="att-table-wrap">
+            <table class="att-modern-table" id="att-records-tbl">
+                <thead>
+                    <tr>
+                        <th style="width:40px">#</th>
+                        <th>Shift Date</th>
+                        <th>Day</th>
+                        <th>Shift Type</th>
+                        <th>Punch In</th>
+                        <th>Punch Out</th>
+                        <th>Duration</th>
+                        <th>Status</th>
+                        <th>Notes</th>
+                        {% if session.get('role') == 'admin' %}
+                        <th>Actions</th>
                         {% endif %}
-                    </td>
-                    {% if session.get('role') == 'admin' %}
-                    <td>
-                        <button class="lm-btn lm-btn-ghost lm-btn-sm" onclick="openEditLog({{ log.id }})" title="Edit"><i class="fa-solid fa-pen"></i></button>
-                        <button class="lm-btn lm-btn-danger lm-btn-sm" onclick="deleteLog({{ log.id }})" title="Delete"><i class="fa-solid fa-trash"></i></button>
-                    </td>
-                    {% endif %}
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-    {% else %}
-    <div style="text-align:center;padding:30px;color:var(--muted)">No attendance logs yet. Click LOGIN to start.</div>
-    {% endif %}
-</div>
-
-<!-- My Requests -->
-{% if my_requests | length > 0 %}
-<div class="att-card">
-    <h3><i class="fa-solid fa-clipboard-list"></i> My Requests</h3>
-    <div style="overflow-x:auto">
-        <table class="att-table">
-            <thead>
-                <tr><th>Date</th><th>Login</th><th>Logout</th><th>Reason</th><th>Status</th></tr>
-            </thead>
-            <tbody>
-                {% for req in my_requests %}
-                <tr>
-                    <td>{{ req.request_date.strftime('%b %d, %Y') }}</td>
-                    <td style="font-family:var(--mono)">{{ req.requested_login.strftime('%I:%M %p') }}</td>
-                    <td style="font-family:var(--mono)">{{ req.requested_logout.strftime('%I:%M %p') }}</td>
-                    <td style="color:var(--muted)">{{ req.reason or '—' }}</td>
-                    <td>
-                        {% if req.status == 'pending' %}<span class="badge badge-warning">Pending</span>
-                        {% elif req.status == 'approved' %}<span class="badge badge-success">Approved</span>
-                        {% else %}<span class="badge badge-danger">Declined</span>{% endif %}
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-</div>
-{% endif %}
-</div><!-- /att-view-overview -->
-
-<!-- Attendance History -->
-<div id="att-view-history" class="att-view">
-    <div class="att-card" style="margin-bottom:16px">
-        <h3><i class="fa-solid fa-clock-rotate-left"></i> Attendance History</h3>
-        <div class="lm-fgroup" style="margin-bottom:12px;max-width:360px">
-            <label class="lm-flabel">Employee</label>
-            <select class="lm-input" id="hist-emp" onchange="loadHist()">
-                <option value="">Loading…</option>
-            </select>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in recent_logs %}
+                    {% set is_night = (log.login_time.hour >= 17 or log.login_time.hour <= 5 or (log.logout_time and log.logout_time.date() > log.login_date)) %}
+                    {% set crossed_midnight = (log.logout_time and log.logout_time.date() > log.login_date) %}
+                    <tr>
+                        <td style="color:var(--muted);font-family:var(--mono);font-size:11px">{{ loop.index }}</td>
+                        <td style="font-weight:600;font-family:var(--mono)">
+                            {{ log.login_date.strftime('%b %d, %Y') }}
+                        </td>
+                        <td style="color:var(--muted);font-size:12px">
+                            {{ log.login_date.strftime('%A') }}
+                        </td>
+                        <td>
+                            {% if is_night %}
+                                <span class="badge-shift-night"><i class="fa-solid fa-moon"></i> Night Shift</span>
+                            {% else %}
+                                <span class="badge-shift-day"><i class="fa-solid fa-sun"></i> Day Shift</span>
+                            {% endif %}
+                        </td>
+                        <td style="font-family:var(--mono)">
+                            {{ log.login_time.strftime('%I:%M %p') }}
+                        </td>
+                        <td style="font-family:var(--mono)">
+                            {% if log.logout_time %}
+                                {{ log.logout_time.strftime('%I:%M %p') }}
+                                {% if crossed_midnight %}
+                                    <span class="badge-next-day" title="Punched out on next calendar day">+1 Day</span>
+                                {% endif %}
+                            {% else %}
+                                <span class="badge badge-warning">Active Now</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if log.hours_spent %}
+                                <span class="badge-hours {% if log.hours_spent >= 8.0 %}badge-hours-green{% else %}badge-hours-amber{% endif %}">
+                                    {{ "%.2f"|format(log.hours_spent) }} hrs
+                                </span>
+                            {% else %}
+                                <span style="color:var(--muted)">—</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if log.logout_time %}
+                                {% if log.status == 'forgot_logout' %}
+                                    <span class="badge badge-warning" title="Auto-closed (Forgot logout)">Forgot Logout</span>
+                                {% elif log.status == 'regularized' or 'Regularized' in (log.notes or '') %}
+                                    <span class="badge badge-info" title="Regularized via request">Regularized</span>
+                                {% else %}
+                                    <span class="badge badge-success">Completed</span>
+                                {% endif %}
+                            {% else %}
+                                <span class="badge badge-warning">In Progress</span>
+                            {% endif %}
+                        </td>
+                        <td style="font-size:11px;color:var(--muted);max-width:180px">
+                            {{ log.notes or '—' }}
+                        </td>
+                        {% if session.get('role') == 'admin' %}
+                        <td>
+                            <div style="display:flex;gap:4px">
+                                <button class="btn btn-secondary btn-sm" onclick="openEditLogModal({{ log.id }}, '{{ log.login_time.strftime('%Y-%m-%dT%H:%M') if log.login_time else '' }}', '{{ log.logout_time.strftime('%Y-%m-%dT%H:%M') if log.logout_time else '' }}', '{{ log.hours_spent or '' }}')" title="Edit Log">
+                                    <i class="fa-solid fa-pen"></i>
+                                </button>
+                                <button class="btn btn-danger btn-sm" onclick="deleteLog({{ log.id }})" title="Delete Log">
+                                    <i class="fa-solid fa-trash"></i>
+                                </button>
+                            </div>
+                        </td>
+                        {% endif %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
         </div>
-        <div id="hist-list" style="overflow-x:auto"></div>
-    </div>
-</div>
-
-<!-- Edit Log Modal -->
-<div class="lm-modal-bg" id="log-edit-modal">
-    <div class="lm-modal" style="max-width:480px">
-        <div class="lm-modal-header"><h3 style="margin:0;font-size:15px">Edit Attendance Log</h3>
-            <button class="lm-btn lm-btn-ghost lm-btn-sm" onclick="closeLogEditModal()">✕</button>
+        {% else %}
+        <div style="text-align:center;padding:40px 20px;color:var(--muted)">
+            <i class="fa-solid fa-calendar-xmark" style="font-size:32px;margin-bottom:10px;opacity:0.5"></i>
+            <div>No attendance records found yet. Punch in above to start tracking!</div>
         </div>
-        <div class="lm-modal-body">
-            <div class="lm-fgroup" style="margin-bottom:12px">
-                <label class="lm-flabel">Login Time</label>
-                <input type="datetime-local" class="lm-input" id="log-edit-login"/>
-            </div>
-            <div class="lm-fgroup" style="margin-bottom:12px">
-                <label class="lm-flabel">Logout Time</label>
-                <input type="datetime-local" class="lm-input" id="log-edit-logout"/>
-            </div>
-            <div class="lm-fgroup" style="margin-bottom:12px">
-                <label class="lm-flabel">Hours</label>
-                <input type="number" class="lm-input" id="log-edit-hours" min="0" step="0.01" value="0"/>
-            </div>
-            <div id="log-edit-err" style="font-size:12px;color:var(--danger);display:none"></div>
-        </div>
-        <div class="lm-modal-btns">
-            <button class="lm-btn lm-btn-ghost" onclick="closeLogEditModal()">Cancel</button>
-            <button class="lm-btn lm-btn-primary" onclick="saveLogEdit()"><i class="fa-solid fa-check"></i> Save</button>
-        </div>
+        {% endif %}
     </div>
 </div>
 
-<!-- Request Leave -->
-<div id="att-view-request" class="att-view">
-    <div class="att-card" style="margin-bottom:16px">
-        <h3><i class="fa-solid fa-paper-plane"></i> Request Leave</h3>
-        <p style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.6">
-            Submit a leave request (full day, half day, or permission hours). Admin will review and approve it.
-        </p>
-        <div id="req-no-link" style="display:none;padding:16px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-md);font-size:12px;color:var(--muted);margin-bottom:14px">
-            <i class="fa-solid fa-circle-info" style="color:var(--accent2)"></i>
-            No employee records are available yet. Ask an admin to add your employee record before requesting leave.
-        </div>
-        <div id="req-body" style="display:none">
-            <div class="lm-fgroup" id="req-emp-group" style="margin-bottom:12px">
-                <label class="lm-flabel">Employee</label>
-                <select class="lm-input" id="req-emp" onchange="updateReqBalance();updateReqCapacity()"></select>
+<!-- VIEW 2: My Regularization Requests -->
+<div id="view-requests" class="att-view-pane">
+    <div class="att-card" style="padding:16px 20px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <div>
+                <h3 style="font-size:15px;font-weight:600;margin:0"><i class="fa-solid fa-clipboard-list"></i> My Regularization Requests</h3>
+                <span style="font-size:12px;color:var(--muted)">Track status of your submitted forgot logout and missed punch requests</span>
             </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px">
-                <div class="lm-fgroup">
-                    <label class="lm-flabel">Year</label>
-                    <select class="lm-input" id="req-year" onchange="renderReqDays();updateReqBalance();updateReqCapacity()"></select>
-                </div>
-                <div class="lm-fgroup">
-                    <label class="lm-flabel">Month</label>
-                    <select class="lm-input" id="req-month" onchange="renderReqDays();updateReqBalance();updateReqCapacity()"></select>
-                </div>
-                <div class="lm-fgroup">
-                    <label class="lm-flabel">Day</label>
-                    <select class="lm-input" id="req-day" onchange="updateReqCapacity()"></select>
-                </div>
-            </div>
-            <div id="req-bal-info" style="font-size:12px;color:var(--muted);margin-bottom:10px"></div>
-            <div class="req-cap" id="req-cap"></div>
-            <div class="lm-fgroup" style="margin-bottom:12px">
-                <label class="lm-flabel">Duration</label>
-                <div class="req-types" id="req-types"></div>
-            </div>
-            <div id="req-hours-wrap" class="lm-fgroup" style="margin-bottom:12px;display:none">
-                <label class="lm-flabel">Timing</label>
-                <div style="display:flex;gap:8px;align-items:center">
-                    <input type="time" class="lm-input" id="req-start" value="09:00" onchange="reqCalcHours()"/>
-                    <span style="color:var(--muted)">→</span>
-                    <input type="time" class="lm-input" id="req-end" value="11:00" onchange="reqCalcHours()"/>
-                </div>
-                <div style="font-size:11px;color:var(--muted);margin-top:4px">Duration: <b id="req-hours-read">2</b> h</div>
-                <input type="hidden" id="req-hours" value="2"/>
-            </div>
-            <div class="lm-fgroup" style="margin-bottom:12px">
-                <label class="lm-flabel">Reason</label>
-                <textarea class="lm-input" id="req-reason" rows="2" placeholder="Reason for leave…"></textarea>
-            </div>
-            <button class="btn btn-primary" id="req-submit" style="width:100%" onclick="submitRequest()">
-                <i class="fa-solid fa-paper-plane"></i> Submit Request
+            <button class="btn btn-secondary btn-sm" onclick="window.scrollTo({top:0, behavior:'smooth'})">
+                <i class="fa-solid fa-plus"></i> New Request
             </button>
-            <div id="req-err" style="font-size:12px;color:var(--danger);margin-top:8px;display:none"></div>
         </div>
-    </div>
 
-    <div class="att-card">
-        <h3><i class="fa-solid fa-clipboard-list"></i> My Leave Requests</h3>
-        <div id="req-list" style="max-height:380px;overflow-y:auto"></div>
+        {% if my_requests | length > 0 %}
+        <div class="att-table-wrap">
+            <table class="att-modern-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Shift Date</th>
+                        <th>Requested In</th>
+                        <th>Requested Out</th>
+                        <th>Duration</th>
+                        <th>Reason</th>
+                        <th>Status</th>
+                        <th>Submitted At</th>
+                        <th>Admin Note</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for req in my_requests %}
+                    {% set diff = (req.requested_logout - req.requested_login).total_seconds() / 3600.0 %}
+                    <tr>
+                        <td style="color:var(--muted);font-family:var(--mono);font-size:11px">{{ loop.index }}</td>
+                        <td style="font-weight:600;font-family:var(--mono)">{{ req.request_date.strftime('%b %d, %Y') }}</td>
+                        <td style="font-family:var(--mono)">{{ req.requested_login.strftime('%I:%M %p') }}</td>
+                        <td style="font-family:var(--mono)">
+                            {{ req.requested_logout.strftime('%I:%M %p') }}
+                            {% if req.requested_logout.date() > req.requested_login.date() %}
+                                <span class="badge-next-day">+1 Day</span>
+                            {% endif %}
+                        </td>
+                        <td style="font-family:var(--mono);font-weight:700;color:var(--accent2)">{{ "%.2f"|format(diff) }} hrs</td>
+                        <td style="color:var(--text-secondary);max-width:200px">{{ req.reason or '—' }}</td>
+                        <td>
+                            {% if req.status == 'pending' %}
+                                <span class="badge badge-warning"><i class="fa-solid fa-hourglass-half"></i> Pending</span>
+                            {% elif req.status == 'approved' %}
+                                <span class="badge badge-success"><i class="fa-solid fa-check"></i> Approved</span>
+                            {% else %}
+                                <span class="badge badge-danger"><i class="fa-solid fa-xmark"></i> Declined</span>
+                            {% endif %}
+                        </td>
+                        <td style="font-size:11px;color:var(--muted)">{{ req.created_at.strftime('%b %d, %I:%M %p') }}</td>
+                        <td style="font-size:11px;color:var(--muted)">{{ req.admin_note or '—' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div style="text-align:center;padding:40px 20px;color:var(--muted)">
+            <i class="fa-solid fa-clipboard-check" style="font-size:32px;margin-bottom:10px;opacity:0.5"></i>
+            <div>You have not submitted any regularization requests yet.</div>
+        </div>
+        {% endif %}
     </div>
-</div><!-- /att-view-request -->
+</div>
 
-{% if session.get('role') == 'admin' %}
-<!-- Attendance Tracker (Admin) -->
-<div id="att-view-tracker" class="att-view">
-    <!-- Month Selector + Summary -->
-    <div class="att-grid" style="margin-bottom:16px">
-        <div class="att-card">
-            <h3><i class="fa-solid fa-table"></i> Attendance Tracker</h3>
-            <div style="display:flex;gap:10px;align-items:end;flex-wrap:wrap">
-                <div class="lm-fgroup">
-                    <label class="lm-flabel">Month</label>
-                    <select class="lm-input" id="trk-month" onchange="trackerLoad()" style="width:140px"></select>
-                </div>
-                <div class="lm-fgroup">
-                    <label class="lm-flabel">User</label>
-                    <select class="lm-input" id="trk-user" onchange="trackerLoad()" style="width:200px">
-                        <option value="">All users</option>
-                    </select>
-                </div>
-                <button class="btn btn-primary btn-sm" onclick="trackerLoad()" style="height:34px">
-                    <i class="fa-solid fa-arrows-rotate"></i> Refresh
-                </button>
-                <button class="btn btn-success btn-sm" onclick="trackerOpenCreate()" style="height:34px">
-                    <i class="fa-solid fa-plus"></i> Create Log
-                </button>
+<!-- VIEW 3: 30-Day Daily Hours Chart -->
+<div id="view-chart" class="att-view-pane">
+    <div class="att-chart-wrap">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+            <h3 style="font-size:15px;font-weight:600;margin:0"><i class="fa-solid fa-chart-column"></i> Daily Shift Hours (Last 30 Days)</h3>
+            <span style="font-size:11px;color:var(--muted)">Dashed line indicates 8.0h standard shift target</span>
+        </div>
+        <div class="att-chart-bar-container" id="att-chart-container">
+            <div class="att-target-line" id="att-chart-target-line" style="bottom: 96px">
+                <span class="att-target-line-lbl">8.0h Target</span>
             </div>
-        </div>
-        <div class="att-card" id="trk-summary">
-            <h3><i class="fa-solid fa-chart-simple"></i> Month Summary</h3>
-            <div id="trk-summary-body" style="font-size:12px;color:var(--muted)">Loading…</div>
+            <div style="color:var(--muted);font-size:13px;width:100%;text-align:center;padding:40px 0">Loading shift chart...</div>
         </div>
     </div>
+</div>
 
-    <!-- Pending Requests Badge -->
-    <div id="trk-pending-badge" style="display:none;margin-bottom:12px;padding:10px 16px;background:rgba(210,153,34,.1);border:1px solid var(--warning);border-radius:var(--radius-md);font-size:13px;color:var(--warning)">
-        <i class="fa-solid fa-bell"></i> <span id="trk-pending-count">0</span> pending attendance request(s) this month
-        <a href="{{ url_for('admin_attendance_requests') }}" style="color:var(--warning);font-weight:600;margin-left:8px">Review</a>
-    </div>
+<!-- VIEW 4: Admin Attendance Tracker (Admin Only) -->
+{% if session.get('role') == 'admin' %}
+<div id="view-tracker" class="att-view-pane">
+    <div class="att-card" style="margin-bottom:20px">
+        <div class="att-card-header">
+            <h3><i class="fa-solid fa-users-gear"></i> Organization Attendance Tracker</h3>
+            <button class="btn btn-success btn-sm" onclick="trackerOpenCreate()">
+                <i class="fa-solid fa-plus"></i> Create Manual Log
+            </button>
+        </div>
 
-    <!-- Logs Table -->
-    <div class="att-card">
-        <div style="overflow-x:auto">
-            <table class="att-table" id="trk-table">
+        <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-bottom:16px">
+            <div class="form-group" style="margin-bottom:0">
+                <label style="font-size:11px;font-weight:700;color:var(--muted)">SELECT MONTH</label>
+                <select class="form-control" id="trk-month" onchange="trackerLoad()" style="width:160px"></select>
+            </div>
+            <div class="form-group" style="margin-bottom:0">
+                <label style="font-size:11px;font-weight:700;color:var(--muted)">FILTER USER</label>
+                <select class="form-control" id="trk-user" onchange="trackerLoad()" style="width:220px">
+                    <option value="">All Users</option>
+                </select>
+            </div>
+            <button class="btn btn-secondary btn-sm" onclick="trackerLoad()" style="height:36px">
+                <i class="fa-solid fa-arrows-rotate"></i> Refresh
+            </button>
+            <a href="{{ url_for('admin_attendance_requests') }}" class="btn btn-secondary btn-sm" style="height:36px">
+                <i class="fa-solid fa-clipboard-check"></i> Review Requests ({{ pending_requests }})
+            </a>
+        </div>
+
+        <div id="trk-pending-badge" style="display:none;margin-bottom:14px;padding:10px 14px;background:rgba(210,153,34,0.1);border:1px solid var(--warning);border-radius:var(--radius-md);font-size:12px;color:var(--warning)">
+            <i class="fa-solid fa-bell"></i> <strong id="trk-pending-count">0</strong> pending request(s) awaiting review.
+        </div>
+
+        <div class="att-table-wrap">
+            <table class="att-modern-table" id="trk-table">
                 <thead>
                     <tr>
                         <th>Date</th>
                         <th>User</th>
-                        <th>Login</th>
-                        <th>Logout</th>
-                        <th>Hours</th>
+                        <th>Punch In (IST)</th>
+                        <th>Punch Out (IST)</th>
+                        <th>Duration</th>
                         <th>Status</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody id="trk-body">
-                    <tr><td colspan="7" style="text-align:center;padding:30px;color:var(--muted)">Loading…</td></tr>
+                    <tr><td colspan="7" style="text-align:center;padding:30px;color:var(--muted)">Loading tracker data...</td></tr>
                 </tbody>
             </table>
         </div>
     </div>
+</div>
 
-    <!-- Create Log Modal -->
-    <div class="lm-modal-bg" id="trk-create-modal">
-        <div class="lm-modal" style="max-width:440px">
-            <div class="lm-modal-header">
-                <h3 style="margin:0;font-size:15px"><i class="fa-solid fa-plus"></i> Create Attendance Log</h3>
-                <button class="lm-btn lm-btn-ghost lm-btn-sm" onclick="trackerCloseCreate()">✕</button>
+<!-- Admin Create Log Modal -->
+<div class="modal-backdrop" id="trk-create-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:800;align-items:center;justify-content:center;backdrop-filter:blur(4px)">
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:24px;width:min(450px,94vw);box-shadow:var(--shadow-lg)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+            <h3 style="margin:0;font-size:16px;font-weight:700"><i class="fa-solid fa-plus"></i> Create Attendance Log</h3>
+            <button class="btn btn-secondary btn-sm" onclick="trackerCloseCreate()">✕</button>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:12px">
+            <div>
+                <label style="font-size:11px;font-weight:700;color:var(--muted)">USER</label>
+                <select class="form-control" id="trk-create-user"></select>
             </div>
-            <div class="lm-modal-body">
-                <div class="lm-fgroup" style="margin-bottom:12px">
-                    <label class="lm-flabel">User</label>
-                    <select class="lm-input" id="trk-create-user"></select>
-                </div>
-                <div class="lm-fgroup" style="margin-bottom:12px">
-                    <label class="lm-flabel">Login Time</label>
-                    <input type="datetime-local" class="lm-input" id="trk-create-login"/>
-                </div>
-                <div class="lm-fgroup" style="margin-bottom:12px">
-                    <label class="lm-flabel">Logout Time <span style="font-size:10px;color:var(--muted)">(optional)</span></label>
-                    <input type="datetime-local" class="lm-input" id="trk-create-logout"/>
-                </div>
-                <div id="trk-create-err" style="font-size:12px;color:var(--danger);display:none"></div>
+            <div>
+                <label style="font-size:11px;font-weight:700;color:var(--muted)">LOGIN TIME</label>
+                <input type="datetime-local" class="form-control" id="trk-create-login">
             </div>
-            <div class="lm-modal-btns">
-                <button class="lm-btn lm-btn-ghost" onclick="trackerCloseCreate()">Cancel</button>
-                <button class="lm-btn lm-btn-primary" onclick="trackerSaveCreate()"><i class="fa-solid fa-check"></i> Create</button>
+            <div>
+                <label style="font-size:11px;font-weight:700;color:var(--muted)">LOGOUT TIME (OPTIONAL)</label>
+                <input type="datetime-local" class="form-control" id="trk-create-logout">
             </div>
+            <div id="trk-create-err" style="font-size:12px;color:var(--danger);display:none"></div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px">
+            <button class="btn btn-secondary" onclick="trackerCloseCreate()">Cancel</button>
+            <button class="btn btn-primary" onclick="trackerSaveCreate()"><i class="fa-solid fa-check"></i> Create Log</button>
         </div>
     </div>
 </div>
 {% endif %}
+
+<!-- Edit Log Modal (for Admin) -->
+<div class="modal-backdrop" id="log-edit-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:800;align-items:center;justify-content:center;backdrop-filter:blur(4px)">
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:24px;width:min(450px,94vw);box-shadow:var(--shadow-lg)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+            <h3 style="margin:0;font-size:16px;font-weight:700"><i class="fa-solid fa-pen"></i> Edit Attendance Log</h3>
+            <button class="btn btn-secondary btn-sm" onclick="closeLogEditModal()">✕</button>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:12px">
+            <div>
+                <label style="font-size:11px;font-weight:700;color:var(--muted)">LOGIN TIME</label>
+                <input type="datetime-local" class="form-control" id="log-edit-login">
+            </div>
+            <div>
+                <label style="font-size:11px;font-weight:700;color:var(--muted)">LOGOUT TIME</label>
+                <input type="datetime-local" class="form-control" id="log-edit-logout">
+            </div>
+            <div>
+                <label style="font-size:11px;font-weight:700;color:var(--muted)">HOURS SPENT</label>
+                <input type="number" step="0.01" class="form-control" id="log-edit-hours">
+            </div>
+            <div id="log-edit-err" style="font-size:12px;color:var(--danger);display:none"></div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px">
+            <button class="btn btn-secondary" onclick="closeLogEditModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="saveLogEdit()"><i class="fa-solid fa-check"></i> Save Changes</button>
+        </div>
+    </div>
+</div>
 
 <div class="att-toast" id="att-toast"></div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-// ── Countdown timer for 9h minimum rule ──
+// ── Real-time IST Digital Clock in Header ──
+function updateISTClock() {
+    const clockEl = document.getElementById('live-ist-clock');
+    const dateEl = document.getElementById('live-ist-date');
+    if (!clockEl) return;
+    const now = new Date();
+    // Convert to IST (UTC+5:30)
+    const istOffset = 5.5 * 60 * 60 * 1000;
+    const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+    const istDate = new Date(utc + istOffset);
+
+    let h = istDate.getHours();
+    const m = String(istDate.getMinutes()).padStart(2, '0');
+    const s = String(istDate.getSeconds()).padStart(2, '0');
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    h = h % 12;
+    h = h ? h : 12;
+    clockEl.textContent = `${String(h).padStart(2, '0')}:${m}:${s} ${ampm}`;
+
+    const opts = { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' };
+    dateEl.textContent = istDate.toLocaleDateString('en-US', opts);
+}
+setInterval(updateISTClock, 1000);
+updateISTClock();
+
+// ── Live Stopwatch for Active Session ──
 (function(){
-    const cd = document.getElementById('att-countdown');
-    const pg = document.getElementById('att-progress');
-    if (!cd || !pg) return;
-    const remaining = {{ hours_remaining or 0 }};
-    const elapsed = {{ hours_elapsed or 0 }};
-    if (remaining <= 0) return;
-    const start = Date.now();
-    const totalMs = remaining * 3600 * 1000;
-    function tick(){
-        const elapsedMs = Date.now() - start;
-        const remMs = totalMs - elapsedMs;
-        if (remMs <= 0){ location.reload(); return; }
-        const rh = Math.floor(remMs / 3600000);
-        const rm = Math.floor((remMs % 3600000) / 60000);
-        const rs = Math.floor((remMs % 60000) / 1000);
-        cd.textContent = rh + 'h ' + rm + 'm ' + rs + 's';
-        // progress toward 9h minimum (then 23h max shown as full width)
-        const pct = Math.min(100, ((elapsed + elapsedMs/3600000) / 9) * 100);
-        pg.style.width = pct.toFixed(1) + '%';
-        if (pct >= 100) pg.style.background = 'var(--success)';
-        requestAnimationFrame(tick);
+    const swEl = document.getElementById('active-stopwatch');
+    if (!swEl) return;
+    let elapsedSecs = {{ elapsed_seconds or 0 }};
+    const progressFill = document.getElementById('shift-progress-fill');
+    const progressPct = document.getElementById('progress-pct-text');
+    const elapsedText = document.getElementById('elapsed-hours-text');
+    const remainingText = document.getElementById('remaining-hours-text');
+    const topHours = document.getElementById('top-card-hours');
+
+    function tickStopwatch() {
+        elapsedSecs++;
+        const hrs = Math.floor(elapsedSecs / 3600);
+        const mins = Math.floor((elapsedSecs % 3600) / 60);
+        const secs = elapsedSecs % 60;
+        swEl.textContent = `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+
+        const curHrs = (elapsedSecs / 3600);
+        if (elapsedText) elapsedText.textContent = curHrs.toFixed(2) + ' hrs';
+        if (topHours) topHours.innerHTML = curHrs.toFixed(2) + ' <span style="font-size:12px;font-weight:400;color:var(--muted)">hrs</span>';
+
+        const rem = Math.max(0, 8.0 - curHrs);
+        if (remainingText) remainingText.textContent = rem.toFixed(2) + ' hrs';
+
+        const pct = Math.min(100, Math.round((curHrs / 8.0) * 100));
+        if (progressPct) progressPct.textContent = pct + '%';
+        if (progressFill) {
+            progressFill.style.width = Math.min(100, (curHrs / 8.0) * 100) + '%';
+            if (curHrs >= 8.0) progressFill.classList.add('target-reached');
+        }
     }
-    tick();
+    setInterval(tickStopwatch, 1000);
+    tickStopwatch();
 })();
 
-// Fetch chart data and render
-fetch('/api/attendance/chart')
-    .then(r=>r.json())
-    .then(data=>{
-        const chart=document.getElementById('att-chart');
-        if(!data.length){chart.innerHTML='<div style="color:var(--muted);font-size:13px;width:100%;text-align:center;padding:40px 0">No data yet</div>';return}
-        const maxH=Math.max(...data.map(d=>d.hours),1);
-        chart.innerHTML=data.map(d=>{
-            const h=Math.max(4,Math.round((d.hours/maxH)*120));
-            const dt=new Date(d.date);
-            const lbl=`${dt.getDate()}/${dt.getMonth()+1}`;
-            return`<div class="att-bar-wrap"><div class="att-bar-val">${d.hours.toFixed(1)}</div><div class="att-bar-col"><div class="att-bar" style="height:${h}px" title="${d.date}: ${d.hours.toFixed(2)} hrs"></div></div><div class="att-bar-lbl">${lbl}</div></div>`;
-        }).join('');
-    })
-    .catch(()=>{
-        document.getElementById('att-chart').innerHTML='<div style="color:var(--muted);font-size:13px;width:100%;text-align:center;padding:40px 0">Failed to load chart</div>';
-    });
+// ── Confirmation for Punch-out ──
+function confirmPunchOut() {
+    const elapsedSecs = {{ elapsed_seconds or 0 }};
+    const hrs = elapsedSecs / 3600.0;
+    if (hrs < 8.0) {
+        return confirm(`You have worked ${hrs.toFixed(1)} hours so far (less than the standard 8-hour shift). Are you sure you want to punch out now?`);
+    }
+    return confirm("Confirm punch-out? Your shift will be recorded for today.");
+}
 
-// ═══ LEAVE REQUEST (moved into Attendance) ═══
-let _attTt = null;
-function lmToast(msg, type='ok') {
+// ── View Switching (Tabs) ──
+function switchAttView(view) {
+    document.querySelectorAll('.att-view-pane').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.att-nav-pill').forEach(btn => btn.classList.remove('active'));
+
+    const activePane = document.getElementById('view-' + view);
+    const activeTab = document.getElementById('tab-' + view);
+    if (activePane) activePane.classList.add('active');
+    if (activeTab) activeTab.classList.add('active');
+
+    if (view === 'chart') loadChart();
+    if (view === 'tracker') trackerInit();
+}
+
+// ── Search & Filter in Attendance Records Table ──
+function filterAttTable() {
+    const q = (document.getElementById('att-table-search').value || '').toLowerCase();
+    const rows = document.querySelectorAll('#att-records-tbl tbody tr');
+    rows.forEach(tr => {
+        const text = tr.innerText.toLowerCase();
+        tr.style.display = text.includes(q) ? '' : 'none';
+    });
+}
+
+// ── Regularization Form Mode ──
+function setReqMode(mode) {
+    document.getElementById('request_type_input').value = mode;
+    const chipForgot = document.getElementById('chip-forgot-logout');
+    const chipMissed = document.getElementById('chip-missed-punch');
+    const loginHint = document.getElementById('req_login_hint');
+
+    if (mode === 'forgot_logout') {
+        chipForgot.classList.add('active');
+        chipMissed.classList.remove('active');
+        if (loginHint) loginHint.textContent = '(Optional if exists)';
+    } else {
+        chipMissed.classList.add('active');
+        chipForgot.classList.remove('active');
+        if (loginHint) loginHint.textContent = '(Required)';
+    }
+    calcReqHours();
+}
+
+function setQuickReason(text) {
+    const r = document.getElementById('req_reason');
+    if (r) r.value = text;
+}
+
+function calcReqHours() {
+    const loginVal = document.getElementById('req_login').value;
+    const logoutVal = document.getElementById('req_logout').value;
+    const isNextDay = document.getElementById('is_next_day').checked;
+    const previewEl = document.getElementById('calc_hours_val');
+    if (!previewEl) return;
+
+    if (!logoutVal) {
+        previewEl.textContent = '-- hrs';
+        return;
+    }
+
+    const inTime = loginVal || '09:00';
+    const [ih, im] = inTime.split(':').map(Number);
+    const [oh, om] = logoutVal.split(':').map(Number);
+
+    let startMins = ih * 60 + im;
+    let endMins = oh * 60 + om;
+
+    if (isNextDay || endMins <= startMins) {
+        endMins += 24 * 60;
+    }
+
+    const diff = (endMins - startMins) / 60.0;
+    previewEl.textContent = diff > 0 ? `${diff.toFixed(2)} hrs` : '-- hrs';
+}
+
+// ── 30-Day Daily Hours Chart ──
+let chartLoaded = false;
+function loadChart() {
+    if (chartLoaded) return;
+    const container = document.getElementById('att-chart-container');
+    if (!container) return;
+
+    fetch('/api/attendance/chart')
+        .then(r => r.json())
+        .then(data => {
+            chartLoaded = true;
+            if (!data || !data.length) {
+                container.innerHTML = '<div style="color:var(--muted);font-size:13px;width:100%;text-align:center;padding:40px 0">No attendance data recorded yet</div>';
+                return;
+            }
+            const maxH = Math.max(12, ...data.map(d => d.hours));
+            const targetBottom = Math.round((8.0 / maxH) * 120);
+            const line = document.getElementById('att-chart-target-line');
+            if (line) line.style.bottom = (targetBottom + 24) + 'px';
+
+            let html = line ? line.outerHTML : '';
+            data.forEach(d => {
+                const h = Math.max(4, Math.round((d.hours / maxH) * 120));
+                const dt = new Date(d.date);
+                const lbl = `${dt.getDate()}/${dt.getMonth() + 1}`;
+                const barColor = d.hours >= 8.0 ? 'var(--success)' : 'var(--accent)';
+                html += `
+                    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;position:relative;z-index:2">
+                        <div style="font-size:10px;font-weight:700;font-family:var(--mono);color:var(--text)">${d.hours.toFixed(1)}</div>
+                        <div style="width:100%;display:flex;align-items:flex-end;flex:1">
+                            <div style="width:100%;height:${h}px;background:${barColor};border-radius:4px 4px 0 0;transition:height 0.3s"
+                                 title="${d.date}: ${d.hours.toFixed(2)} hrs"></div>
+                        </div>
+                        <div style="font-size:9px;color:var(--muted);font-family:var(--mono)">${lbl}</div>
+                    </div>`;
+            });
+            container.innerHTML = html;
+        })
+        .catch(() => {
+            container.innerHTML = '<div style="color:var(--danger);font-size:13px;width:100%;text-align:center;padding:40px 0">Failed to load chart</div>';
+        });
+}
+
+// ── Toast Notifications ──
+let _tTimer = null;
+function attToast(msg, type='ok') {
     const t = document.getElementById('att-toast');
     if (!t) return;
     t.textContent = msg;
     t.className = 'att-toast show ' + type;
-    clearTimeout(_attTt);
-    _attTt = setTimeout(() => t.classList.remove('show'), 3000);
+    clearTimeout(_tTimer);
+    _tTimer = setTimeout(() => t.classList.remove('show'), 3200);
 }
 
-const IS_ADMIN = {{ 'true' if session.get('role') == 'admin' else 'false' }};
-const MNS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-const CAT_LABELS = { full: 'Full day', half: 'Half day', permission: 'Permission' };
-let LM_CFG = null, MY_EMPS = [], REQUESTS = [], reqSelType = '';
-
-function getDIM(year) {
-    const leap = (year%4===0 && year%100!==0)||(year%400===0);
-    return [31,leap?29:28,31,30,31,30,31,31,30,31,30,31];
-}
-
-async function lmApi(url, opts) {
-    try {
-        const res = await fetch(url, opts);
-        const text = await res.text();
-        if (!text) return { success: false, message: 'Empty response' };
-        try { return JSON.parse(text); }
-        catch (e) { return { success: false, message: 'Server error (' + res.status + ')' }; }
-    } catch (err) {
-        return { success: false, message: 'Network error: ' + (err.message || 'unknown') };
-    }
-}
-
-function escHtml(s) {
-    return String(s==null?'':s).replace(/[&<>"']/g, c =>
-        c==='&'?'&amp;':c==='<'?'&lt;':c==='>'?'&gt;':c==='"'?'&quot;':'&#39;');
-}
-
-function attGo(v) {
-    document.querySelectorAll('.att-view').forEach(el => el.classList.toggle('active', el.id === 'att-view-' + v));
-    document.querySelectorAll('.att-tab').forEach(t => t.classList.toggle('active', t.id === 'att-tab-' + v));
-    if (v === 'request') renderReq();
-    if (v === 'history') loadHist();
-}
-
-// ═══ ATTENDANCE HISTORY ═══
+// ── Admin Edit Modal ──
 let _editingLogId = null;
-
-async function loadHist() {
-    const sel = document.getElementById('hist-emp');
-    const list = document.getElementById('hist-list');
-    if (!sel || !list) return;
-    if (sel.options.length <= 1 || sel.options[0].text === 'Loading…') {
-        await loadEmpSelector();
-    }
-    const empId = sel.value;
-    if (!empId && !IS_ADMIN) {
-        HIST_LOGS = [];
-        list.innerHTML = '<div style="padding:24px;text-align:center;color:var(--muted)">Loading your records…</div>';
-        const d = await lmApi('/api/attendance/history');
-        if (!d || !Array.isArray(d)) { list.innerHTML = '<div style="padding:24px;text-align:center;color:var(--danger)">Failed to load</div>'; return; }
-        HIST_LOGS = d;
-    } else if (!empId) {
-        list.innerHTML = '<div style="padding:24px;text-align:center;color:var(--muted)">Select an employee to view their history</div>';
-        return;
-    } else {
-        list.innerHTML = '<div style="padding:24px;text-align:center;color:var(--muted)">Loading…</div>';
-        const d = await lmApi('/api/attendance/history?empId=' + encodeURIComponent(empId));
-        if (!d || !Array.isArray(d)) { list.innerHTML = '<div style="padding:24px;text-align:center;color:var(--danger)">Failed to load</div>'; return; }
-        HIST_LOGS = d;
-    }
-    if (!HIST_LOGS.length) { list.innerHTML = '<div style="padding:24px;text-align:center;color:var(--muted)">No records found</div>'; return; }
-    list.innerHTML = `<table class="att-table"><thead><tr><th>Date</th><th>Login</th><th>Logout</th><th>Hours</th><th>Status</th>${IS_ADMIN ? '<th>Actions</th>' : ''}</tr></thead><tbody>` +
-        HIST_LOGS.map(r => {
-            const status = r.logout_time ? 'Complete' : 'Active';
-            const badge = r.logout_time ? 'bapproved' : 'bpending';
-            let acts = '';
-            if (IS_ADMIN) {
-                acts = `<td><button class="lm-btn lm-btn-ghost lm-btn-sm" onclick="openEditLog(${r.id})" title="Edit"><i class="fa-solid fa-pen"></i></button>
-                    <button class="lm-btn lm-btn-danger lm-btn-sm" onclick="deleteLog(${r.id})" title="Delete"><i class="fa-solid fa-trash"></i></button></td>`;
-            }
-            return `<tr>
-                <td>${r.login_date}</td>
-                <td style="font-family:var(--mono)">${r.login_time ? r.login_time.replace('T',' ') : '—'}</td>
-                <td style="font-family:var(--mono)">${r.logout_time ? r.logout_time.replace('T',' ') : '<span class="badge badge-warning">Active</span>'}</td>
-                <td style="font-family:var(--mono);font-weight:600">${r.hours_spent != null ? r.hours_spent + 'h' : '—'}</td>
-                <td><span class="lm-badge ${badge}">${status}</span></td>
-                ${acts}
-            </tr>`;
-        }).join('') + '</tbody></table>';
-}
-
-async function loadEmpSelector() {
-    const sel = document.getElementById('hist-emp');
-    if (!sel) return;
-    if (IS_ADMIN) {
-        const d = await lmApi('/api/lm/me');
-        const emps = (d && Array.isArray(d.employees)) ? d.employees : [];
-        sel.innerHTML = '<option value="">All employees</option>' + emps.map(e =>
-            `<option value="${e.empId}">${escHtml(e.name)} (${e.empId})</option>`).join('');
-    } else {
-        sel.innerHTML = '<option value="">My records</option>';
-        sel.value = '';
-    }
-}
-
-function openEditLog(logId) {
-    const log = HIST_LOGS.find(x => x.id === logId);
-    if (!log) return;
-    _editingLogId = logId;
-    document.getElementById('log-edit-login').value = log.login_time ? log.login_time.slice(0,16) : '';
-    document.getElementById('log-edit-logout').value = log.logout_time ? log.logout_time.slice(0,16) : '';
-    document.getElementById('log-edit-hours').value = log.hours_spent != null ? log.hours_spent : '';
+function openEditLogModal(id, loginTime, logoutTime, hours) {
+    _editingLogId = id;
+    document.getElementById('log-edit-login').value = loginTime || '';
+    document.getElementById('log-edit-logout').value = logoutTime || '';
+    document.getElementById('log-edit-hours').value = hours || '';
     document.getElementById('log-edit-err').style.display = 'none';
-    document.getElementById('log-edit-modal').classList.add('open');
+    document.getElementById('log-edit-modal').style.display = 'flex';
 }
-
 function closeLogEditModal() {
-    document.getElementById('log-edit-modal').classList.remove('open');
+    document.getElementById('log-edit-modal').style.display = 'none';
     _editingLogId = null;
 }
-
 async function saveLogEdit() {
-    if (_editingLogId == null) return;
+    if (!_editingLogId) return;
     const login = document.getElementById('log-edit-login').value;
     const logout = document.getElementById('log-edit-logout').value;
     const hours = document.getElementById('log-edit-hours').value;
     const errEl = document.getElementById('log-edit-err');
     errEl.style.display = 'none';
-    if (login && logout && login >= logout) {
-        errEl.textContent = 'Logout must be after login'; errEl.style.display = 'block'; return;
-    }
+
     const payload = {};
     if (login) payload.loginTime = login;
     if (logout) payload.logoutTime = logout;
     if (hours !== '') payload.hours = parseFloat(hours);
-    const res = await lmApi('/api/attendance/logs/' + _editingLogId + '/edit', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-    });
-    if (!res.success) { errEl.textContent = res.message || 'Save failed'; errEl.style.display = 'block'; return; }
-    closeLogEditModal();
-    lmToast('Attendance log updated', 'ok');
-    await loadHist();
-}
 
-async function deleteLog(logId) {
-    if (!confirm('Delete this attendance log entry? This cannot be undone.')) return;
-    const res = await lmApi('/api/attendance/logs/' + logId + '/delete', { method: 'POST' });
-    if (!res.success) { lmToast(res.message || 'Delete failed', 'err'); return; }
-    lmToast('Attendance log deleted', 'err');
-    await loadHist();
-}
-
-let HIST_LOGS = [];
-
-async function loadConfig() {
-    const data = await lmApi('/api/lm/settings');
-    LM_CFG = (data && data.success === false) ? null : data;
-    if (!LM_CFG) LM_CFG = { types: {}, allow_two_half_days: true, max_leave_per_day: 2, permission_max_hours: 4 };
-}
-async function loadMyEmps() {
-    const data = await lmApi('/api/lm/me');
-    MY_EMPS = (data && Array.isArray(data.employees)) ? data.employees : [];
-}
-async function loadRequests() {
-    const data = await lmApi('/api/lm/requests');
-    REQUESTS = Array.isArray(data) ? data : [];
-}
-
-function reqSelEmp() { const s = document.getElementById('req-emp'); return s ? s.value : ''; }
-
-function fillReqYear() {
-    const sel = document.getElementById('req-year');
-    if (!sel) return;
-    const curYear = new Date().getFullYear();
-    let opts = '';
-    for (let y = curYear - 1; y <= curYear + 2; y++) opts += `<option value="${y}" ${y===curYear?'selected':''}>${y}</option>`;
-    sel.innerHTML = opts;
-}
-function fillReqMonths() {
-    const sel = document.getElementById('req-month');
-    if (!sel) return;
-    sel.innerHTML = MNS.map(m => `<option value="${m}">${m}</option>`).join('');
-    sel.value = MNS[new Date().getMonth()];
-}
-function renderReqDays() {
-    const sel = document.getElementById('req-day');
-    if (!sel) return;
-    const mi = MNS.indexOf(document.getElementById('req-month').value);
-    const dim = getDIM(parseInt(document.getElementById('req-year').value))[mi];
-    const today = new Date().getDate();
-    const cur = parseInt(sel.value);
-    sel.innerHTML = '';
-    for (let d = 1; d <= dim; d++) {
-        const o = document.createElement('option');
-        o.value = d; o.textContent = d;
-        if (cur === d) o.selected = true;
-        sel.appendChild(o);
-    }
-    if (!cur) sel.value = today;
-}
-
-function renderReqTypes() {
-    const wrap = document.getElementById('req-types');
-    if (!wrap) return;
-    const cats = [
-        { code: 'full', card: 'Full', label: 'Full day' },
-        { code: 'half', card: 'Half', label: 'Half day' },
-        { code: 'permission', card: 'Perm', label: 'Permission' }
-    ];
-    let h = '';
-    for (const c of cats) {
-        h += `<div class="req-type${reqSelType===c.code?' sel':''}" id="rtype-${c.code}" onclick="reqPickType('${c.code}')">
-                <div class="rc">${c.card}</div>
-                <div class="rl">${c.label}</div>
-              </div>`;
-    }
-    wrap.innerHTML = h;
-}
-
-function reqPickType(code) {
-    reqSelType = code;
-    renderReqTypes();
-    const hours = document.getElementById('req-hours-wrap');
-    if (hours) {
-        hours.style.display = (code === 'permission') ? '' : 'none';
-        if (code === 'permission') {
-            const cfg = LM_CFG || { permission_max_hours: 4 };
-            document.getElementById('req-start').max = cfg.permission_start_max || '';
-            document.getElementById('req-hours').max = cfg.permission_max_hours || 4;
-            if (!document.getElementById('req-end').value) document.getElementById('req-end').value = '11:00';
-            reqCalcHours();
+    try {
+        const res = await fetch(`/api/attendance/logs/${_editingLogId}/edit`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const d = await res.json();
+        if (!d.success) {
+            errEl.textContent = d.message || 'Save failed';
+            errEl.style.display = 'block';
+            return;
         }
+        closeLogEditModal();
+        attToast('Log updated successfully', 'ok');
+        location.reload();
+    } catch (e) {
+        errEl.textContent = 'Network error';
+        errEl.style.display = 'block';
     }
 }
 
-function reqCalcHours() {
-    const st = (document.getElementById('req-start').value || '');
-    const et = (document.getElementById('req-end').value || '');
-    const disp = document.getElementById('req-hours-read');
-    const hidden = document.getElementById('req-hours');
-    if (!st || !et) { if (disp) disp.textContent = '-'; return; }
-    const [sh, sm] = st.split(':').map(Number);
-    const [eh, em] = et.split(':').map(Number);
-    const mins = (eh * 60 + em) - (sh * 60 + sm);
-    if (mins <= 0) { if (disp) disp.textContent = 'invalid'; return; }
-    const hrs = Math.round((mins / 60) * 10) / 10;
-    if (disp) disp.textContent = hrs;
-    if (hidden) hidden.value = hrs;
-}
-
-function updateReqBalance() {
-    const info = document.getElementById('req-bal-info');
-    if (info) info.innerHTML = '';
-}
-
-async function updateReqCapacity() {
-    const capEl = document.getElementById('req-cap');
-    if (!capEl) return;
-    const yr = parseInt(document.getElementById('req-year').value);
-    const mon = document.getElementById('req-month').value;
-    const dy = parseInt(document.getElementById('req-day').value);
-    const empId = reqSelEmp();
-    const max = (LM_CFG && LM_CFG.max_leave_per_day) || 2;
-    let n = 0;
-    if (empId) {
-        const d = await lmApi(`/api/lm/capacity?year=${yr}&month=${mon}&day=${dy}&empId=${encodeURIComponent(empId)}`);
-        n = (d && d.success !== false) ? (d.count || 0) : 0;
-    }
-    const full = n >= max;
-    capEl.className = 'req-cap' + (full ? ' full' : '');
-    capEl.innerHTML = `<i class="fa-solid fa-users"></i> <b>${n}</b> of <b>${max}</b> employee(s) already on leave this day`
-        + (full ? ' — <b>day full, request blocked</b>' : '');
-    const btn = document.getElementById('req-submit');
-    if (btn) btn.disabled = full;
-}
-
-function showReqErr(msg) {
-    const el = document.getElementById('req-err');
-    if (!el) return;
-    if (!msg) { el.style.display='none'; return; }
-    el.textContent = msg; el.style.display='block';
-}
-
-function renderReq() {
-    const sel = document.getElementById('req-emp');
-    if (!sel) return;
-    renderReqReady();
-}
-const _lmReady = Promise.all([loadConfig(), loadMyEmps(), loadRequests()]);
-async function renderReqReady() {
-    await _lmReady;
-    fillReqYear();
-    fillReqMonths();
-    renderReqDays();
-    const sel = document.getElementById('req-emp');
-    let hasEmp = false;
-    if (IS_ADMIN) {
-        const act = MY_EMPS.filter(e => e.status === 'Active');
-        hasEmp = act.length > 0;
-        sel.innerHTML = act.map(e => `<option value="${e.empId}">${escHtml(e.name)} (${e.empId})</option>`).join('')
-            || '<option value="">No active employees</option>';
-        document.getElementById('req-emp-group').style.display = '';
-    } else {
-        const mine     = MY_EMPS.filter(e => e.linked);
-        const unlinked = MY_EMPS.filter(e => !e.linked);
-        if (mine.length) {
-            sel.innerHTML = mine.map(e=>`<option value="${e.empId}">${escHtml(e.name)} (${e.empId})</option>`).join('');
-            document.getElementById('req-emp-group').style.display = 'none';
-            hasEmp = true;
-        } else if (unlinked.length) {
-            sel.innerHTML = unlinked.map(e=>`<option value="${e.empId}">${escHtml(e.name)} (${e.empId})</option>`).join('');
-            document.getElementById('req-emp-group').style.display = '';
-            hasEmp = true;
+async function deleteLog(id) {
+    if (!confirm('Are you sure you want to delete this attendance log? This cannot be undone.')) return;
+    try {
+        const res = await fetch(`/api/attendance/logs/${id}/delete`, { method: 'POST' });
+        const d = await res.json();
+        if (d.success) {
+            attToast('Log deleted', 'ok');
+            location.reload();
+        } else {
+            attToast(d.message || 'Delete failed', 'err');
         }
+    } catch (e) {
+        attToast('Network error', 'err');
     }
-    document.getElementById('req-no-link').style.display = hasEmp ? 'none' : 'block';
-    document.getElementById('req-body').style.display = hasEmp ? 'block' : 'none';
-    if (hasEmp) {
-        reqSelType = '';
-        renderReqTypes();
-        updateReqBalance();
-        updateReqCapacity();
-    }
-    renderReqList();
 }
 
-function renderReqList() {
-    const el = document.getElementById('req-list');
-    if (!el) return;
-    if (!REQUESTS.length) { el.innerHTML = '<div style="padding:24px;text-align:center;color:var(--muted)">No requests yet</div>'; return; }
-    const badges = { pending:'bpending', approved:'bapproved', declined:'bdeclined' };
-    el.innerHTML = REQUESTS.map(r => `
-        <div style="padding:10px 14px;border-bottom:1px solid var(--border)">
-            <div style="font-weight:600;font-size:12px">${r.empName?escHtml(r.empName)+' — ':''}${r.month} ${r.day}, ${r.year}
-                <span class="lm-badge ${badges[r.status]||'bpro'}" style="text-transform:uppercase">${r.status}</span></div>
-            <div style="font-size:11px;color:var(--muted);margin-top:2px">
-                ${CAT_LABELS[r.category]||r.category||'Leave'}${r.hours?` · ${r.hours}h`:''}${r.startTime&&r.endTime?` (${r.startTime}–${r.endTime})`:''}${r.reason?` — ${escHtml(r.reason)}`:''}
-            </div>
-            ${r.adminNote?`<div style="font-size:10px;color:var(--warning);margin-top:2px">Admin note: ${escHtml(r.adminNote)}</div>`:''}
-        </div>`).join('');
-}
-
-async function submitRequest() {
-    showReqErr('');
-    const empId = reqSelEmp();
-    const yr = parseInt(document.getElementById('req-year').value);
-    const mon = document.getElementById('req-month').value;
-    const dy = parseInt(document.getElementById('req-day').value);
-    const category = reqSelType;
-    const hours = category === 'permission' ? parseFloat(document.getElementById('req-hours').value) : null;
-    const startTime = category === 'permission' ? document.getElementById('req-start').value : null;
-    const endTime = category === 'permission' ? document.getElementById('req-end').value : null;
-    const reason = document.getElementById('req-reason').value.trim();
-    if (!empId) { showReqErr('Select an employee first'); return; }
-    if (!category) { showReqErr('Select a leave category'); return; }
-    if (category === 'permission') {
-        if (!startTime || !endTime) { showReqErr('Select permission start and end time'); return; }
-        if (!hours || isNaN(hours) || hours <= 0) { showReqErr('Enter a valid permission time range'); return; }
-    }
-    const res = await lmApi('/api/lm/requests', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ empId, year: yr, month: mon, day: dy, category, hours, startTime, endTime, reason })
-    });
-    if (!res.success) { showReqErr(res.message || 'Could not submit request'); return; }
-    document.getElementById('req-reason').value = '';
-    lmToast('Leave request submitted for approval', 'ok');
-    await loadRequests();
-    renderReqList();
-    updateReqCapacity();
-}
-
-// ═══ ATTENDANCE TRACKER (admin) ═══
-let TRK_LOGS = [], TRK_USERS = [];
-
+// ── Admin Tracker Functions ──
+{% if session.get('role') == 'admin' %}
+let TRK_USERS = [];
 function trackerInit() {
     const sel = document.getElementById('trk-month');
-    if (!sel) return;
-    if (!sel.dataset.init) {
-        sel.dataset.init = '1';
-        const now = new Date();
-        let opts = '';
-        for (let m = 0; m < 12; m++) {
-            const d = new Date(now.getFullYear(), m + 1, 0);
-            const label = d.toLocaleString('en', {month:'long'}) + ' ' + now.getFullYear();
-            opts += `<option value="${now.getFullYear()}-${String(m+1).padStart(2,'0')}"${m===now.getMonth()?' selected':''}>${label}</option>`;
-        }
-        sel.innerHTML = opts;
-        trackerLoadUsers();
+    if (!sel || sel.dataset.init) return;
+    sel.dataset.init = '1';
+    const now = new Date();
+    let opts = '';
+    for (let m = 0; m < 12; m++) {
+        const d = new Date(now.getFullYear(), m + 1, 0);
+        const label = d.toLocaleString('en', { month: 'long' }) + ' ' + now.getFullYear();
+        opts += `<option value="${now.getFullYear()}-${String(m+1).padStart(2,'0')}" ${m === now.getMonth() ? 'selected' : ''}>${label}</option>`;
     }
+    sel.innerHTML = opts;
+    trackerLoadUsers();
     trackerLoad();
 }
 
 async function trackerLoadUsers() {
     const sel = document.getElementById('trk-user');
     if (!sel) return;
-    const d = await lmApi('/api/attendance/tracker/all-users');
-    TRK_USERS = Array.isArray(d) ? d : [];
-    sel.innerHTML = '<option value="">All users</option>' +
-        TRK_USERS.map(u => `<option value="${u.id}">${escHtml(u.full_name)} (${escHtml(u.email)})</option>`).join('');
+    try {
+        const res = await fetch('/api/attendance/tracker/all-users');
+        TRK_USERS = await res.json();
+        sel.innerHTML = '<option value="">All Users</option>' +
+            TRK_USERS.map(u => `<option value="${u.id}">${u.full_name} (${u.email})</option>`).join('');
+    } catch(e){}
 }
 
 async function trackerLoad() {
-    const sel = document.getElementById('trk-month');
-    if (!sel) return;
-    const [year, month] = sel.value.split('-').map(Number);
-    const userId = (document.getElementById('trk-user') || {}).value || '';
+    const monthVal = (document.getElementById('trk-month') || {}).value;
+    if (!monthVal) return;
+    const [year, month] = monthVal.split('-').map(Number);
+    const userId = (document.getElementById('trk-user') || {}).value;
     const body = document.getElementById('trk-body');
-    body.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--muted)">Loading…</td></tr>';
+    body.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--muted)">Loading...</td></tr>';
 
-    const [logsData, sumData] = await Promise.all([
-        lmApi(`/api/attendance/tracker?year=${year}&month=${month}`),
-        lmApi(`/api/attendance/tracker/month-summary?year=${year}&month=${month}`)
-    ]);
+    try {
+        const res = await fetch(`/api/attendance/tracker?year=${year}&month=${month}`);
+        const data = await res.json();
+        let logs = data.logs || [];
+        if (userId) logs = logs.filter(l => l.user_id == userId);
 
-    const logs = (logsData && logsData.logs) ? logsData.logs : [];
-    const pending = (logsData && logsData.pending_requests) || 0;
-    TRK_LOGS = userId ? logs.filter(l => l.user_id == userId) : logs;
-
-    // Pending badge
-    const badge = document.getElementById('trk-pending-badge');
-    const pCnt = document.getElementById('trk-pending-count');
-    if (badge && pCnt) {
-        badge.style.display = pending > 0 ? '' : 'none';
-        pCnt.textContent = pending;
-    }
-
-    // Summary
-    const sumBody = document.getElementById('trk-summary-body');
-    if (sumBody) {
-        const summaries = Array.isArray(sumData) ? sumData : [];
-        if (!summaries.length) {
-            sumBody.innerHTML = '<div style="text-align:center;padding:12px">No data for this month</div>';
-        } else {
-            sumBody.innerHTML = '<table class="att-table"><thead><tr><th>User</th><th>Days</th><th>Hours</th><th>Active</th></tr></thead><tbody>' +
-                summaries.map(s => `<tr>
-                    <td style="font-weight:500">${escHtml(s.full_name)}</td>
-                    <td style="font-family:var(--mono)">${s.total_days}</td>
-                    <td style="font-family:var(--mono);font-weight:600;color:var(--accent2)">${parseFloat(s.total_hours).toFixed(1)}h</td>
-                    <td>${s.active_count > 0 ? '<span class="badge badge-warning">Active</span>' : '<span class="badge badge-success">Done</span>'}</td>
-                </tr>`).join('') + '</tbody></table>';
+        if (!logs.length) {
+            body.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:30px;color:var(--muted)">No records found for this period</td></tr>';
+            return;
         }
-    }
 
-    // Render logs
-    if (!TRK_LOGS.length) {
-        body.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:30px;color:var(--muted)">No logs for this period</td></tr>';
-        return;
+        body.innerHTML = logs.map(r => {
+            const loginDT = r.login_time ? r.login_time.substring(0, 16) : '';
+            const logoutDT = r.logout_time ? r.logout_time.substring(0, 16) : '';
+            const hrs = r.hours_spent != null ? parseFloat(r.hours_spent).toFixed(2) : '—';
+            const status = r.logout_time ? '<span class="badge badge-success">Completed</span>' : '<span class="badge badge-warning">Active</span>';
+            return `
+                <tr data-log-id="${r.id}">
+                    <td style="font-family:var(--mono);font-size:12px">${r.login_date}</td>
+                    <td style="font-weight:600">${r.full_name}</td>
+                    <td><input type="datetime-local" class="form-control trk-login" value="${loginDT}" style="width:190px;font-size:12px;padding:4px 8px"></td>
+                    <td><input type="datetime-local" class="form-control trk-logout" value="${logoutDT}" style="width:190px;font-size:12px;padding:4px 8px"></td>
+                    <td style="font-family:var(--mono);font-weight:700;color:var(--accent2)">${hrs}</td>
+                    <td>${status}</td>
+                    <td>
+                        <button class="btn btn-primary btn-sm" onclick="trackerSaveRow(${r.id})" title="Save"><i class="fa-solid fa-check"></i></button>
+                        <button class="btn btn-danger btn-sm" onclick="deleteLog(${r.id})" title="Delete"><i class="fa-solid fa-trash"></i></button>
+                    </td>
+                </tr>`;
+        }).join('');
+    } catch(e) {
+        body.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:30px;color:var(--danger)">Failed to load tracker</td></tr>';
     }
-    body.innerHTML = TRK_LOGS.map(r => {
-        const loginDT = r.login_time ? r.login_time.replace('T',' ').substring(0,16) : '—';
-        const logoutDT = r.logout_time ? r.logout_time.replace('T',' ').substring(0,16) : '';
-        const loginVal = r.login_time ? r.login_time.substring(0,16) : '';
-        const logoutVal = r.logout_time ? r.logout_time.substring(0,16) : '';
-        const hrs = r.hours_spent != null ? parseFloat(r.hours_spent).toFixed(2) : '—';
-        const status = r.logout_time
-            ? '<span class="badge badge-success">Complete</span>'
-            : '<span class="badge badge-warning">Active</span>';
-        return `<tr data-log-id="${r.id}">
-            <td style="font-family:var(--mono);font-size:12px;white-space:nowrap">${r.login_date}</td>
-            <td style="font-size:12px"><b>${escHtml(r.full_name)}</b></td>
-            <td><input type="datetime-local" class="lm-input trk-login" value="${loginVal}" style="width:190px;font-size:12px;padding:5px 8px"/></td>
-            <td><input type="datetime-local" class="lm-input trk-logout" value="${logoutVal}" style="width:190px;font-size:12px;padding:5px 8px"/></td>
-            <td style="font-family:var(--mono);font-weight:600;color:var(--accent2);font-size:12px">${hrs}</td>
-            <td>${status}</td>
-            <td>
-                <button class="lm-btn lm-btn-primary lm-btn-sm" onclick="trackerSaveRow(${r.id})" title="Save"><i class="fa-solid fa-check"></i></button>
-                <button class="lm-btn lm-btn-danger lm-btn-sm" onclick="trackerDeleteRow(${r.id})" title="Delete"><i class="fa-solid fa-trash"></i></button>
-            </td>
-        </tr>`;
-    }).join('');
 }
 
 async function trackerSaveRow(logId) {
@@ -985,63 +1575,66 @@ async function trackerSaveRow(logId) {
     if (!row) return;
     const login = row.querySelector('.trk-login').value;
     const logout = row.querySelector('.trk-logout').value;
-    const payload = {};
-    if (login) payload.loginTime = login;
-    if (logout) payload.logoutTime = logout;
-    const res = await lmApi(`/api/attendance/tracker/${logId}/set`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-    });
-    if (!res.success) { lmToast(res.message || 'Save failed', 'err'); return; }
-    lmToast('Log updated', 'ok');
-    trackerLoad();
-}
-
-async function trackerDeleteRow(logId) {
-    if (!confirm('Delete this attendance log entry?')) return;
-    const res = await lmApi(`/api/attendance/logs/${logId}/delete`, { method: 'POST' });
-    if (!res.success) { lmToast(res.message || 'Delete failed', 'err'); return; }
-    lmToast('Log deleted', 'ok');
-    trackerLoad();
+    try {
+        const res = await fetch(`/api/attendance/tracker/${logId}/set`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ loginTime: login, logoutTime: logout })
+        });
+        const d = await res.json();
+        if (d.success) {
+            attToast('Log updated', 'ok');
+            trackerLoad();
+        } else {
+            attToast(d.message || 'Save failed', 'err');
+        }
+    } catch(e) { attToast('Network error', 'err'); }
 }
 
 function trackerOpenCreate() {
     const sel = document.getElementById('trk-create-user');
-    if (sel) {
-        sel.innerHTML = TRK_USERS.map(u => `<option value="${u.id}">${escHtml(u.full_name)}</option>`).join('');
+    if (sel && TRK_USERS.length) {
+        sel.innerHTML = TRK_USERS.map(u => `<option value="${u.id}">${u.full_name}</option>`).join('');
     }
     document.getElementById('trk-create-login').value = '';
     document.getElementById('trk-create-logout').value = '';
     document.getElementById('trk-create-err').style.display = 'none';
-    document.getElementById('trk-create-modal').classList.add('open');
+    document.getElementById('trk-create-modal').style.display = 'flex';
 }
-
 function trackerCloseCreate() {
-    document.getElementById('trk-create-modal').classList.remove('open');
+    document.getElementById('trk-create-modal').style.display = 'none';
 }
-
 async function trackerSaveCreate() {
     const userId = document.getElementById('trk-create-user').value;
     const login = document.getElementById('trk-create-login').value;
     const logout = document.getElementById('trk-create-logout').value;
     const errEl = document.getElementById('trk-create-err');
     errEl.style.display = 'none';
-    if (!userId || !login) { errEl.textContent = 'User and login time required'; errEl.style.display = 'block'; return; }
-    const res = await lmApi('/api/attendance/tracker/create', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: parseInt(userId), loginTime: login, logoutTime: logout || '' })
-    });
-    if (!res.success) { errEl.textContent = res.message || 'Create failed'; errEl.style.display = 'block'; return; }
-    trackerCloseCreate();
-    lmToast('Log created', 'ok');
-    trackerLoad();
+    if (!userId || !login) {
+        errEl.textContent = 'User and login time required';
+        errEl.style.display = 'block';
+        return;
+    }
+    try {
+        const res = await fetch('/api/attendance/tracker/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: parseInt(userId), loginTime: login, logoutTime: logout || '' })
+        });
+        const d = await res.json();
+        if (d.success) {
+            trackerCloseCreate();
+            attToast('Log created', 'ok');
+            trackerLoad();
+        } else {
+            errEl.textContent = d.message || 'Create failed';
+            errEl.style.display = 'block';
+        }
+    } catch(e) {
+        errEl.textContent = 'Network error';
+        errEl.style.display = 'block';
+    }
 }
-
-// Init tracker when tab is shown
-const _origAttGo = attGo;
-attGo = function(v) {
-    _origAttGo(v);
-    if (v === 'tracker') trackerInit();
-};
+{% endif %}
 </script>
 {% endblock %}

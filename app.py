@@ -304,15 +304,35 @@ def init_db():
                 login_time DATETIME NOT NULL,
                 logout_time DATETIME DEFAULT NULL,
                 hours_spent DECIMAL(5,2) DEFAULT NULL,
+                status VARCHAR(30) DEFAULT 'completed',
+                notes VARCHAR(255) DEFAULT '',
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-                UNIQUE KEY unique_user_date (user_id, login_date)
+                UNIQUE KEY unique_user_date (user_id, login_date),
+                INDEX idx_user_date (user_id, login_date),
+                INDEX idx_login_time (login_time)
             )
         """)
 
         # Add unique index if missing (for older DBs)
         try:
             cur.execute("ALTER TABLE attendance_logs ADD UNIQUE KEY unique_user_date (user_id, login_date)")
+        except mysql.connector.Error:
+            pass
+
+        try:
+            cur.execute("ALTER TABLE attendance_logs ADD COLUMN status VARCHAR(30) DEFAULT 'completed'")
+        except mysql.connector.Error:
+            pass
+
+        try:
+            cur.execute("ALTER TABLE attendance_logs ADD COLUMN notes VARCHAR(255) DEFAULT ''")
+        except mysql.connector.Error:
+            pass
+
+        try:
+            cur.execute("ALTER TABLE attendance_logs ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP")
         except mysql.connector.Error:
             pass
 
@@ -323,14 +343,21 @@ def init_db():
                 request_date DATE NOT NULL,
                 requested_login DATETIME NOT NULL,
                 requested_logout DATETIME NOT NULL,
+                request_type VARCHAR(50) DEFAULT 'forgot_logout',
                 reason VARCHAR(500) DEFAULT '',
                 status ENUM('pending', 'approved', 'declined') DEFAULT 'pending',
                 admin_note VARCHAR(255) DEFAULT '',
                 reviewed_by INT DEFAULT NULL,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                INDEX idx_user_status (user_id, status)
             )
         """)
+
+        try:
+            cur.execute("ALTER TABLE attendance_requests ADD COLUMN request_type VARCHAR(50) DEFAULT 'forgot_logout'")
+        except mysql.connector.Error:
+            pass
 
         # ─── PETTY CASH (CBE + DGL) ──────────────────────────────────
         cur.execute("""
@@ -1173,7 +1200,7 @@ def dashboard():
                    al.login_time, al.logout_time, al.hours_spent
             FROM users u
             LEFT JOIN attendance_logs al
-              ON al.user_id = u.id AND al.login_date = CURDATE()
+              ON al.user_id = u.id AND (al.login_date = CURDATE() OR (al.logout_time IS NULL AND al.login_date >= DATE_SUB(CURDATE(), INTERVAL 1 DAY)))
             WHERE u.is_approved = 1 AND u.is_active = 1
             ORDER BY u.full_name ASC
         """)
@@ -3178,7 +3205,7 @@ def macromanager_save_settings():
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# ATTENDANCE (Login/Logout Tracker) — IST + idempotent upsert logic
+# ATTENDANCE (Login/Logout Tracker) — IST + Cross-Midnight + Regularization
 # ═══════════════════════════════════════════════════════════════════════
 
 @app.route("/attendance")
@@ -3187,11 +3214,11 @@ def macromanager_save_settings():
 def attendance():
     conn = get_db()
     cur = conn.cursor(dictionary=True)
+    today = today_ist()
+    now = now_ist()
 
     # Active (open) session — logout_time IS NULL, regardless of login_date.
-    # A mid-shift like 4 PM-1 AM starts on one calendar day and ends on the
-    # next, so filtering by "login_date = CURDATE()" would hide it after
-    # midnight and wrongly show the LOGIN button instead of LOGOUT.
+    # Correctly handles night shifts (e.g. login today at 8 PM, logout tomorrow at 4 AM)
     cur.execute(
         """SELECT * FROM attendance_logs
            WHERE user_id = %s AND logout_time IS NULL
@@ -3200,37 +3227,59 @@ def attendance():
     )
     active_session = cur.fetchone()
 
-    # Auto-close any shift that has reached the 23h maximum so a session
-    # can never linger past max shift (prevents the "login button appears
-    # after 23h" bug where an open overnight session blocks re-login).
+    is_forgotten_session = False
+    # If active session was started more than 16 hours ago or on an earlier calendar day,
+    # flag it so the UI alerts the user about forgot to logout
     if active_session:
-        elapsed = (now_ist() - active_session["login_time"]).total_seconds() / 3600.0
-        if elapsed >= 23:
-            forced_logout = active_session["login_time"] + timedelta(hours=23)
+        elapsed_hours = (now - active_session["login_time"]).total_seconds() / 3600.0
+        if elapsed_hours >= 24:
+            # Auto-close sessions that were abandoned past 24 hours
+            forced_logout = active_session["login_time"] + timedelta(hours=8)
             cur.execute(
-                "UPDATE attendance_logs SET logout_time = %s, hours_spent = %s WHERE id = %s",
-                (forced_logout, 23.0, active_session["id"]),
+                """UPDATE attendance_logs
+                   SET logout_time = %s, hours_spent = 8.0, status = 'forgot_logout',
+                       notes = 'Auto-closed after 24h (Forgot logout)'
+                   WHERE id = %s""",
+                (forced_logout, active_session["id"]),
             )
             conn.commit()
             active_session = None
+        elif elapsed_hours >= 16 or active_session["login_date"] < today:
+            is_forgotten_session = True
 
-    # Today's completed log (if any)
+    # Completed log for today (if any)
     cur.execute(
         """SELECT * FROM attendance_logs
-           WHERE user_id = %s AND login_date = CURDATE()
+           WHERE user_id = %s AND login_date = %s AND logout_time IS NOT NULL
            ORDER BY login_time DESC LIMIT 1""",
-        (session["user_id"],),
+        (session["user_id"], today),
     )
     today_log = cur.fetchone()
 
+    # Recent attendance logs (last 60 days)
     cur.execute(
         """SELECT * FROM attendance_logs
-           WHERE user_id = %s AND login_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+           WHERE user_id = %s AND login_date >= DATE_SUB(CURDATE(), INTERVAL 60 DAY)
            ORDER BY login_date DESC, login_time DESC""",
         (session["user_id"],),
     )
     recent_logs = cur.fetchall()
 
+    # Monthly stats
+    cur.execute(
+        """SELECT COUNT(*) AS days, COALESCE(SUM(hours_spent), 0) AS hrs
+           FROM attendance_logs
+           WHERE user_id = %s
+             AND YEAR(login_date) = YEAR(CURDATE())
+             AND MONTH(login_date) = MONTH(CURDATE())
+             AND logout_time IS NOT NULL""",
+        (session["user_id"],),
+    )
+    month_stats = cur.fetchone()
+    month_days = month_stats["days"] if month_stats else 0
+    month_hours = round(float(month_stats["hrs"]), 2) if month_stats else 0.0
+
+    # User's requests
     cur.execute(
         "SELECT COUNT(*) AS cnt FROM attendance_requests WHERE user_id = %s AND status = 'pending'",
         (session["user_id"],),
@@ -3239,7 +3288,7 @@ def attendance():
 
     cur.execute(
         """SELECT * FROM attendance_requests
-           WHERE user_id = %s ORDER BY created_at DESC LIMIT 20""",
+           WHERE user_id = %s ORDER BY created_at DESC LIMIT 30""",
         (session["user_id"],),
     )
     my_requests = cur.fetchall()
@@ -3247,36 +3296,31 @@ def attendance():
     cur.close()
     conn.close()
 
-    # Shift window: min 9h, max 23h.
-    hours_elapsed = None
-    hours_remaining = None
-    can_logout = False      # elapsed is within [9h, 23h)
-    needs_request = False   # elapsed < 9h -> must request early logout
-    force_close = False     # elapsed >= 23h -> auto-close at max shift
+    # Standard shift target: 8 hours
+    hours_elapsed = 0.0
+    hours_remaining = 8.0
+    elapsed_seconds = 0
     if active_session:
-        elapsed = (now_ist() - active_session["login_time"]).total_seconds() / 3600.0
+        elapsed_seconds = max(0, int((now - active_session["login_time"]).total_seconds()))
+        elapsed = elapsed_seconds / 3600.0
         hours_elapsed = round(elapsed, 2)
-        if elapsed >= 23:
-            force_close = True
-        elif elapsed >= 9:
-            can_logout = True
-            hours_remaining = round(max(0, 23 - elapsed), 2)
-        else:
-            needs_request = True
-            hours_remaining = round(9 - elapsed, 2)
+        hours_remaining = round(max(0.0, 8.0 - elapsed), 2)
 
     return render_template(
         "attendance.html",
         active_session=active_session,
         today_log=today_log,
         recent_logs=recent_logs,
+        month_days=month_days,
+        month_hours=month_hours,
         pending_requests=pending_requests,
         my_requests=my_requests,
         hours_elapsed=hours_elapsed,
         hours_remaining=hours_remaining,
-        can_logout=can_logout,
-        needs_request=needs_request,
-        force_close=force_close,
+        elapsed_seconds=elapsed_seconds,
+        is_forgotten_session=is_forgotten_session,
+        today=today,
+        now=now,
     )
 
 
@@ -3285,13 +3329,14 @@ def attendance():
 @tool_required("attendance")
 def attendance_login():
     """
-    Idempotent login:
-      - If ANY session is still open (logout_time IS NULL), regardless of its
-        login_date, reject — covers mid-shifts that cross midnight (e.g. 4 PM-1 AM)
-        where the open session's login_date is "yesterday" but the user is
-        clicking Login again "today".
-      - If a row for (user, today) already exists and is closed → reject (already done today).
-      - Otherwise insert a new row with login_time.
+    Login / Punch-In:
+      - If active session from today is still open: prompt already logged in.
+      - If active session is from an earlier day (forgot to logout):
+        Auto-close the previous abandoned session with 8h / status 'forgot_logout',
+        allowing the user to punch in for today without being blocked!
+      - If user already completed today's attendance: disallow duplicate punch.
+      - Otherwise, create new attendance_logs row with login_date = today_ist(),
+        login_time = now_ist(), status = 'active'.
     """
     conn = get_db()
     cur = conn.cursor(dictionary=True)
@@ -3306,32 +3351,49 @@ def attendance_login():
     )
     open_session = cur.fetchone()
     if open_session:
-        flash("You are already logged in. Please logout first.", "warning")
-        cur.close()
-        conn.close()
-        return redirect(url_for("attendance"))
+        # Check if open session is from earlier date or very old (forgotten logout)
+        if open_session["login_date"] < today or (now - open_session["login_time"]).total_seconds() > 57600:
+            prev_logout = open_session["login_time"] + timedelta(hours=8)
+            cur.execute(
+                """UPDATE attendance_logs
+                   SET logout_time = %s, hours_spent = 8.0, status = 'forgot_logout',
+                       notes = 'Auto-closed on next shift login (Forgot logout)'
+                   WHERE id = %s""",
+                (prev_logout, open_session["id"]),
+            )
+            conn.commit()
+            flash(
+                f"Previous unclosed session from {open_session['login_date'].strftime('%b %d, %Y')} "
+                f"was auto-closed. You can submit a Forgot Logout request if you need to adjust its timing.",
+                "info",
+            )
+        else:
+            flash("You are already logged in. Please punch out first.", "warning")
+            cur.close()
+            conn.close()
+            return redirect(url_for("attendance"))
 
+    # Check if a completed row for today already exists
     cur.execute(
         "SELECT * FROM attendance_logs WHERE user_id = %s AND login_date = %s",
         (session["user_id"], today),
     )
     existing = cur.fetchone()
-
     if existing:
-        flash("You have already completed today's attendance. New login not allowed.", "warning")
+        flash("You have already completed attendance for today. New punch-in not allowed.", "warning")
         cur.close()
         conn.close()
         return redirect(url_for("attendance"))
 
     cur.execute(
-        """INSERT INTO attendance_logs (user_id, login_date, login_time)
-           VALUES (%s, %s, %s)""",
+        """INSERT INTO attendance_logs (user_id, login_date, login_time, status)
+           VALUES (%s, %s, %s, 'active')""",
         (session["user_id"], today, now),
     )
     conn.commit()
     cur.close()
     conn.close()
-    flash(f"Logged in at {now.strftime('%I:%M %p')} (IST)", "success")
+    flash(f"Punched in successfully at {now.strftime('%I:%M %p')} (IST) for {today.strftime('%b %d, %Y')}.", "success")
     return redirect(url_for("attendance"))
 
 
@@ -3339,6 +3401,15 @@ def attendance_login():
 @login_required
 @tool_required("attendance")
 def attendance_logout():
+    """
+    Logout / Punch-Out:
+      - Finds the user's active session (logout_time IS NULL).
+      - If user logged in today (e.g. 8 PM) and logs out tomorrow after 12 AM (e.g. 4 AM after 8 hrs):
+        Sets logout_time = now_ist(), calculates hours_spent = (logout_time - login_time).
+        The attendance record's login_date remains the login date (e.g. today)!
+        Attendance and hours are credited to the LOGIN DATE.
+      - Standard shift is 8 hours. No 9-hour block.
+    """
     conn = get_db()
     cur = conn.cursor(dictionary=True)
     cur.execute(
@@ -3360,48 +3431,31 @@ def attendance_logout():
 
     diff_hours = (now - login_time).total_seconds() / 3600.0
 
-    # Shift window: min 9h, max 23h.
-    # Under 9h -> block direct logout, create a pending request for admin.
-    if diff_hours < 9:
-        remaining_h = 9 - diff_hours
-        rem_h = int(remaining_h)
-        rem_m = int((remaining_h - rem_h) * 60)
-        cur.execute(
-            """INSERT INTO attendance_requests
-               (user_id, request_date, requested_login, requested_logout, reason)
-               VALUES (%s, %s, %s, %s, %s)""",
-            (session["user_id"], login_date, login_time, now,
-             f"[Early Logout] Only {diff_hours:.1f}h elapsed — "
-             f"minimum 9h required. Admin review needed."),
-        )
-        conn.commit()
-        cur.close()
-        conn.close()
-        flash(
-            f"Cannot logout yet. A shift must be at least 9 hours; "
-            f"{rem_h}h {rem_m}m more required. A request has been sent "
-            f"to admin for approval.",
-            "warning",
-        )
-        return redirect(url_for("attendance"))
-
-    # Max shift is 23h: clamp logout so hours never exceed 23h.
-    if diff_hours > 23:
-        logout_time = login_time + timedelta(hours=23)
-        diff_hours = 23.0
+    # Max shift guard: if elapsed > 24h, clamp to 24h
+    if diff_hours > 24:
+        logout_time = login_time + timedelta(hours=24)
+        diff_hours = 24.0
     else:
         logout_time = now
 
     hours_spent = round(diff_hours, 2)
+    status = "completed"
 
     cur.execute(
-        "UPDATE attendance_logs SET logout_time = %s, hours_spent = %s WHERE id = %s",
-        (logout_time, hours_spent, active["id"]),
+        """UPDATE attendance_logs
+           SET logout_time = %s, hours_spent = %s, status = %s
+           WHERE id = %s""",
+        (logout_time, hours_spent, status, active["id"]),
     )
     conn.commit()
     cur.close()
     conn.close()
-    flash(f"Logged out at {logout_time.strftime('%I:%M %p')} (IST). Hours: {hours_spent} hrs", "success")
+
+    flash(
+        f"Punched out at {logout_time.strftime('%I:%M %p')} (IST). "
+        f"Shift: {hours_spent} hrs (Credited to {login_date.strftime('%b %d, %Y')}).",
+        "success",
+    )
     return redirect(url_for("attendance"))
 
 
@@ -3409,20 +3463,22 @@ def attendance_logout():
 @login_required
 @tool_required("attendance")
 def attendance_request():
-    """User submits a request to manually add/change attendance.
-    Smart logic:
-      - If user requests a date that already has a login but no logout,
-        treat the request as a logout-only update (no new row creation).
-      - If date has full row (login + logout), reject as duplicate.
-      - If no row exists, request creates a new entry on approval.
     """
-    req_date_str = request.form.get("request_date", "")
-    req_login = request.form.get("request_login", "")
-    req_logout = request.form.get("request_logout", "")
+    User submits a regularization request (Forgot Logout or Missed Punch).
+    Handles:
+      - Forgot Logout: updates an open or existing session for that date.
+      - Next-day logout: if logout is after midnight (e.g. 8 PM to 4 AM next day).
+      - Missed Punch: both login and logout provided.
+    """
+    req_date_str = request.form.get("request_date", "").strip()
+    req_login = request.form.get("request_login", "").strip()
+    req_logout = request.form.get("request_logout", "").strip()
+    is_next_day = request.form.get("is_next_day") in ("1", "true", "on")
+    request_type = request.form.get("request_type", "forgot_logout").strip()
     reason = request.form.get("reason", "").strip()
 
     if not req_date_str or not req_logout:
-        flash("Date and logout time are required.", "danger")
+        flash("Shift date and logout time are required.", "danger")
         return redirect(url_for("attendance"))
 
     try:
@@ -3434,7 +3490,7 @@ def attendance_request():
     conn = get_db()
     cur = conn.cursor(dictionary=True)
 
-    # Check existing attendance for that date
+    # Check existing attendance log for that date
     cur.execute(
         "SELECT * FROM attendance_logs WHERE user_id = %s AND login_date = %s",
         (session["user_id"], req_date),
@@ -3442,50 +3498,60 @@ def attendance_request():
     existing = cur.fetchone()
 
     try:
-        if existing:
-            # Login already exists. Don't create a new entry — request a logout update.
-            if existing["logout_time"] is not None:
-                flash("This date already has full login/logout records. Request not needed.", "warning")
-                cur.close()
-                conn.close()
-                return redirect(url_for("attendance"))
+        if existing and existing["login_time"]:
+            # Use existing login time if not explicitly provided
+            if req_login:
+                login_dt = datetime.strptime(f"{req_date_str} {req_login}", "%Y-%m-%d %H:%M")
+            else:
+                login_dt = existing["login_time"]
 
-            # Existing login but no logout → user must supply only the logout time
-            login_dt = existing["login_time"]
+            # Parse logout time
             logout_dt = datetime.strptime(f"{req_date_str} {req_logout}", "%Y-%m-%d %H:%M")
-            if logout_dt <= login_dt:
+            # If next-day shift or logout earlier than/equal to login, add 1 day
+            if is_next_day or logout_dt <= login_dt:
                 logout_dt += timedelta(days=1)
+
+            # If the session was still unclosed, mark it as pending regularization
+            if existing["logout_time"] is None:
+                cur.execute(
+                    """UPDATE attendance_logs
+                       SET status = 'pending_regularization', notes = %s
+                       WHERE id = %s""",
+                    (f"Forgot logout request submitted: {reason}", existing["id"]),
+                )
 
             cur.execute(
                 """INSERT INTO attendance_requests
-                   (user_id, request_date, requested_login, requested_logout, reason)
-                   VALUES (%s, %s, %s, %s, %s)""",
-                (session["user_id"], req_date, login_dt, logout_dt,
-                 f"[Logout only] {reason}"),
+                   (user_id, request_date, requested_login, requested_logout, request_type, reason)
+                   VALUES (%s, %s, %s, %s, %s, %s)""",
+                (session["user_id"], req_date, login_dt, logout_dt, request_type,
+                 f"[Forgot Logout] {reason}" if "[Forgot" not in reason else reason),
             )
-            flash("Logout-time request submitted (existing login will be reused).", "success")
+            flash("Forgot Logout request submitted for admin review.", "success")
         else:
-            # No record — need both login and logout
+            # No existing record: need both login and logout
             if not req_login:
-                flash("This date has no login record. Please provide login time too.", "danger")
+                flash("No login record exists for this date. Please enter your login time as well.", "warning")
                 cur.close()
                 conn.close()
                 return redirect(url_for("attendance"))
+
             login_dt = datetime.strptime(f"{req_date_str} {req_login}", "%Y-%m-%d %H:%M")
             logout_dt = datetime.strptime(f"{req_date_str} {req_logout}", "%Y-%m-%d %H:%M")
-            if logout_dt <= login_dt:
+            if is_next_day or logout_dt <= login_dt:
                 logout_dt += timedelta(days=1)
 
             cur.execute(
                 """INSERT INTO attendance_requests
-                   (user_id, request_date, requested_login, requested_logout, reason)
-                   VALUES (%s, %s, %s, %s, %s)""",
-                (session["user_id"], req_date, login_dt, logout_dt, reason),
+                   (user_id, request_date, requested_login, requested_logout, request_type, reason)
+                   VALUES (%s, %s, %s, %s, %s, %s)""",
+                (session["user_id"], req_date, login_dt, logout_dt, request_type, reason),
             )
-            flash("Attendance request submitted for admin approval.", "success")
+            flash("Attendance regularization request submitted for admin review.", "success")
+
         conn.commit()
     except ValueError:
-        flash("Invalid time format.", "danger")
+        flash("Invalid time format. Please select valid hours and minutes.", "danger")
     finally:
         cur.close()
         conn.close()
@@ -3536,33 +3602,24 @@ def handle_attendance_request(req_id, action):
         diff = (logout_dt - login_dt).total_seconds() / 3600.0
         hours_spent = round(diff, 2)
 
-        # Upsert: don't create duplicate; reuse if user already has a row for that date
+        # Upsert: reuse row if exists for that date
         cur.execute(
             "SELECT * FROM attendance_logs WHERE user_id = %s AND login_date = %s",
             (req["user_id"], req["request_date"]),
         )
         existing = cur.fetchone()
         if existing:
-            # Update only logout if login already present, otherwise overwrite
-            if existing["logout_time"] is None:
-                # Existing has login only — just update logout
-                lt = existing["login_time"]
-                new_hrs = round((logout_dt - lt).total_seconds() / 3600.0, 2)
-                cur.execute(
-                    "UPDATE attendance_logs SET logout_time = %s, hours_spent = %s WHERE id = %s",
-                    (logout_dt, new_hrs, existing["id"]),
-                )
-            else:
-                cur.execute(
-                    """UPDATE attendance_logs
-                       SET login_time = %s, logout_time = %s, hours_spent = %s
-                       WHERE id = %s""",
-                    (login_dt, logout_dt, hours_spent, existing["id"]),
-                )
+            cur.execute(
+                """UPDATE attendance_logs
+                   SET login_time = %s, logout_time = %s, hours_spent = %s, status = 'completed',
+                       notes = 'Regularized via approved request'
+                   WHERE id = %s""",
+                (login_dt, logout_dt, hours_spent, existing["id"]),
+            )
         else:
             cur.execute(
-                """INSERT INTO attendance_logs (user_id, login_date, login_time, logout_time, hours_spent)
-                   VALUES (%s, %s, %s, %s, %s)""",
+                """INSERT INTO attendance_logs (user_id, login_date, login_time, logout_time, hours_spent, status, notes)
+                   VALUES (%s, %s, %s, %s, %s, 'completed', 'Added via approved request')""",
                 (req["user_id"], req["request_date"], login_dt, logout_dt, hours_spent),
             )
 
@@ -3570,7 +3627,7 @@ def handle_attendance_request(req_id, action):
             "UPDATE attendance_requests SET status = 'approved', reviewed_by = %s WHERE id = %s",
             (session["user_id"], req_id),
         )
-        flash("Request approved and attendance logged.", "success")
+        flash("Request approved and attendance log updated.", "success")
     else:
         cur.execute(
             "UPDATE attendance_requests SET status = 'declined', reviewed_by = %s WHERE id = %s",

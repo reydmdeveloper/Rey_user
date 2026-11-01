@@ -83,9 +83,14 @@ CREATE TABLE IF NOT EXISTS attendance_logs (
     login_time DATETIME NOT NULL,
     logout_time DATETIME DEFAULT NULL,
     hours_spent DECIMAL(5,2) DEFAULT NULL,
+    status VARCHAR(30) DEFAULT 'completed',
+    notes VARCHAR(255) DEFAULT '',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    UNIQUE KEY unique_user_date (user_id, login_date)
+    UNIQUE KEY unique_user_date (user_id, login_date),
+    INDEX idx_user_date (user_id, login_date),
+    INDEX idx_login_time (login_time)
 );
 
 CREATE TABLE IF NOT EXISTS attendance_requests (
@@ -94,12 +99,14 @@ CREATE TABLE IF NOT EXISTS attendance_requests (
     request_date DATE NOT NULL,
     requested_login DATETIME NOT NULL,
     requested_logout DATETIME NOT NULL,
+    request_type VARCHAR(50) DEFAULT 'forgot_logout',
     reason VARCHAR(500) DEFAULT '',
     status ENUM('pending', 'approved', 'declined') DEFAULT 'pending',
     admin_note VARCHAR(255) DEFAULT '',
     reviewed_by INT DEFAULT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_user_status (user_id, status)
 );
 
 -- ─── PETTY CASH (CBE + DGL) ──────────────────────────────────────

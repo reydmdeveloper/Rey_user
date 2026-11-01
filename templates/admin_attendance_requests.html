@@ -3,13 +3,16 @@
 
 {% block content %}
 <div class="page-header">
-    <h2><i class="fa-solid fa-clipboard-check"></i> Attendance Requests</h2>
-    <p>Review and approve/decline attendance time change requests from users</p>
+    <h2><i class="fa-solid fa-clipboard-check"></i> Attendance Requests & Regularizations</h2>
+    <p>Review and approve/decline forgot logout and attendance regularization requests</p>
 </div>
 
 <div class="card">
-    <div class="card-header">
-        <h3><i class="fa-solid fa-inbox"></i>&nbsp; All Requests ({{ requests | length }})</h3>
+    <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+        <h3 style="margin:0"><i class="fa-solid fa-inbox"></i>&nbsp; All Requests ({{ requests | length }})</h3>
+        <a href="{{ url_for('attendance') }}" class="btn btn-secondary btn-sm">
+            <i class="fa-solid fa-clock"></i> Back to Attendance
+        </a>
     </div>
 
     {% if requests | length > 0 %}
@@ -19,10 +22,11 @@
                 <tr>
                     <th>#</th>
                     <th>User</th>
-                    <th>Date</th>
-                    <th>Login Time</th>
-                    <th>Logout Time</th>
-                    <th>Hours</th>
+                    <th>Shift Date</th>
+                    <th>Type</th>
+                    <th>Punch In</th>
+                    <th>Punch Out</th>
+                    <th>Duration</th>
                     <th>Reason</th>
                     <th>Status</th>
                     <th>Submitted</th>
@@ -31,27 +35,43 @@
             </thead>
             <tbody>
                 {% for req in requests %}
+                {% set diff_secs = (req.requested_logout - req.requested_login).total_seconds() %}
+                {% set diff_hrs = diff_secs / 3600 %}
                 <tr>
                     <td class="text-muted">{{ loop.index }}</td>
                     <td>
                         <strong>{{ req.full_name }}</strong>
                         <div class="text-sm text-muted">{{ req.email }}</div>
                     </td>
-                    <td>{{ req.request_date.strftime('%b %d, %Y') }}</td>
-                    <td style="font-family:var(--mono)">{{ req.requested_login.strftime('%I:%M %p') }}</td>
-                    <td style="font-family:var(--mono)">{{ req.requested_logout.strftime('%I:%M %p') }}</td>
-                    <td style="font-family:var(--mono);font-weight:600;color:var(--accent2)">
-                        {% set diff_secs = (req.requested_logout - req.requested_login).total_seconds() %}
-                        {{ "%.2f"|format(diff_secs / 3600) }} hrs
+                    <td>
+                        <strong>{{ req.request_date.strftime('%b %d, %Y') }}</strong>
+                        <div class="text-sm text-muted">{{ req.request_date.strftime('%A') }}</div>
                     </td>
-                    <td style="max-width:200px;color:var(--muted)">{{ req.reason or '—' }}</td>
+                    <td>
+                        {% if req.request_type == 'forgot_logout' or '[Forgot' in (req.reason or '') %}
+                            <span class="badge badge-warning" style="font-size:10px">Forgot Logout</span>
+                        {% else %}
+                            <span class="badge badge-info" style="font-size:10px">Missed Punch</span>
+                        {% endif %}
+                    </td>
+                    <td style="font-family:var(--mono)">{{ req.requested_login.strftime('%I:%M %p') }}</td>
+                    <td style="font-family:var(--mono)">
+                        {{ req.requested_logout.strftime('%I:%M %p') }}
+                        {% if req.requested_logout.date() > req.requested_login.date() %}
+                            <span style="font-size:10px;background:rgba(163,113,247,0.15);color:#a371f7;padding:1px 5px;border-radius:4px;font-weight:600">+1 Day</span>
+                        {% endif %}
+                    </td>
+                    <td style="font-family:var(--mono);font-weight:700;color:var(--accent2)">
+                        {{ "%.2f"|format(diff_hrs) }} hrs
+                    </td>
+                    <td style="max-width:220px;color:var(--text-secondary);font-size:12px">{{ req.reason or '—' }}</td>
                     <td>
                         {% if req.status == 'pending' %}
-                            <span class="badge badge-warning">Pending</span>
+                            <span class="badge badge-warning"><i class="fa-solid fa-hourglass-half"></i> Pending</span>
                         {% elif req.status == 'approved' %}
-                            <span class="badge badge-success">Approved</span>
+                            <span class="badge badge-success"><i class="fa-solid fa-check"></i> Approved</span>
                         {% else %}
-                            <span class="badge badge-danger">Declined</span>
+                            <span class="badge badge-danger"><i class="fa-solid fa-xmark"></i> Declined</span>
                         {% endif %}
                     </td>
                     <td class="text-muted text-sm">{{ req.created_at.strftime('%b %d, %I:%M %p') }}</td>
@@ -59,12 +79,12 @@
                         {% if req.status == 'pending' %}
                         <div class="btn-group">
                             <form method="POST" action="{{ url_for('handle_attendance_request', req_id=req.id, action='approve') }}">
-                                <button type="submit" class="btn btn-success btn-sm" title="Approve & create attendance log">
+                                <button type="submit" class="btn btn-success btn-sm" title="Approve & update attendance log">
                                     <i class="fa-solid fa-check"></i> Approve
                                 </button>
                             </form>
                             <form method="POST" action="{{ url_for('handle_attendance_request', req_id=req.id, action='decline') }}">
-                                <button type="submit" class="btn btn-danger btn-sm" data-confirm="Decline this request?">
+                                <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Decline this request?')">
                                     <i class="fa-solid fa-xmark"></i> Decline
                                 </button>
                             </form>
@@ -82,7 +102,7 @@
     <div class="empty-state">
         <div class="empty-icon"><i class="fa-solid fa-inbox"></i></div>
         <h4>No Requests</h4>
-        <p>No attendance change requests from users yet.</p>
+        <p>No attendance regularization or forgot-logout requests from users.</p>
     </div>
     {% endif %}
 </div>
