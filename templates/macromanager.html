@@ -48,7 +48,7 @@
 {% block content %}
 <div class="page-header">
     <h2><i class="fa-solid fa-file-code"></i> Macro Manager</h2>
-    <p>Manage and install Microsoft Word macro template files (Normal.dotm) to restore keyboard shortcuts, custom UI and macros</p>
+    <p>Manage and install Microsoft Word template files (Normal.dotm) and STARTUP add-ins (%appdata%\Microsoft\Word\STARTUP) to restore shortcuts, custom UI and macros</p>
 </div>
 
 <div class="mm-container">
@@ -130,6 +130,41 @@
 
         <div class="mm-status-card">
             <div>
+                <div class="mm-status-title">Word STARTUP Path</div>
+                <div class="mm-status-val" style="font-size:11px; font-family:var(--mono);">
+                    {{ startup_path if startup_path else 'N/A (Non-Windows)' }}
+                </div>
+                <div style="margin-top: 6px;">
+                    {% if startup_exists %}
+                        <span class="mm-badge ok"><i class="fa-solid fa-circle-check"></i> {{ startup_files|length }} Add-in File(s)</span>
+                    {% else %}
+                        <span class="mm-badge warn"><i class="fa-solid fa-circle-exclamation"></i> Folder Not Detected</span>
+                    {% endif %}
+                </div>
+                {% if is_windows %}
+                    <div style="margin-top: 8px; display: flex; gap: 8px;">
+                        <form method="POST" action="{{ url_for('macromanager_select_startup_path') }}">
+                            <button type="submit" class="btn btn-secondary btn-sm" style="padding: 2px 8px; font-size: 11px;">
+                                <i class="fa-solid fa-folder-open"></i> Find Path / Browse
+                            </button>
+                        </form>
+                        {% if session.get('custom_startup_dir') %}
+                            <form method="POST" action="{{ url_for('macromanager_reset_startup_path') }}">
+                                <button type="submit" class="btn btn-secondary btn-sm" style="padding: 2px 8px; font-size: 11px; border-color: var(--danger); color: var(--danger);">
+                                    <i class="fa-solid fa-arrow-rotate-left"></i> Reset
+                                </button>
+                            </form>
+                        {% endif %}
+                    </div>
+                {% endif %}
+            </div>
+            <div class="mm-status-desc">
+                Word auto-startup directory (%appdata%\Microsoft\Word\STARTUP) for global add-ins.
+            </div>
+        </div>
+
+        <div class="mm-status-card">
+            <div>
                 <div class="mm-status-title">Active Template Status</div>
                 <div>
                     {% if local_exists %}
@@ -157,7 +192,7 @@
         <div style="background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 16px; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
             <div style="flex: 1; min-width: 200px;">
                 <strong style="color:var(--text); font-size:14px;"><i class="fa-solid fa-file-export" style="color:var(--accent2)"></i> Quick Export from Word</strong>
-                <p style="font-size:11px; color:var(--muted); margin-top:4px; line-height:1.4; margin-bottom: 0;">Directly capture your local MS Word macros, shortcuts, and custom UI settings and save them as a new file in the database library.</p>
+                <p style="font-size:11px; color:var(--muted); margin-top:4px; line-height:1.4; margin-bottom: 0;">Directly capture your local MS Word macros, templates, STARTUP add-ins (%appdata%\Microsoft\Word\STARTUP), shortcuts, and custom UI settings and save them as a single package in the database library.</p>
             </div>
             <form method="POST" action="{{ url_for('macromanager_export') }}">
                 <button type="submit" class="btn btn-primary btn-sm">
@@ -167,7 +202,7 @@
         </div>
 
         <form method="POST" action="{{ url_for('macromanager_upload') }}" enctype="multipart/form-data" id="mm-upload-form">
-            <div class="gt-grid">
+            <div class="gt-grid" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));">
                 <!-- Word Template Drop Zone -->
                 <div class="gt-drop" id="drop-template">
                     <input type="file" name="file" id="file-template" accept=".dotm,.zip" required>
@@ -175,6 +210,15 @@
                     <div class="gt-drop-text" id="title-template">Word Template File</div>
                     <div class="gt-drop-hint" id="hint-template">Drag &amp; drop or click (.dotm / .zip)</div>
                     <div class="gt-preview" id="preview-template"></div>
+                </div>
+
+                <!-- STARTUP Add-in Drop Zone -->
+                <div class="gt-drop" id="drop-startup">
+                    <input type="file" name="startup_file" id="file-startup" accept=".dotm,.dot,.dotx">
+                    <div class="gt-drop-icon" id="icon-startup"><i class="fa-solid fa-bolt"></i></div>
+                    <div class="gt-drop-text" id="title-startup">STARTUP Add-in (Optional)</div>
+                    <div class="gt-drop-hint" id="hint-startup">Drag &amp; drop or click (.dotm / .dotx)</div>
+                    <div class="gt-preview" id="preview-startup"></div>
                 </div>
 
                 <!-- Ribbon UI Customization Drop Zone -->
@@ -286,15 +330,23 @@
                                     {% if f.has_ui %}
                                         <span class="mm-badge ok" style="font-size:10px; padding:2px 6px; margin-left:6px;" title="Contains custom Ribbon tabs and Quick Access Toolbar configurations"><i class="fa-solid fa-desktop"></i> + Taskbar UI</span>
                                     {% endif %}
+                                    {% if f.has_startup %}
+                                        <span class="mm-badge info" style="font-size:10px; padding:2px 6px; margin-left:6px;" title="Contains Word STARTUP Add-in files (%appdata%\Microsoft\Word\STARTUP)"><i class="fa-solid fa-bolt"></i> + STARTUP</span>
+                                    {% endif %}
                                 </td>
                                 <td>{{ f.uploader_name or 'System' }}</td>
-                                <td class="text-muted text-sm">{{ f.uploaded_at.strftime('%b %d, %Y %I:%M %p') }}</td>
+                                <td class="text-muted text-sm">{{ f.uploaded_at.strftime('%b %d, %Y %I:%M %p') if f.uploaded_at else '--' }}</td>
                                 <td>
                                     <div class="actions">
                                         {% if session.get('role') == 'admin' %}
                                             <a href="{{ url_for('macromanager_download', file_id=f.id) }}" class="btn btn-secondary btn-sm" title="Download Template File (.dotm)">
                                                 <i class="fa-solid fa-download"></i> Download
                                             </a>
+                                            {% if f.has_startup %}
+                                                <a href="{{ url_for('macromanager_download_startup', file_id=f.id) }}" class="btn btn-secondary btn-sm" title="Download STARTUP Add-in Files (%appdata%\Microsoft\Word\STARTUP)" style="border-color: #ffc107; color: #ffc107;">
+                                                    <i class="fa-solid fa-bolt"></i> Download STARTUP
+                                                </a>
+                                            {% endif %}
                                             {% if f.has_ui %}
                                                 <a href="{{ url_for('macromanager_download_ui', file_id=f.id) }}" class="btn btn-secondary btn-sm" title="Download Ribbon UI Customization (Word.officeUI)" style="border-color: var(--accent2); color: var(--accent2);">
                                                     <i class="fa-solid fa-desktop"></i> Download UI
@@ -467,6 +519,63 @@
             </div>
         {% endif %}
     </div>
+
+    <!-- Active Files in Word STARTUP Folder Diagnostics -->
+    <div class="mm-card">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom: 12px;">
+            <h3 style="margin-bottom:0;"><i class="fa-solid fa-bolt" style="color:#ffc107;"></i> Active Files in Word STARTUP Folder ({{ startup_files|length }})</h3>
+            <span class="mm-badge info" style="font-family:var(--mono); font-size:11px;">%appdata%\Microsoft\Word\STARTUP</span>
+        </div>
+        <p style="font-size:12px; color:var(--muted); margin-bottom:12px;">
+            Below is the list of active template add-ins currently inside your Word <strong>STARTUP</strong> folder. Files placed here are automatically loaded by Microsoft Word every time it launches, making their macros, commands, and ribbon buttons universally accessible across all documents.
+        </p>
+
+        {% if startup_files|length > 0 %}
+            <div class="table-wrapper">
+                <table class="mm-table">
+                    <thead>
+                        <tr>
+                            <th>File Name</th>
+                            <th>Size</th>
+                            <th>Date Modified</th>
+                            <th>Status / Type</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for sf in startup_files %}
+                            <tr>
+                                <td>
+                                    <strong style="color:var(--text)">
+                                        {% if sf.is_dir %}
+                                            <i class="fa-solid fa-folder" style="color: #ffc107;"></i>&nbsp; {{ sf.name }}
+                                        {% else %}
+                                            <i class="fa-solid fa-file-code" style="color: #ffc107;"></i>&nbsp; {{ sf.name }}
+                                        {% endif %}
+                                    </strong>
+                                </td>
+                                <td>{{ sf.size }}</td>
+                                <td class="text-muted text-sm">{{ sf.modified }}</td>
+                                <td>
+                                    {% if sf.is_dir %}
+                                        <span class="mm-badge info">Folder</span>
+                                    {% elif sf.name.lower().endswith('.dotm') %}
+                                        <span class="mm-badge ok"><i class="fa-solid fa-bolt"></i> Word Startup Add-in</span>
+                                    {% else %}
+                                        <span class="mm-badge info">Startup Related</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div style="color:var(--muted); text-align:center; padding:20px 0; font-size:13px;">
+                <i class="fa-solid fa-folder-open" style="font-size:24px; opacity:0.5; margin-bottom:8px; display:block;"></i>
+                No add-in files detected in the Word STARTUP folder (<code>{{ startup_path }}</code>).
+            </div>
+        {% endif %}
+    </div>
     {% endif %}
 
     <!-- Manual Installation Guide for Cloud Users -->
@@ -478,6 +587,7 @@
                 <li>Click the <strong>Download</strong> button on the uploaded file above to save it. If the template contains ribbon custom UI, also click <strong>Download UI</strong> to download the <code>Word.officeUI</code> file.</li>
                 <li>Close Microsoft Word completely.</li>
                 <li><strong>Restore Template (Macros &amp; Shortcuts)</strong>: Open File Explorer, enter <code style="background:var(--surface2); padding:2px 6px; border-radius:4px; font-family:var(--mono); font-size:11px; display:inline-block; margin:4px 0; word-break:break-all;">%APPDATA%\Microsoft\Templates</code> in the address bar, backup the existing <code>Normal.dotm</code>, and replace it with the downloaded template file (renaming it to <code>Normal.dotm</code>).</li>
+                <li><strong>Restore STARTUP Add-ins (if package includes add-ins)</strong>: Open File Explorer, enter <code style="background:var(--surface2); padding:2px 6px; border-radius:4px; font-family:var(--mono); font-size:11px; display:inline-block; margin:4px 0; word-break:break-all;">%appdata%\Microsoft\Word\STARTUP</code> in the address bar, and copy your downloaded add-in files (e.g. <code>.dotm</code>) into this folder. Word will automatically load these global macros every time it starts.</li>
                 <li><strong>Restore Ribbon/Taskbar UI (if downloaded)</strong>: Open File Explorer, enter <code style="background:var(--surface2); padding:2px 6px; border-radius:4px; font-family:var(--mono); font-size:11px; display:inline-block; margin:4px 0; word-break:break-all;">%LOCALAPPDATA%\Microsoft\Office</code> in the address bar, backup the existing <code>Word.officeUI</code>, and replace it with the downloaded UI file (renaming it exactly to <code>Word.officeUI</code>).</li>
                 <li>Open Microsoft Word; all your macros, shortcuts, custom ribbon tabs, and taskbar buttons will be fully active!</li>
             </ol>
@@ -557,6 +667,7 @@ const wireDropZone = (zoneId, inputId, previewId, titleId, hintId, defaultTitle,
 };
 
 wireDropZone('drop-template', 'file-template', 'preview-template', 'title-template', 'hint-template', 'Word Template File', 'Drag & drop or click (.dotm / .zip)');
+wireDropZone('drop-startup', 'file-startup', 'preview-startup', 'title-startup', 'hint-startup', 'STARTUP Add-in File (Optional)', 'Drag & drop or click (.dotm / .dotx)');
 wireDropZone('drop-ui', 'file-ui', 'preview-ui', 'title-ui', 'hint-ui', 'Ribbon UI File (Optional)', 'Drag & drop or click (.officeUI / .xml)');
 </script>
 {% endblock %}

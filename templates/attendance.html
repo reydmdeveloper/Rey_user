@@ -1,97 +1,98 @@
 {% extends "app_base.html" %}
-{% block title %}Attendance Management – REYDM{% endblock %}
+{% block title %}Attendance – REYDM{% endblock %}
 
 {% block head %}
 <style>
 /* ═══════════════════════════════════════════════════════════════════
-   ATTENDANCE MODULE — Modern UI with Precision Shift Tracking
+   PROFESSIONAL ATTENDANCE MODULE
+   Design: Modern, Executive, Clean & Attractive
    ═══════════════════════════════════════════════════════════════════ */
-.att-hero {
+
+/* Top Header Bar */
+.att-topbar {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background: linear-gradient(135deg, rgba(31, 111, 235, 0.12) 0%, rgba(56, 139, 253, 0.04) 100%);
+    background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
-    padding: 20px 24px;
-    margin-bottom: 22px;
+    padding: 18px 24px;
+    margin-bottom: 20px;
     gap: 16px;
     flex-wrap: wrap;
+    box-shadow: var(--shadow-sm);
 }
-.att-hero-info h2 {
-    font-size: 20px;
+.att-topbar-left h2 {
+    font-size: 19px;
     font-weight: 700;
-    margin: 0 0 6px 0;
+    margin: 0 0 4px 0;
     display: flex;
     align-items: center;
     gap: 10px;
     color: var(--text);
+    letter-spacing: -0.3px;
 }
-.att-hero-info p {
+.att-topbar-left p {
     font-size: 13px;
     color: var(--muted);
     margin: 0;
 }
-.att-clock-card {
+.att-topbar-right {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+.att-live-clock-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 8px 16px;
     text-align: right;
     display: flex;
     flex-direction: column;
     align-items: flex-end;
-    gap: 3px;
 }
-.att-digital-clock {
+.att-live-time {
     font-family: var(--mono);
-    font-size: 24px;
+    font-size: 20px;
     font-weight: 700;
     color: var(--accent2);
-    letter-spacing: 1px;
+    letter-spacing: 0.5px;
+    line-height: 1.2;
 }
-.att-clock-date {
-    font-size: 12px;
+.att-live-meta {
+    font-size: 11px;
     color: var(--muted);
-    font-weight: 500;
-}
-.att-tz-badge {
-    display: inline-flex;
+    display: flex;
     align-items: center;
-    gap: 5px;
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    padding: 2px 8px;
-    border-radius: 12px;
-    font-size: 10px;
-    font-weight: 600;
-    color: var(--success);
-    margin-top: 4px;
+    gap: 6px;
+    margin-top: 2px;
 }
-.att-pulse-dot {
+.att-live-dot {
     width: 6px;
     height: 6px;
     border-radius: 50%;
     background: var(--success);
-    box-shadow: 0 0 0 0 rgba(63, 185, 80, 0.7);
-    animation: pulseBeacon 1.8s infinite;
+    box-shadow: 0 0 0 0 rgba(63, 185, 80, 0.6);
+    animation: attPulse 2s infinite;
 }
-@keyframes pulseBeacon {
-    0% { box-shadow: 0 0 0 0 rgba(63, 185, 80, 0.7); }
+@keyframes attPulse {
+    0% { box-shadow: 0 0 0 0 rgba(63, 185, 80, 0.6); }
     70% { box-shadow: 0 0 0 6px rgba(63, 185, 80, 0); }
     100% { box-shadow: 0 0 0 0 rgba(63, 185, 80, 0); }
 }
 
-/* Stat Cards */
-.att-stat-row {
+/* Metric Cards */
+.att-kpi-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     gap: 14px;
     margin-bottom: 22px;
 }
-@media (max-width: 900px) {
-    .att-stat-row { grid-template-columns: repeat(2, 1fr); }
-}
-@media (max-width: 500px) {
-    .att-stat-row { grid-template-columns: 1fr; }
-}
-.att-stat-card {
+@media (max-width: 960px) { .att-kpi-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 520px) { .att-kpi-grid { grid-template-columns: 1fr; } }
+
+.att-kpi-card {
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
@@ -99,13 +100,25 @@
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    transition: transform 0.15s ease, border-color 0.15s ease;
+    transition: all var(--transition);
+    position: relative;
+    overflow: hidden;
 }
-.att-stat-card:hover {
-    border-color: var(--accent);
-    transform: translateY(-1px);
+.att-kpi-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 3px;
+    height: 100%;
+    background: var(--border-medium);
 }
-.att-stat-card .lbl {
+.att-kpi-card.active-kpi::before { background: var(--success); }
+.att-kpi-card.target-kpi::before { background: var(--accent); }
+.att-kpi-card.hours-kpi::before { background: var(--info); }
+.att-kpi-card.month-kpi::before { background: #a371f7; }
+
+.att-kpi-label {
     font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
@@ -116,134 +129,156 @@
     gap: 6px;
     margin-bottom: 8px;
 }
-.att-stat-card .val {
-    font-size: 20px;
+.att-kpi-value {
+    font-size: 21px;
     font-weight: 700;
     color: var(--text);
     font-family: var(--mono);
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
 }
-.att-stat-card .sub {
+.att-kpi-value small {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--muted);
+    font-family: var(--font);
+}
+.att-kpi-footer {
     font-size: 11px;
     color: var(--muted);
-    margin-top: 4px;
+    margin-top: 6px;
 }
 
-/* Two-Column Action Layout */
-.att-action-grid {
+/* Two-Column Hub */
+.att-hub-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 20px;
     margin-bottom: 24px;
 }
-@media (max-width: 850px) {
-    .att-action-grid { grid-template-columns: 1fr; }
-}
-.att-card {
+@media (max-width: 900px) { .att-hub-grid { grid-template-columns: 1fr; } }
+
+.att-panel {
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
-    padding: 22px;
-    position: relative;
+    padding: 22px 24px;
     box-shadow: var(--shadow-sm);
-}
-.att-card-header {
     display: flex;
-    align-items: center;
+    flex-direction: column;
+}
+.att-panel-header {
+    display: flex;
     justify-content: space-between;
+    align-items: center;
     margin-bottom: 16px;
     padding-bottom: 12px;
     border-bottom: 1px solid var(--border);
 }
-.att-card-header h3 {
+.att-panel-header h3 {
     font-size: 15px;
-    font-weight: 600;
+    font-weight: 700;
     margin: 0;
     display: flex;
     align-items: center;
     gap: 8px;
     color: var(--text);
 }
-
-/* Punch Terminal */
-.att-terminal-body {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-    padding: 8px 0;
-}
-.att-terminal-status {
+.att-status-pill {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
-    padding: 5px 14px;
-    border-radius: 20px;
-    font-size: 12px;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 14px;
+    font-size: 11px;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin-bottom: 14px;
+    letter-spacing: 0.4px;
 }
-.status-active-badge {
+.att-status-pill.online {
     background: var(--success-soft);
     color: var(--success);
     border: 1px solid rgba(63, 185, 80, 0.3);
 }
-.status-idle-badge {
+.att-status-pill.idle {
     background: var(--surface2);
     color: var(--muted);
     border: 1px solid var(--border);
 }
-.att-timer-display {
+
+/* Terminal Card Body */
+.att-terminal-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    flex: 1;
+    justify-content: center;
+}
+.att-timer-box {
+    margin: 8px 0 16px 0;
+    text-align: center;
+}
+.att-timer-title {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--muted);
+    margin-bottom: 4px;
+}
+.att-big-timer {
     font-family: var(--mono);
     font-size: 38px;
     font-weight: 700;
     color: var(--accent2);
     letter-spacing: 2px;
-    margin: 6px 0 14px;
+    line-height: 1;
 }
-.att-shift-meta {
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    padding: 12px 16px;
-    width: 100%;
-    margin-bottom: 16px;
+
+/* Metadata Strip */
+.att-meta-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 10px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 12px 14px;
+    width: 100%;
+    margin-bottom: 16px;
     text-align: left;
 }
-.att-shift-meta .meta-item {
-    display: flex;
-    flex-direction: column;
-}
-.att-shift-meta .meta-label {
+.att-meta-cell { display: flex; flex-direction: column; }
+.att-meta-lbl {
     font-size: 10px;
-    font-weight: 600;
+    font-weight: 700;
     text-transform: uppercase;
     color: var(--muted);
+    letter-spacing: 0.3px;
 }
-.att-shift-meta .meta-value {
+.att-meta-val {
     font-size: 13px;
     font-weight: 600;
     color: var(--text);
     font-family: var(--mono);
+    margin-top: 1px;
 }
 
-/* Progress toward 8h */
-.att-progress-wrap {
+/* Progress bar towards 9h */
+.att-bar-wrap {
     width: 100%;
-    margin-bottom: 18px;
+    margin-bottom: 16px;
     text-align: left;
 }
-.att-progress-labels {
+.att-bar-header {
     display: flex;
     justify-content: space-between;
     font-size: 11px;
-    margin-bottom: 5px;
+    margin-bottom: 6px;
 }
-.att-progress-bar-bg {
+.att-bar-track {
     height: 8px;
     background: var(--surface2);
     border-radius: 4px;
@@ -251,31 +286,36 @@
     position: relative;
     border: 1px solid var(--border);
 }
-.att-progress-bar-fill {
+.att-bar-fill {
     height: 100%;
     background: linear-gradient(90deg, var(--accent) 0%, var(--accent2) 100%);
     border-radius: 4px;
-    transition: width 0.5s ease;
+    transition: width 0.4s ease;
 }
-.att-progress-bar-fill.target-reached {
+.att-bar-fill.achieved {
     background: linear-gradient(90deg, #2ea043 0%, var(--success) 100%);
 }
 
-.night-shift-note {
+/* Banners */
+.att-info-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
     background: rgba(88, 166, 255, 0.08);
     border: 1px solid rgba(88, 166, 255, 0.25);
     border-radius: var(--radius-md);
     padding: 10px 14px;
     font-size: 12px;
-    color: var(--text-secondary);
+    color: var(--text);
     width: 100%;
     margin-bottom: 16px;
     text-align: left;
-    display: flex;
-    align-items: center;
-    gap: 8px;
+    line-height: 1.4;
 }
-.alert-forgot-banner {
+.att-warning-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
     background: rgba(210, 153, 34, 0.12);
     border: 1px solid var(--warning);
     border-radius: var(--radius-md);
@@ -289,138 +329,135 @@
 }
 
 /* Action Buttons */
-.btn-punch-in {
-    background: linear-gradient(135deg, #238636 0%, #2ea043 100%);
-    color: #fff;
-    border: 1px solid rgba(255, 255, 255, 0.15);
+.btn-punch-action {
     width: 100%;
-    padding: 14px;
-    font-size: 15px;
+    padding: 13px;
+    font-size: 14px;
     font-weight: 700;
     border-radius: var(--radius-md);
     cursor: pointer;
-    box-shadow: 0 2px 8px rgba(46, 160, 67, 0.3);
+    border: 1px solid transparent;
     transition: all var(--transition);
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 8px;
+    letter-spacing: 0.4px;
 }
-.btn-punch-in:hover {
+.btn-punch-in-style {
+    background: #238636;
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(35, 134, 54, 0.3);
+}
+.btn-punch-in-style:hover {
     background: #2ea043;
     transform: translateY(-1px);
-    box-shadow: 0 4px 14px rgba(46, 160, 67, 0.45);
+    box-shadow: 0 4px 14px rgba(46, 160, 67, 0.4);
 }
-.btn-punch-out {
-    background: linear-gradient(135deg, #da3633 0%, #f85149 100%);
+.btn-punch-out-style {
+    background: #da3633;
     color: #fff;
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    width: 100%;
-    padding: 14px;
-    font-size: 15px;
-    font-weight: 700;
-    border-radius: var(--radius-md);
-    cursor: pointer;
     box-shadow: 0 2px 8px rgba(218, 54, 51, 0.3);
-    transition: all var(--transition);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
 }
-.btn-punch-out:hover {
+.btn-punch-out-style:hover {
     background: #e5534b;
     transform: translateY(-1px);
-    box-shadow: 0 4px 14px rgba(218, 54, 51, 0.45);
+    box-shadow: 0 4px 14px rgba(218, 54, 51, 0.4);
 }
 
-/* Regularization / Forgot Logout Form */
-.req-chips {
+/* Regularization Panel */
+.att-chip-selector {
     display: flex;
-    gap: 8px;
-    margin-bottom: 14px;
-    flex-wrap: wrap;
-}
-.req-chip {
-    padding: 6px 12px;
-    border-radius: var(--radius-sm);
+    gap: 6px;
     background: var(--surface2);
     border: 1px solid var(--border);
-    font-size: 12px;
+    padding: 3px;
+    border-radius: var(--radius-md);
+    margin-bottom: 14px;
+}
+.att-chip-btn {
+    flex: 1;
+    padding: 6px 10px;
+    border: none;
+    background: transparent;
+    border-radius: var(--radius-sm);
+    font-size: 11px;
     font-weight: 600;
     color: var(--muted);
     cursor: pointer;
     transition: all var(--transition);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-family: var(--font);
 }
-.req-chip.active {
-    background: var(--accent-soft);
-    border-color: var(--accent);
-    color: var(--accent2);
+.att-chip-btn.active {
+    background: var(--accent);
+    color: #fff;
+    box-shadow: var(--shadow-sm);
 }
-.att-req-grid {
+
+.att-form-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 12px;
 }
-@media (max-width: 600px) {
-    .att-req-grid { grid-template-columns: 1fr; }
-}
-.att-req-full {
-    grid-column: 1 / -1;
-}
-.calc-hours-preview {
+@media (max-width: 580px) { .att-form-grid { grid-template-columns: 1fr; } }
+.att-grid-full { grid-column: 1 / -1; }
+
+.att-calc-badge {
     background: var(--surface2);
     border: 1px dashed var(--border-medium);
     border-radius: var(--radius-sm);
-    padding: 10px 14px;
+    padding: 8px 12px;
     font-size: 12px;
-    color: var(--text-secondary);
     display: flex;
-    align-items: center;
     justify-content: space-between;
-    margin-bottom: 12px;
+    align-items: center;
+    color: var(--text-secondary);
 }
-.quick-reasons {
+.att-quick-tags {
     display: flex;
     gap: 6px;
     flex-wrap: wrap;
-    margin-top: 6px;
+    margin-top: 5px;
 }
-.quick-reason-pill {
+.att-tag-item {
     font-size: 10px;
-    padding: 3px 8px;
-    border-radius: 10px;
     background: var(--surface2);
     border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 2px 7px;
     color: var(--muted);
     cursor: pointer;
     transition: all 0.15s;
 }
-.quick-reason-pill:hover {
+.att-tag-item:hover {
     border-color: var(--accent);
     color: var(--text);
 }
 
-/* Tabs & Table Section */
-.att-tabs-header {
+/* Tabs & Table Structure */
+.att-section-bar {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: 10px;
-    margin-bottom: 16px;
+    gap: 12px;
+    margin-bottom: 14px;
     flex-wrap: wrap;
 }
-.att-nav-pills {
+.att-tab-pills {
     display: flex;
-    gap: 4px;
+    gap: 3px;
     background: var(--surface2);
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
     padding: 3px;
     flex-wrap: wrap;
 }
-.att-nav-pill {
-    padding: 7px 16px;
+.att-pill-btn {
+    padding: 7px 14px;
     border-radius: var(--radius-sm);
     font-size: 12px;
     font-weight: 600;
@@ -434,33 +471,33 @@
     gap: 6px;
     font-family: var(--font);
 }
-.att-nav-pill.active {
+.att-pill-btn.active {
     background: var(--accent);
     color: #fff;
     box-shadow: var(--shadow-sm);
 }
-.att-nav-pill:hover:not(.active) {
+.att-pill-btn:hover:not(.active) {
     color: var(--accent2);
     background: var(--accent-soft);
 }
 
-/* Complete Table Structure */
-.att-table-wrap {
-    overflow-x: auto;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
+/* Modern Professional Table */
+.att-table-container {
     background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
 }
-.att-modern-table {
+.att-data-table {
     width: 100%;
     border-collapse: collapse;
     font-size: 13px;
-    text-align: left;
 }
-.att-modern-table thead th {
+.att-data-table thead th {
     background: var(--surface2);
     color: var(--muted);
-    padding: 10px 14px;
+    padding: 11px 14px;
     font-size: 11px;
     font-weight: 700;
     text-transform: uppercase;
@@ -468,108 +505,61 @@
     border-bottom: 1px solid var(--border);
     white-space: nowrap;
 }
-.att-modern-table tbody td {
-    padding: 10px 14px;
+.att-data-table tbody td {
+    padding: 11px 14px;
     border-bottom: 1px solid var(--border);
     vertical-align: middle;
     color: var(--text);
 }
-.att-modern-table tbody tr:hover td {
+.att-data-table tbody tr:hover td {
     background: rgba(31, 111, 235, 0.04);
 }
-.att-modern-table tbody tr:last-child td {
-    border-bottom: none;
-}
+.att-data-table tbody tr:last-child td { border-bottom: none; }
 
-/* Badges */
+/* Status Badges */
+.badge-shift-type {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 7px;
+    border-radius: 8px;
+    font-size: 11px;
+    font-weight: 600;
+}
 .badge-shift-day {
     background: rgba(210, 153, 34, 0.12);
     color: var(--warning);
     border: 1px solid rgba(210, 153, 34, 0.3);
-    padding: 2px 8px;
-    border-radius: 10px;
-    font-size: 11px;
-    font-weight: 600;
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
 }
 .badge-shift-night {
-    background: rgba(88, 166, 255, 0.12);
-    color: var(--accent2);
-    border: 1px solid rgba(88, 166, 255, 0.3);
-    padding: 2px 8px;
-    border-radius: 10px;
-    font-size: 11px;
-    font-weight: 600;
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
+    background: rgba(163, 113, 247, 0.12);
+    color: #a371f7;
+    border: 1px solid rgba(163, 113, 247, 0.3);
 }
-.badge-hours {
+.badge-hours-pill {
     font-family: var(--mono);
     font-weight: 700;
-    padding: 3px 8px;
+    padding: 2px 7px;
     border-radius: 6px;
     font-size: 12px;
+    display: inline-block;
 }
-.badge-hours-green {
-    background: var(--success-soft);
-    color: var(--success);
-}
-.badge-hours-amber {
-    background: var(--warning-soft);
-    color: var(--warning);
-}
-.badge-next-day {
+.hours-green { background: var(--success-soft); color: var(--success); }
+.hours-amber { background: var(--warning-soft); color: var(--warning); }
+.badge-nextday {
     font-size: 10px;
     background: rgba(163, 113, 247, 0.15);
     color: #a371f7;
     border: 1px solid rgba(163, 113, 247, 0.3);
-    padding: 1px 5px;
+    padding: 1px 4px;
     border-radius: 4px;
     margin-left: 4px;
     font-weight: 600;
     font-family: var(--font);
 }
 
-/* Chart */
-.att-chart-wrap {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    padding: 20px;
-    margin-bottom: 24px;
-}
-.att-chart-bar-container {
-    display: flex;
-    align-items: flex-end;
-    gap: 8px;
-    height: 160px;
-    padding-bottom: 24px;
-    position: relative;
-    border-bottom: 1px solid var(--border);
-}
-.att-target-line {
-    position: absolute;
-    left: 0;
-    right: 0;
-    border-top: 1px dashed var(--accent2);
-    opacity: 0.6;
-    pointer-events: none;
-    z-index: 1;
-}
-.att-target-line-lbl {
-    position: absolute;
-    right: 8px;
-    top: -14px;
-    font-size: 10px;
-    color: var(--accent2);
-    font-family: var(--mono);
-}
-
-.att-view-pane { display: none; }
-.att-view-pane.active { display: block; }
+.att-tab-view { display: none; }
+.att-tab-view.active { display: block; }
 
 .att-toast {
     position: fixed;
@@ -595,190 +585,193 @@
 {% endblock %}
 
 {% block content %}
-<!-- Top Hero & Live Real-Time Clock -->
-<div class="att-hero">
-    <div class="att-hero-info">
-        <h2><i class="fa-solid fa-clock"></i> Attendance Management</h2>
-        <p>Daily shift punch tracker, overnight shift handler, and missed punch regularization</p>
+<!-- Top Header Bar with Live Clock -->
+<div class="att-topbar">
+    <div class="att-topbar-left">
+        <h2><i class="fa-solid fa-clock"></i> Attendance Dashboard</h2>
+        <p>Real-time shift tracking · 9-hour standard schedule · Cross-midnight shift support</p>
     </div>
-    <div class="att-clock-card">
-        <div class="att-digital-clock" id="live-ist-clock">--:--:-- --</div>
-        <div class="att-clock-date" id="live-ist-date">--</div>
-        <div class="att-tz-badge">
-            <span class="att-pulse-dot"></span>
-            <span>IST (UTC+05:30)</span>
+    <div class="att-topbar-right">
+        <div class="att-live-clock-card">
+            <div class="att-live-time" id="live-clock">--:--:-- --</div>
+            <div class="att-live-meta">
+                <span class="att-live-dot"></span>
+                <span id="live-date">--</span>
+                <span style="opacity:0.5">·</span>
+                <span>IST</span>
+            </div>
         </div>
     </div>
 </div>
 
-<!-- Stat Row -->
-<div class="att-stat-row">
-    <div class="att-stat-card">
-        <div class="lbl"><i class="fa-solid fa-signal"></i> Current Status</div>
-        <div class="val" style="font-size:16px">
+<!-- 4 Metric KPI Cards -->
+<div class="att-kpi-grid">
+    <div class="att-kpi-card {% if active_session %}active-kpi{% endif %}">
+        <div class="att-kpi-label"><i class="fa-solid fa-signal"></i> Shift Status</div>
+        <div class="att-kpi-value" style="font-size:16px">
             {% if active_session %}
-                <span style="color:var(--success)"><i class="fa-solid fa-circle-check"></i> Punched In</span>
+                <span style="color:var(--success)"><i class="fa-solid fa-circle-check"></i> Active Shift</span>
             {% elif today_log %}
                 <span style="color:var(--accent2)"><i class="fa-solid fa-circle-dot"></i> Completed</span>
             {% else %}
                 <span style="color:var(--muted)"><i class="fa-solid fa-circle-xmark"></i> Punched Out</span>
             {% endif %}
         </div>
-        <div class="sub">
+        <div class="att-kpi-footer">
             {% if active_session %}
-                Since {{ active_session.login_time.strftime('%I:%M %p') }}
+                Punched in at {{ active_session.login_time.strftime('%I:%M %p') }}
             {% elif today_log %}
-                {{ "%.2f"|format(today_log.hours_spent) }} hrs shift
+                Shift: {{ "%.2f"|format(today_log.hours_spent) }} hrs
             {% else %}
-                Ready to punch in
+                Ready for shift
             {% endif %}
         </div>
     </div>
 
-    <div class="att-stat-card">
-        <div class="lbl"><i class="fa-solid fa-bullseye"></i> Standard Shift</div>
-        <div class="val" style="color:var(--accent2)">8.00 <span style="font-size:12px;font-weight:400;color:var(--muted)">hrs</span></div>
-        <div class="sub">Full-day work schedule</div>
+    <div class="att-kpi-card target-kpi">
+        <div class="att-kpi-label"><i class="fa-solid fa-bullseye"></i> Standard Shift</div>
+        <div class="att-kpi-value">9.00 <small>hrs</small></div>
+        <div class="att-kpi-footer">Standard work duration</div>
     </div>
 
-    <div class="att-stat-card">
-        <div class="lbl"><i class="fa-solid fa-stopwatch"></i> Shift Hours</div>
-        <div class="val" id="top-card-hours" style="color:var(--text)">
+    <div class="att-kpi-card hours-kpi">
+        <div class="att-kpi-label"><i class="fa-solid fa-stopwatch"></i> Shift Duration</div>
+        <div class="att-kpi-value" id="kpi-hours-val">
             {% if active_session %}
-                {{ "%.2f"|format(hours_elapsed) }} <span style="font-size:12px;font-weight:400;color:var(--muted)">hrs</span>
+                {{ "%.2f"|format(hours_elapsed) }} <small>hrs</small>
             {% elif today_log %}
-                {{ "%.2f"|format(today_log.hours_spent) }} <span style="font-size:12px;font-weight:400;color:var(--muted)">hrs</span>
+                {{ "%.2f"|format(today_log.hours_spent) }} <small>hrs</small>
             {% else %}
-                0.00 <span style="font-size:12px;font-weight:400;color:var(--muted)">hrs</span>
+                0.00 <small>hrs</small>
             {% endif %}
         </div>
-        <div class="sub">
+        <div class="att-kpi-footer" id="kpi-hours-sub">
             {% if active_session %}
                 {% if hours_remaining > 0 %}
-                    {{ "%.2f"|format(hours_remaining) }}h left to 8h target
+                    {{ "%.2f"|format(hours_remaining) }} hrs to 9h target
                 {% else %}
-                    ✓ 8h Target Completed
+                    ✓ 9h Target Reached
                 {% endif %}
             {% elif today_log %}
-                Shift finalized
+                Completed for today
             {% else %}
-                Not started
+                Shift not started
             {% endif %}
         </div>
     </div>
 
-    <div class="att-stat-card">
-        <div class="lbl"><i class="fa-solid fa-calendar-check"></i> This Month</div>
-        <div class="val" style="color:var(--success)">{{ month_days }} <span style="font-size:12px;font-weight:400;color:var(--muted)">days</span></div>
-        <div class="sub">{{ "%.1f"|format(month_hours) }} total hrs worked</div>
+    <div class="att-kpi-card month-kpi">
+        <div class="att-kpi-label"><i class="fa-solid fa-calendar-check"></i> Month Total</div>
+        <div class="att-kpi-value" style="color:#a371f7">{{ month_days }} <small>days</small></div>
+        <div class="att-kpi-footer">{{ "%.1f"|format(month_hours) }} hrs worked this month</div>
     </div>
 </div>
 
-<!-- Two-Column Action Section: Left = Punch Terminal, Right = Forgot Logout Hub -->
-<div class="att-action-grid">
-    <!-- LEFT: Punch In / Punch Out Terminal -->
-    <div class="att-card">
-        <div class="att-card-header">
-            <h3><i class="fa-solid fa-fingerprint"></i> Shift Punch Terminal</h3>
+<!-- Two-Column Action Section: Left = Terminal, Right = Regularization -->
+<div class="att-hub-grid">
+    <!-- LEFT: Punch Terminal -->
+    <div class="att-panel">
+        <div class="att-panel-header">
+            <h3><i class="fa-solid fa-fingerprint"></i> Shift Terminal</h3>
             {% if active_session %}
-                <span class="att-terminal-status status-active-badge">
-                    <span class="att-pulse-dot"></span> Active Shift
+                <span class="att-status-pill online">
+                    <span class="att-live-dot"></span> Punched In
                 </span>
             {% else %}
-                <span class="att-terminal-status status-idle-badge">
-                    <i class="fa-solid fa-power-off"></i> Idle
+                <span class="att-status-pill idle">
+                    <i class="fa-solid fa-power-off"></i> Offline
                 </span>
             {% endif %}
         </div>
 
-        <div class="att-terminal-body">
+        <div class="att-terminal-content">
             {% if active_session %}
-                <div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;font-weight:600">
-                    Session Duration
-                </div>
-                <!-- Live Elapsed Stopwatch -->
-                <div class="att-timer-display" id="active-stopwatch">00:00:00</div>
-
-                <!-- Shift Details Grid -->
-                <div class="att-shift-meta">
-                    <div class="meta-item">
-                        <span class="meta-label">Shift Date (Credited)</span>
-                        <span class="meta-value">{{ active_session.login_date.strftime('%b %d, %Y') }}</span>
-                    </div>
-                    <div class="meta-item">
-                        <span class="meta-label">Punched In At</span>
-                        <span class="meta-value">{{ active_session.login_time.strftime('%I:%M %p') }}</span>
-                    </div>
-                    <div class="meta-item">
-                        <span class="meta-label">Elapsed Time</span>
-                        <span class="meta-value" id="elapsed-hours-text">{{ "%.2f"|format(hours_elapsed) }} hrs</span>
-                    </div>
-                    <div class="meta-item">
-                        <span class="meta-label">Remaining to 8h</span>
-                        <span class="meta-value" id="remaining-hours-text" style="color:var(--accent2)">{{ "%.2f"|format(hours_remaining) }} hrs</span>
-                    </div>
+                <div class="att-timer-box">
+                    <div class="att-timer-title">Active Shift Stopwatch</div>
+                    <div class="att-big-timer" id="stopwatch-display">00:00:00</div>
                 </div>
 
-                <!-- Progress bar towards 8h -->
-                <div class="att-progress-wrap">
-                    <div class="att-progress-labels">
-                        <span style="color:var(--muted)">Target: <b>8.0 Hours</b></span>
-                        <span id="progress-pct-text" style="font-weight:600;color:var(--text)">{{ (((hours_elapsed or 0)/8)*100)|round(0)|int }}%</span>
+                <!-- Meta Strip -->
+                <div class="att-meta-grid">
+                    <div class="att-meta-cell">
+                        <span class="att-meta-lbl">Shift Date</span>
+                        <span class="att-meta-val">{{ active_session.login_date.strftime('%b %d, %Y') }}</span>
                     </div>
-                    <div class="att-progress-bar-bg">
-                        <div id="shift-progress-fill" class="att-progress-bar-fill {% if hours_elapsed >= 8 %}target-reached{% endif %}"
-                             style="width: {{ [(((hours_elapsed or 0)/8)*100), 100]|min }}%"></div>
+                    <div class="att-meta-cell">
+                        <span class="att-meta-lbl">Punch In</span>
+                        <span class="att-meta-val">{{ active_session.login_time.strftime('%I:%M %p') }}</span>
+                    </div>
+                    <div class="att-meta-cell">
+                        <span class="att-meta-lbl">Elapsed Time</span>
+                        <span class="att-meta-val" id="meta-elapsed">{{ "%.2f"|format(hours_elapsed) }} hrs</span>
+                    </div>
+                    <div class="att-meta-cell">
+                        <span class="att-meta-lbl">Remaining to 9h</span>
+                        <span class="att-meta-val" id="meta-remaining" style="color:var(--accent2)">{{ "%.2f"|format(hours_remaining) }} hrs</span>
                     </div>
                 </div>
 
-                <!-- Cross-Midnight Night Shift Banner -->
+                <!-- 9h Progress Bar -->
+                <div class="att-bar-wrap">
+                    <div class="att-bar-header">
+                        <span style="color:var(--muted)">Target: <b>9.0 Hours</b></span>
+                        <span id="progress-pct" style="font-weight:700;color:var(--text)">{{ (((hours_elapsed or 0)/9)*100)|round(0)|int }}%</span>
+                    </div>
+                    <div class="att-bar-track">
+                        <div id="progress-fill" class="att-bar-fill {% if hours_elapsed >= 9.0 %}achieved{% endif %}"
+                             style="width: {{ [(((hours_elapsed or 0)/9)*100), 100]|min }}%"></div>
+                    </div>
+                </div>
+
+                <!-- Overnight Notice -->
                 {% if active_session.login_time.hour >= 17 or active_session.login_time.hour <= 5 or active_session.login_date < today %}
-                <div class="night-shift-note">
+                <div class="att-info-banner">
                     <i class="fa-solid fa-moon" style="font-size:16px;color:#a371f7"></i>
                     <div>
                         <b>Overnight Shift:</b> Punched in on <b>{{ active_session.login_date.strftime('%b %d, %Y') }}</b>.
-                        When you punch out (even after midnight), your hours are recorded for <b>{{ active_session.login_date.strftime('%b %d, %Y') }}</b>.
+                        When you punch out (including tomorrow past midnight), your shift is credited to <b>{{ active_session.login_date.strftime('%b %d, %Y') }}</b>.
                     </div>
                 </div>
                 {% endif %}
 
-                <!-- Forgotten session alert -->
+                <!-- Forgotten Session Warning -->
                 {% if is_forgotten_session %}
-                <div class="alert-forgot-banner">
-                    <i class="fa-solid fa-triangle-exclamation"></i>
-                    <b>Unclosed Session Detected:</b> This session was started on
-                    <b>{{ active_session.login_date.strftime('%b %d, %Y') }}</b> at {{ active_session.login_time.strftime('%I:%M %p') }}
-                    ({{ hours_elapsed }} hrs elapsed). Did you forget to punch out?
-                    You can punch out now, or submit a <b>Forgot Logout Request</b> on the right to set your exact departure time.
+                <div class="att-warning-banner">
+                    <i class="fa-solid fa-triangle-exclamation" style="font-size:16px;margin-top:2px"></i>
+                    <div>
+                        <b>Unclosed Session Detected:</b> This session was started on
+                        <b>{{ active_session.login_date.strftime('%b %d, %Y') }}</b> at {{ active_session.login_time.strftime('%I:%M %p') }}
+                        ({{ hours_elapsed }} hrs ago). Did you forget to punch out?
+                        You can punch out now, or submit a <b>Forgot Logout Request</b> on the right to set your departure time.
+                    </div>
                 </div>
                 {% endif %}
 
                 <!-- Punch Out Form -->
-                <form method="POST" action="{{ url_for('attendance_logout') }}" style="width:100%"
-                      onsubmit="return confirmPunchOut()">
-                    <button type="submit" class="btn-punch-out">
-                        <i class="fa-solid fa-right-from-bracket"></i> PUNCH OUT NOW
+                <form method="POST" action="{{ url_for('attendance_logout') }}" style="width:100%" onsubmit="return handlePunchOutConfirm()">
+                    <button type="submit" class="btn-punch-action btn-punch-out-style">
+                        <i class="fa-solid fa-right-from-bracket"></i> PUNCH OUT / END SHIFT
                     </button>
                 </form>
                 <div style="font-size:11px;color:var(--muted);margin-top:8px">
-                    Records your departure time and finalizes hours for {{ active_session.login_date.strftime('%b %d, %Y') }}.
+                    Records departure time & finalizes hours for {{ active_session.login_date.strftime('%b %d, %Y') }}.
                 </div>
 
             {% else %}
-                <!-- IDLE / READY TO PUNCH IN -->
+                <!-- IDLE STATE -->
                 <div style="padding:16px 0;width:100%">
-                    <div style="font-size:48px;color:var(--muted);margin-bottom:12px;opacity:0.6">
+                    <div style="font-size:44px;color:var(--muted);margin-bottom:12px;opacity:0.4">
                         <i class="fa-solid fa-clock"></i>
                     </div>
-                    <div style="font-size:16px;font-weight:600;margin-bottom:6px">Ready to Begin Your Shift</div>
-                    <div style="font-size:12px;color:var(--muted);margin-bottom:18px">
-                        Click below to mark your punch-in for today <b>{{ today.strftime('%A, %b %d, %Y') }}</b>.
+                    <div style="font-size:15px;font-weight:700;margin-bottom:4px">Ready to Punch In</div>
+                    <div style="font-size:12px;color:var(--muted);margin-bottom:16px">
+                        Start your 9-hour work shift for <b>{{ today.strftime('%A, %b %d, %Y') }}</b>.
                     </div>
 
                     {% if today_log %}
-                    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-md);padding:12px 16px;margin-bottom:18px;text-align:left">
+                    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-md);padding:10px 14px;margin-bottom:16px;text-align:left">
                         <div style="font-size:11px;font-weight:700;color:var(--success);margin-bottom:4px">
-                            <i class="fa-solid fa-circle-check"></i> Today's Completed Shift
+                            <i class="fa-solid fa-circle-check"></i> Today's Shift Completed
                         </div>
                         <div style="font-size:12px;color:var(--muted);display:flex;justify-content:space-between">
                             <span>In: <b style="color:var(--text);font-family:var(--mono)">{{ today_log.login_time.strftime('%I:%M %p') }}</b></span>
@@ -789,94 +782,93 @@
                     {% endif %}
 
                     <form method="POST" action="{{ url_for('attendance_login') }}" style="width:100%">
-                        <button type="submit" class="btn-punch-in">
-                            <i class="fa-solid fa-right-to-bracket"></i> PUNCH IN / LOGIN
+                        <button type="submit" class="btn-punch-action btn-punch-in-style">
+                            <i class="fa-solid fa-right-to-bracket"></i> PUNCH IN / START SHIFT
                         </button>
                     </form>
                     <div style="font-size:11px;color:var(--muted);margin-top:8px">
-                        Punches in at current IST time. Standard shift: 8 hours.
+                        Punches in at current IST time. Shift schedule: 9.0 hours.
                     </div>
                 </div>
             {% endif %}
         </div>
     </div>
 
-    <!-- RIGHT: Forgot to Logout / Regularization Request Form -->
-    <div class="att-card">
-        <div class="att-card-header">
-            <h3><i class="fa-solid fa-pen-to-square"></i> Forgot to Logout? Regularize</h3>
-            <span style="font-size:11px;color:var(--muted);font-weight:500">Admin Approval Required</span>
+    <!-- RIGHT: Forgot Logout / Regularization Hub -->
+    <div class="att-panel">
+        <div class="att-panel-header">
+            <h3><i class="fa-solid fa-pen-to-square"></i> Regularize / Missed Punch</h3>
+            <span style="font-size:11px;color:var(--muted);font-weight:500">Admin Approval</span>
         </div>
 
-        <p style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.5">
-            Forgot to punch out before leaving, or missed a shift punch? Submit your actual timings. Admin will review and update your record.
+        <p style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.5">
+            Forgot to punch out before leaving, or missed a shift punch? Submit your actual timings for admin approval.
         </p>
 
-        <!-- Mode selector chips -->
-        <div class="req-chips">
-            <div class="req-chip active" id="chip-forgot-logout" onclick="setReqMode('forgot_logout')">
+        <!-- Selector: Forgot Logout vs Missed Entire Shift -->
+        <div class="att-chip-selector">
+            <button type="button" class="att-chip-btn active" id="chip-forgot" onclick="setMode('forgot_logout')">
                 <i class="fa-solid fa-right-from-bracket"></i> Forgot to Punch Out
-            </div>
-            <div class="req-chip" id="chip-missed-punch" onclick="setReqMode('missed_punch')">
+            </button>
+            <button type="button" class="att-chip-btn" id="chip-missed" onclick="setMode('missed_punch')">
                 <i class="fa-solid fa-calendar-plus"></i> Missed Entire Shift
-            </div>
+            </button>
         </div>
 
-        <form method="POST" action="{{ url_for('attendance_request') }}" id="reg-form">
-            <input type="hidden" name="request_type" id="request_type_input" value="forgot_logout">
+        <form method="POST" action="{{ url_for('attendance_request') }}">
+            <input type="hidden" name="request_type" id="form_request_type" value="forgot_logout">
 
-            <div class="att-req-grid">
-                <div class="form-group">
+            <div class="att-form-grid">
+                <div class="form-group" style="margin-bottom:10px">
                     <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase">Shift Date</label>
-                    <input type="date" name="request_date" id="req_date" class="form-control"
+                    <input type="date" name="request_date" id="form_date" class="form-control"
                            value="{% if active_session and active_session.login_date < today %}{{ active_session.login_date.strftime('%Y-%m-%d') }}{% else %}{{ today.strftime('%Y-%m-%d') }}{% endif %}"
-                           required onchange="calcReqHours()">
+                           required onchange="recalcHours()">
                 </div>
 
-                <div class="form-group" id="req_login_group">
+                <div class="form-group" style="margin-bottom:10px">
                     <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase">
-                        Punch In Time <span id="req_login_hint" style="font-size:10px;color:var(--muted)">(Optional if exists)</span>
+                        Punch In Time <span id="form_login_hint" style="font-size:10px;color:var(--muted)">(Optional if exists)</span>
                     </label>
-                    <input type="time" name="request_login" id="req_login" class="form-control"
+                    <input type="time" name="request_login" id="form_login" class="form-control"
                            value="{% if active_session %}{{ active_session.login_time.strftime('%H:%M') }}{% endif %}"
-                           onchange="calcReqHours()">
+                           onchange="recalcHours()">
                 </div>
 
-                <div class="form-group">
+                <div class="form-group" style="margin-bottom:10px">
                     <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase">
-                        Actual Punch Out Time <span style="color:var(--danger)">*</span>
+                        Actual Punch Out <span style="color:var(--danger)">*</span>
                     </label>
-                    <input type="time" name="request_logout" id="req_logout" class="form-control" required onchange="calcReqHours()">
+                    <input type="time" name="request_logout" id="form_logout" class="form-control" required onchange="recalcHours()">
                 </div>
 
-                <div class="form-group" style="display:flex;align-items:center;padding-top:22px">
+                <div class="form-group" style="margin-bottom:10px;display:flex;align-items:center;padding-top:18px">
                     <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;user-select:none">
-                        <input type="checkbox" name="is_next_day" id="is_next_day" onchange="calcReqHours()">
-                        <span><i class="fa-solid fa-moon" style="color:#a371f7"></i> Punched out next day (after midnight)</span>
+                        <input type="checkbox" name="is_next_day" id="form_next_day" onchange="recalcHours()">
+                        <span><i class="fa-solid fa-moon" style="color:#a371f7"></i> Out on next day (past 12 AM)</span>
                     </label>
                 </div>
 
-                <!-- Estimated Duration Preview -->
-                <div class="att-req-full">
-                    <div class="calc-hours-preview">
-                        <span><i class="fa-solid fa-calculator"></i> Estimated Shift Duration:</span>
-                        <b id="calc_hours_val" style="font-family:var(--mono);color:var(--accent2);font-size:14px">-- hrs</b>
+                <div class="att-grid-full">
+                    <div class="att-calc-badge">
+                        <span><i class="fa-solid fa-calculator"></i> Estimated Duration:</span>
+                        <b id="form_calc_result" style="font-family:var(--mono);color:var(--accent2);font-size:13px">-- hrs</b>
                     </div>
                 </div>
 
-                <div class="att-req-full form-group">
+                <div class="att-grid-full form-group" style="margin-bottom:12px">
                     <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase">Reason</label>
-                    <input type="text" name="reason" id="req_reason" class="form-control" placeholder="e.g. Forgot to punch out before leaving" required>
-                    <div class="quick-reasons">
-                        <span class="quick-reason-pill" onclick="setQuickReason('Forgot to punch out before leaving office')">Forgot before leaving</span>
-                        <span class="quick-reason-pill" onclick="setQuickReason('Power / Internet outage at logout')">Power / Net outage</span>
-                        <span class="quick-reason-pill" onclick="setQuickReason('Worked late shift, closed browser')">Overnight shift</span>
-                        <span class="quick-reason-pill" onclick="setQuickReason('Offsite client work / Meeting')">Client meeting</span>
+                    <input type="text" name="reason" id="form_reason" class="form-control" placeholder="e.g. Forgot to punch out before leaving" required>
+                    <div class="att-quick-tags">
+                        <span class="att-tag-item" onclick="setReason('Forgot to punch out before leaving')">Forgot before leaving</span>
+                        <span class="att-tag-item" onclick="setReason('Power / Internet outage at exit')">Power outage</span>
+                        <span class="att-tag-item" onclick="setReason('Worked late night shift')">Overnight shift</span>
+                        <span class="att-tag-item" onclick="setReason('Client meeting / Field work')">Client visit</span>
                     </div>
                 </div>
 
-                <div class="att-req-full" style="margin-top:4px">
-                    <button type="submit" class="btn btn-primary" style="width:100%;padding:11px">
+                <div class="att-grid-full">
+                    <button type="submit" class="btn btn-primary" style="width:100%;padding:10px;font-weight:600">
                         <i class="fa-solid fa-paper-plane"></i> Submit Regularization Request
                     </button>
                 </div>
@@ -885,59 +877,49 @@
     </div>
 </div>
 
-<!-- Navigation Tabs for Tables, Requests, and Admin Tracker -->
-<div class="att-tabs-header">
-    <div class="att-nav-pills">
-        <button class="att-nav-pill active" id="tab-table" onclick="switchAttView('table')">
-            <i class="fa-solid fa-table"></i> Attendance Records Table
+<!-- Tabs & Table Section -->
+<div class="att-section-bar">
+    <div class="att-tab-pills">
+        <button class="att-pill-btn active" id="pill-table" onclick="setTab('table')">
+            <i class="fa-solid fa-table"></i> Attendance Records
         </button>
-        <button class="att-nav-pill" id="tab-requests" onclick="switchAttView('requests')">
+        <button class="att-pill-btn" id="pill-requests" onclick="setTab('requests')">
             <i class="fa-solid fa-clipboard-list"></i> My Requests
             {% if pending_requests > 0 %}
                 <span class="badge badge-warning" style="margin-left:4px">{{ pending_requests }}</span>
             {% endif %}
         </button>
-        <button class="att-nav-pill" id="tab-chart" onclick="switchAttView('chart')">
-            <i class="fa-solid fa-chart-bar"></i> 30-Day Hours Chart
+        <button class="att-pill-btn" id="pill-chart" onclick="setTab('chart')">
+            <i class="fa-solid fa-chart-column"></i> 30-Day Hours Chart
         </button>
         {% if session.get('role') == 'admin' %}
-        <button class="att-nav-pill" id="tab-tracker" onclick="switchAttView('tracker')">
+        <button class="att-pill-btn" id="pill-tracker" onclick="setTab('tracker')">
             <i class="fa-solid fa-users-gear"></i> Admin Tracker
         </button>
         {% endif %}
     </div>
 
-    <!-- Quick Search for Table -->
-    <div style="display:flex;gap:8px;align-items:center">
-        <input type="text" id="att-table-search" placeholder="Search date or status..." class="form-control"
-               style="font-size:12px;padding:6px 12px;max-width:200px" onkeyup="filterAttTable()">
+    <!-- Quick Search -->
+    <div>
+        <input type="text" id="table-search-input" placeholder="Search date or status..." class="form-control"
+               style="font-size:12px;padding:6px 12px;width:190px" onkeyup="filterTable()">
     </div>
 </div>
 
-<!-- VIEW 1: Complete Attendance Records Table Structure -->
-<div id="view-table" class="att-view-pane active">
-    <div class="att-card" style="padding:16px 20px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:10px">
-            <div>
-                <h3 style="font-size:15px;font-weight:600;margin:0"><i class="fa-solid fa-list-check"></i> Attendance History</h3>
-                <span style="font-size:12px;color:var(--muted)">Showing shift records for the last 60 days</span>
-            </div>
-            <div style="font-size:12px;color:var(--muted)">
-                Total Records: <strong style="color:var(--text)">{{ recent_logs | length }}</strong>
-            </div>
-        </div>
-
+<!-- TAB 1: Complete Attendance Records Table Structure -->
+<div id="tab-view-table" class="att-tab-view active">
+    <div class="att-table-container">
         {% if recent_logs | length > 0 %}
-        <div class="att-table-wrap">
-            <table class="att-modern-table" id="att-records-tbl">
+        <div style="overflow-x:auto">
+            <table class="att-data-table" id="main-attendance-table">
                 <thead>
                     <tr>
                         <th style="width:40px">#</th>
                         <th>Shift Date</th>
                         <th>Day</th>
                         <th>Shift Type</th>
-                        <th>Punch In</th>
-                        <th>Punch Out</th>
+                        <th>Punch In (IST)</th>
+                        <th>Punch Out (IST)</th>
                         <th>Duration</th>
                         <th>Status</th>
                         <th>Notes</th>
@@ -952,27 +934,21 @@
                     {% set crossed_midnight = (log.logout_time and log.logout_time.date() > log.login_date) %}
                     <tr>
                         <td style="color:var(--muted);font-family:var(--mono);font-size:11px">{{ loop.index }}</td>
-                        <td style="font-weight:600;font-family:var(--mono)">
-                            {{ log.login_date.strftime('%b %d, %Y') }}
-                        </td>
-                        <td style="color:var(--muted);font-size:12px">
-                            {{ log.login_date.strftime('%A') }}
-                        </td>
+                        <td style="font-weight:600;font-family:var(--mono)">{{ log.login_date.strftime('%b %d, %Y') }}</td>
+                        <td style="color:var(--muted);font-size:12px">{{ log.login_date.strftime('%A') }}</td>
                         <td>
                             {% if is_night %}
-                                <span class="badge-shift-night"><i class="fa-solid fa-moon"></i> Night Shift</span>
+                                <span class="badge-shift-type badge-shift-night"><i class="fa-solid fa-moon"></i> Night Shift</span>
                             {% else %}
-                                <span class="badge-shift-day"><i class="fa-solid fa-sun"></i> Day Shift</span>
+                                <span class="badge-shift-type badge-shift-day"><i class="fa-solid fa-sun"></i> Day Shift</span>
                             {% endif %}
                         </td>
-                        <td style="font-family:var(--mono)">
-                            {{ log.login_time.strftime('%I:%M %p') }}
-                        </td>
+                        <td style="font-family:var(--mono)">{{ log.login_time.strftime('%I:%M %p') }}</td>
                         <td style="font-family:var(--mono)">
                             {% if log.logout_time %}
                                 {{ log.logout_time.strftime('%I:%M %p') }}
                                 {% if crossed_midnight %}
-                                    <span class="badge-next-day" title="Punched out on next calendar day">+1 Day</span>
+                                    <span class="badge-nextday" title="Punched out on next calendar day">+1 Day</span>
                                 {% endif %}
                             {% else %}
                                 <span class="badge badge-warning">Active Now</span>
@@ -980,7 +956,7 @@
                         </td>
                         <td>
                             {% if log.hours_spent %}
-                                <span class="badge-hours {% if log.hours_spent >= 8.0 %}badge-hours-green{% else %}badge-hours-amber{% endif %}">
+                                <span class="badge-hours-pill {% if log.hours_spent >= 9.0 %}hours-green{% else %}hours-amber{% endif %}">
                                     {{ "%.2f"|format(log.hours_spent) }} hrs
                                 </span>
                             {% else %}
@@ -1000,16 +976,14 @@
                                 <span class="badge badge-warning">In Progress</span>
                             {% endif %}
                         </td>
-                        <td style="font-size:11px;color:var(--muted);max-width:180px">
-                            {{ log.notes or '—' }}
-                        </td>
+                        <td style="font-size:11px;color:var(--muted);max-width:180px">{{ log.notes or '—' }}</td>
                         {% if session.get('role') == 'admin' %}
                         <td>
                             <div style="display:flex;gap:4px">
-                                <button class="btn btn-secondary btn-sm" onclick="openEditLogModal({{ log.id }}, '{{ log.login_time.strftime('%Y-%m-%dT%H:%M') if log.login_time else '' }}', '{{ log.logout_time.strftime('%Y-%m-%dT%H:%M') if log.logout_time else '' }}', '{{ log.hours_spent or '' }}')" title="Edit Log">
+                                <button class="btn btn-secondary btn-sm" onclick="openAdminEditModal({{ log.id }}, '{{ log.login_time.strftime('%Y-%m-%dT%H:%M') if log.login_time else '' }}', '{{ log.logout_time.strftime('%Y-%m-%dT%H:%M') if log.logout_time else '' }}', '{{ log.hours_spent or '' }}')" title="Edit Log">
                                     <i class="fa-solid fa-pen"></i>
                                 </button>
-                                <button class="btn btn-danger btn-sm" onclick="deleteLog({{ log.id }})" title="Delete Log">
+                                <button class="btn btn-danger btn-sm" onclick="deleteAttendanceLog({{ log.id }})" title="Delete Log">
                                     <i class="fa-solid fa-trash"></i>
                                 </button>
                             </div>
@@ -1022,32 +996,22 @@
         </div>
         {% else %}
         <div style="text-align:center;padding:40px 20px;color:var(--muted)">
-            <i class="fa-solid fa-calendar-xmark" style="font-size:32px;margin-bottom:10px;opacity:0.5"></i>
-            <div>No attendance records found yet. Punch in above to start tracking!</div>
+            <i class="fa-solid fa-calendar-xmark" style="font-size:32px;margin-bottom:10px;opacity:0.4"></i>
+            <div>No attendance logs found. Punch in above to start tracking.</div>
         </div>
         {% endif %}
     </div>
 </div>
 
-<!-- VIEW 2: My Regularization Requests -->
-<div id="view-requests" class="att-view-pane">
-    <div class="att-card" style="padding:16px 20px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-            <div>
-                <h3 style="font-size:15px;font-weight:600;margin:0"><i class="fa-solid fa-clipboard-list"></i> My Regularization Requests</h3>
-                <span style="font-size:12px;color:var(--muted)">Track status of your submitted forgot logout and missed punch requests</span>
-            </div>
-            <button class="btn btn-secondary btn-sm" onclick="window.scrollTo({top:0, behavior:'smooth'})">
-                <i class="fa-solid fa-plus"></i> New Request
-            </button>
-        </div>
-
+<!-- TAB 2: My Regularization Requests -->
+<div id="tab-view-requests" class="att-tab-view">
+    <div class="att-table-container">
         {% if my_requests | length > 0 %}
-        <div class="att-table-wrap">
-            <table class="att-modern-table">
+        <div style="overflow-x:auto">
+            <table class="att-data-table">
                 <thead>
                     <tr>
-                        <th>#</th>
+                        <th style="width:40px">#</th>
                         <th>Shift Date</th>
                         <th>Requested In</th>
                         <th>Requested Out</th>
@@ -1068,7 +1032,7 @@
                         <td style="font-family:var(--mono)">
                             {{ req.requested_logout.strftime('%I:%M %p') }}
                             {% if req.requested_logout.date() > req.requested_login.date() %}
-                                <span class="badge-next-day">+1 Day</span>
+                                <span class="badge-nextday">+1 Day</span>
                             {% endif %}
                         </td>
                         <td style="font-family:var(--mono);font-weight:700;color:var(--accent2)">{{ "%.2f"|format(diff) }} hrs</td>
@@ -1091,52 +1055,49 @@
         </div>
         {% else %}
         <div style="text-align:center;padding:40px 20px;color:var(--muted)">
-            <i class="fa-solid fa-clipboard-check" style="font-size:32px;margin-bottom:10px;opacity:0.5"></i>
-            <div>You have not submitted any regularization requests yet.</div>
+            <i class="fa-solid fa-clipboard-check" style="font-size:32px;margin-bottom:10px;opacity:0.4"></i>
+            <div>No regularization requests submitted yet.</div>
         </div>
         {% endif %}
     </div>
 </div>
 
-<!-- VIEW 3: 30-Day Daily Hours Chart -->
-<div id="view-chart" class="att-view-pane">
-    <div class="att-chart-wrap">
+<!-- TAB 3: 30-Day Chart -->
+<div id="tab-view-chart" class="att-tab-view">
+    <div class="att-panel">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-            <h3 style="font-size:15px;font-weight:600;margin:0"><i class="fa-solid fa-chart-column"></i> Daily Shift Hours (Last 30 Days)</h3>
-            <span style="font-size:11px;color:var(--muted)">Dashed line indicates 8.0h standard shift target</span>
+            <h3 style="font-size:15px;font-weight:700;margin:0"><i class="fa-solid fa-chart-column"></i> Daily Shift Hours (Last 30 Days)</h3>
+            <span style="font-size:11px;color:var(--muted)">Target line indicates 9.0h standard shift</span>
         </div>
-        <div class="att-chart-bar-container" id="att-chart-container">
-            <div class="att-target-line" id="att-chart-target-line" style="bottom: 96px">
-                <span class="att-target-line-lbl">8.0h Target</span>
-            </div>
-            <div style="color:var(--muted);font-size:13px;width:100%;text-align:center;padding:40px 0">Loading shift chart...</div>
+        <div style="display:flex;align-items:flex-end;gap:8px;height:160px;padding-bottom:24px;position:relative;border-bottom:1px solid var(--border)" id="chart-mount">
+            <div style="color:var(--muted);font-size:13px;width:100%;text-align:center;padding:40px 0">Loading chart...</div>
         </div>
     </div>
 </div>
 
-<!-- VIEW 4: Admin Attendance Tracker (Admin Only) -->
+<!-- TAB 4: Admin Tracker (Admin Only) -->
 {% if session.get('role') == 'admin' %}
-<div id="view-tracker" class="att-view-pane">
-    <div class="att-card" style="margin-bottom:20px">
-        <div class="att-card-header">
+<div id="tab-view-tracker" class="att-tab-view">
+    <div class="att-panel">
+        <div class="att-panel-header">
             <h3><i class="fa-solid fa-users-gear"></i> Organization Attendance Tracker</h3>
-            <button class="btn btn-success btn-sm" onclick="trackerOpenCreate()">
+            <button class="btn btn-success btn-sm" onclick="openTrackerCreate()">
                 <i class="fa-solid fa-plus"></i> Create Manual Log
             </button>
         </div>
 
         <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-bottom:16px">
             <div class="form-group" style="margin-bottom:0">
-                <label style="font-size:11px;font-weight:700;color:var(--muted)">SELECT MONTH</label>
-                <select class="form-control" id="trk-month" onchange="trackerLoad()" style="width:160px"></select>
+                <label style="font-size:11px;font-weight:700;color:var(--muted)">MONTH</label>
+                <select class="form-control" id="trk-month-select" onchange="loadTrackerData()" style="width:160px"></select>
             </div>
             <div class="form-group" style="margin-bottom:0">
-                <label style="font-size:11px;font-weight:700;color:var(--muted)">FILTER USER</label>
-                <select class="form-control" id="trk-user" onchange="trackerLoad()" style="width:220px">
+                <label style="font-size:11px;font-weight:700;color:var(--muted)">USER</label>
+                <select class="form-control" id="trk-user-select" onchange="loadTrackerData()" style="width:220px">
                     <option value="">All Users</option>
                 </select>
             </div>
-            <button class="btn btn-secondary btn-sm" onclick="trackerLoad()" style="height:36px">
+            <button class="btn btn-secondary btn-sm" onclick="loadTrackerData()" style="height:36px">
                 <i class="fa-solid fa-arrows-rotate"></i> Refresh
             </button>
             <a href="{{ url_for('admin_attendance_requests') }}" class="btn btn-secondary btn-sm" style="height:36px">
@@ -1144,12 +1105,8 @@
             </a>
         </div>
 
-        <div id="trk-pending-badge" style="display:none;margin-bottom:14px;padding:10px 14px;background:rgba(210,153,34,0.1);border:1px solid var(--warning);border-radius:var(--radius-md);font-size:12px;color:var(--warning)">
-            <i class="fa-solid fa-bell"></i> <strong id="trk-pending-count">0</strong> pending request(s) awaiting review.
-        </div>
-
-        <div class="att-table-wrap">
-            <table class="att-modern-table" id="trk-table">
+        <div class="att-table-container">
+            <table class="att-data-table" id="tracker-table">
                 <thead>
                     <tr>
                         <th>Date</th>
@@ -1161,8 +1118,8 @@
                         <th>Actions</th>
                     </tr>
                 </thead>
-                <tbody id="trk-body">
-                    <tr><td colspan="7" style="text-align:center;padding:30px;color:var(--muted)">Loading tracker data...</td></tr>
+                <tbody id="tracker-body">
+                    <tr><td colspan="7" style="text-align:center;padding:30px;color:var(--muted)">Loading...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -1170,76 +1127,75 @@
 </div>
 
 <!-- Admin Create Log Modal -->
-<div class="modal-backdrop" id="trk-create-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:800;align-items:center;justify-content:center;backdrop-filter:blur(4px)">
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:24px;width:min(450px,94vw);box-shadow:var(--shadow-lg)">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-            <h3 style="margin:0;font-size:16px;font-weight:700"><i class="fa-solid fa-plus"></i> Create Attendance Log</h3>
-            <button class="btn btn-secondary btn-sm" onclick="trackerCloseCreate()">✕</button>
+<div class="modal-backdrop" id="modal-trk-create" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:800;align-items:center;justify-content:center;backdrop-filter:blur(4px)">
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:22px;width:min(440px,94vw);box-shadow:var(--shadow-lg)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+            <h3 style="margin:0;font-size:15px;font-weight:700"><i class="fa-solid fa-plus"></i> Create Attendance Log</h3>
+            <button class="btn btn-secondary btn-sm" onclick="closeTrackerCreate()">✕</button>
         </div>
         <div style="display:flex;flex-direction:column;gap:12px">
             <div>
                 <label style="font-size:11px;font-weight:700;color:var(--muted)">USER</label>
-                <select class="form-control" id="trk-create-user"></select>
+                <select class="form-control" id="trk-create-user-id"></select>
             </div>
             <div>
                 <label style="font-size:11px;font-weight:700;color:var(--muted)">LOGIN TIME</label>
-                <input type="datetime-local" class="form-control" id="trk-create-login">
+                <input type="datetime-local" class="form-control" id="trk-create-in">
             </div>
             <div>
                 <label style="font-size:11px;font-weight:700;color:var(--muted)">LOGOUT TIME (OPTIONAL)</label>
-                <input type="datetime-local" class="form-control" id="trk-create-logout">
+                <input type="datetime-local" class="form-control" id="trk-create-out">
             </div>
-            <div id="trk-create-err" style="font-size:12px;color:var(--danger);display:none"></div>
+            <div id="trk-create-error" style="font-size:12px;color:var(--danger);display:none"></div>
         </div>
-        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px">
-            <button class="btn btn-secondary" onclick="trackerCloseCreate()">Cancel</button>
-            <button class="btn btn-primary" onclick="trackerSaveCreate()"><i class="fa-solid fa-check"></i> Create Log</button>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px">
+            <button class="btn btn-secondary" onclick="closeTrackerCreate()">Cancel</button>
+            <button class="btn btn-primary" onclick="submitTrackerCreate()"><i class="fa-solid fa-check"></i> Create Log</button>
         </div>
     </div>
 </div>
 {% endif %}
 
-<!-- Edit Log Modal (for Admin) -->
-<div class="modal-backdrop" id="log-edit-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:800;align-items:center;justify-content:center;backdrop-filter:blur(4px)">
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:24px;width:min(450px,94vw);box-shadow:var(--shadow-lg)">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-            <h3 style="margin:0;font-size:16px;font-weight:700"><i class="fa-solid fa-pen"></i> Edit Attendance Log</h3>
-            <button class="btn btn-secondary btn-sm" onclick="closeLogEditModal()">✕</button>
+<!-- Admin Edit Modal -->
+<div class="modal-backdrop" id="modal-admin-edit" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:800;align-items:center;justify-content:center;backdrop-filter:blur(4px)">
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:22px;width:min(440px,94vw);box-shadow:var(--shadow-lg)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+            <h3 style="margin:0;font-size:15px;font-weight:700"><i class="fa-solid fa-pen"></i> Edit Attendance Log</h3>
+            <button class="btn btn-secondary btn-sm" onclick="closeAdminEditModal()">✕</button>
         </div>
         <div style="display:flex;flex-direction:column;gap:12px">
             <div>
                 <label style="font-size:11px;font-weight:700;color:var(--muted)">LOGIN TIME</label>
-                <input type="datetime-local" class="form-control" id="log-edit-login">
+                <input type="datetime-local" class="form-control" id="admin-edit-login">
             </div>
             <div>
                 <label style="font-size:11px;font-weight:700;color:var(--muted)">LOGOUT TIME</label>
-                <input type="datetime-local" class="form-control" id="log-edit-logout">
+                <input type="datetime-local" class="form-control" id="admin-edit-logout">
             </div>
             <div>
                 <label style="font-size:11px;font-weight:700;color:var(--muted)">HOURS SPENT</label>
-                <input type="number" step="0.01" class="form-control" id="log-edit-hours">
+                <input type="number" step="0.01" class="form-control" id="admin-edit-hours">
             </div>
-            <div id="log-edit-err" style="font-size:12px;color:var(--danger);display:none"></div>
+            <div id="admin-edit-error" style="font-size:12px;color:var(--danger);display:none"></div>
         </div>
-        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px">
-            <button class="btn btn-secondary" onclick="closeLogEditModal()">Cancel</button>
-            <button class="btn btn-primary" onclick="saveLogEdit()"><i class="fa-solid fa-check"></i> Save Changes</button>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px">
+            <button class="btn btn-secondary" onclick="closeAdminEditModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="saveAdminEdit()"><i class="fa-solid fa-check"></i> Save Changes</button>
         </div>
     </div>
 </div>
 
-<div class="att-toast" id="att-toast"></div>
+<div class="att-toast" id="att-toast-msg"></div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-// ── Real-time IST Digital Clock in Header ──
-function updateISTClock() {
-    const clockEl = document.getElementById('live-ist-clock');
-    const dateEl = document.getElementById('live-ist-date');
+// ── Real-time IST Clock ──
+function refreshClock() {
+    const clockEl = document.getElementById('live-clock');
+    const dateEl = document.getElementById('live-date');
     if (!clockEl) return;
     const now = new Date();
-    // Convert to IST (UTC+5:30)
     const istOffset = 5.5 * 60 * 60 * 1000;
     const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
     const istDate = new Date(utc + istOffset);
@@ -1252,121 +1208,124 @@ function updateISTClock() {
     h = h ? h : 12;
     clockEl.textContent = `${String(h).padStart(2, '0')}:${m}:${s} ${ampm}`;
 
-    const opts = { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' };
+    const opts = { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' };
     dateEl.textContent = istDate.toLocaleDateString('en-US', opts);
 }
-setInterval(updateISTClock, 1000);
-updateISTClock();
+setInterval(refreshClock, 1000);
+refreshClock();
 
-// ── Live Stopwatch for Active Session ──
+// ── Live Stopwatch for Active 9h Session ──
 (function(){
-    const swEl = document.getElementById('active-stopwatch');
-    if (!swEl) return;
-    let elapsedSecs = {{ elapsed_seconds or 0 }};
-    const progressFill = document.getElementById('shift-progress-fill');
-    const progressPct = document.getElementById('progress-pct-text');
-    const elapsedText = document.getElementById('elapsed-hours-text');
-    const remainingText = document.getElementById('remaining-hours-text');
-    const topHours = document.getElementById('top-card-hours');
+    const sw = document.getElementById('stopwatch-display');
+    if (!sw) return;
+    let secs = {{ elapsed_seconds or 0 }};
+    const fill = document.getElementById('progress-fill');
+    const pct = document.getElementById('progress-pct');
+    const metaElapsed = document.getElementById('meta-elapsed');
+    const metaRemaining = document.getElementById('meta-remaining');
+    const kpiVal = document.getElementById('kpi-hours-val');
+    const kpiSub = document.getElementById('kpi-hours-sub');
 
-    function tickStopwatch() {
-        elapsedSecs++;
-        const hrs = Math.floor(elapsedSecs / 3600);
-        const mins = Math.floor((elapsedSecs % 3600) / 60);
-        const secs = elapsedSecs % 60;
-        swEl.textContent = `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    function tick() {
+        secs++;
+        const h = Math.floor(secs / 3600);
+        const m = Math.floor((secs % 3600) / 60);
+        const s = secs % 60;
+        sw.textContent = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 
-        const curHrs = (elapsedSecs / 3600);
-        if (elapsedText) elapsedText.textContent = curHrs.toFixed(2) + ' hrs';
-        if (topHours) topHours.innerHTML = curHrs.toFixed(2) + ' <span style="font-size:12px;font-weight:400;color:var(--muted)">hrs</span>';
+        const curHrs = secs / 3600.0;
+        if (metaElapsed) metaElapsed.textContent = curHrs.toFixed(2) + ' hrs';
+        if (kpiVal) kpiVal.innerHTML = curHrs.toFixed(2) + ' <small>hrs</small>';
 
-        const rem = Math.max(0, 8.0 - curHrs);
-        if (remainingText) remainingText.textContent = rem.toFixed(2) + ' hrs';
+        const rem = Math.max(0, 9.0 - curHrs);
+        if (metaRemaining) metaRemaining.textContent = rem.toFixed(2) + ' hrs';
+        if (kpiSub) {
+            kpiSub.textContent = rem > 0 ? `${rem.toFixed(2)} hrs to 9h target` : '✓ 9h Target Reached';
+        }
 
-        const pct = Math.min(100, Math.round((curHrs / 8.0) * 100));
-        if (progressPct) progressPct.textContent = pct + '%';
-        if (progressFill) {
-            progressFill.style.width = Math.min(100, (curHrs / 8.0) * 100) + '%';
-            if (curHrs >= 8.0) progressFill.classList.add('target-reached');
+        const percentage = Math.min(100, Math.round((curHrs / 9.0) * 100));
+        if (pct) pct.textContent = percentage + '%';
+        if (fill) {
+            fill.style.width = Math.min(100, (curHrs / 9.0) * 100) + '%';
+            if (curHrs >= 9.0) fill.classList.add('achieved');
         }
     }
-    setInterval(tickStopwatch, 1000);
-    tickStopwatch();
+    setInterval(tick, 1000);
+    tick();
 })();
 
-// ── Confirmation for Punch-out ──
-function confirmPunchOut() {
-    const elapsedSecs = {{ elapsed_seconds or 0 }};
-    const hrs = elapsedSecs / 3600.0;
-    if (hrs < 8.0) {
-        return confirm(`You have worked ${hrs.toFixed(1)} hours so far (less than the standard 8-hour shift). Are you sure you want to punch out now?`);
+// ── Confirmation for Punch-out (< 9 hours warning) ──
+function handlePunchOutConfirm() {
+    const secs = {{ elapsed_seconds or 0 }};
+    const hrs = secs / 3600.0;
+    if (hrs < 9.0) {
+        return confirm(`You have worked ${hrs.toFixed(1)} hours so far (less than the standard 9-hour shift). Are you sure you want to punch out now?`);
     }
     return confirm("Confirm punch-out? Your shift will be recorded for today.");
 }
 
-// ── View Switching (Tabs) ──
-function switchAttView(view) {
-    document.querySelectorAll('.att-view-pane').forEach(el => el.classList.remove('active'));
-    document.querySelectorAll('.att-nav-pill').forEach(btn => btn.classList.remove('active'));
+// ── Tab Switching ──
+function setTab(name) {
+    document.querySelectorAll('.att-tab-view').forEach(v => v.classList.remove('active'));
+    document.querySelectorAll('.att-pill-btn').forEach(b => b.classList.remove('active'));
 
-    const activePane = document.getElementById('view-' + view);
-    const activeTab = document.getElementById('tab-' + view);
-    if (activePane) activePane.classList.add('active');
-    if (activeTab) activeTab.classList.add('active');
+    const targetView = document.getElementById('tab-view-' + name);
+    const targetPill = document.getElementById('pill-' + name);
+    if (targetView) targetView.classList.add('active');
+    if (targetPill) targetPill.classList.add('active');
 
-    if (view === 'chart') loadChart();
-    if (view === 'tracker') trackerInit();
+    if (name === 'chart') initChart();
+    if (name === 'tracker') initTracker();
 }
 
-// ── Search & Filter in Attendance Records Table ──
-function filterAttTable() {
-    const q = (document.getElementById('att-table-search').value || '').toLowerCase();
-    const rows = document.querySelectorAll('#att-records-tbl tbody tr');
-    rows.forEach(tr => {
-        const text = tr.innerText.toLowerCase();
-        tr.style.display = text.includes(q) ? '' : 'none';
+// ── Filter Attendance Table ──
+function filterTable() {
+    const q = (document.getElementById('table-search-input').value || '').toLowerCase();
+    const rows = document.querySelectorAll('#main-attendance-table tbody tr');
+    rows.forEach(r => {
+        r.style.display = r.innerText.toLowerCase().includes(q) ? '' : 'none';
     });
 }
 
 // ── Regularization Form Mode ──
-function setReqMode(mode) {
-    document.getElementById('request_type_input').value = mode;
-    const chipForgot = document.getElementById('chip-forgot-logout');
-    const chipMissed = document.getElementById('chip-missed-punch');
-    const loginHint = document.getElementById('req_login_hint');
+function setMode(mode) {
+    document.getElementById('form_request_type').value = mode;
+    const chipForgot = document.getElementById('chip-forgot');
+    const chipMissed = document.getElementById('chip-missed');
+    const hint = document.getElementById('form_login_hint');
 
     if (mode === 'forgot_logout') {
         chipForgot.classList.add('active');
         chipMissed.classList.remove('active');
-        if (loginHint) loginHint.textContent = '(Optional if exists)';
+        if (hint) hint.textContent = '(Optional if exists)';
     } else {
         chipMissed.classList.add('active');
         chipForgot.classList.remove('active');
-        if (loginHint) loginHint.textContent = '(Required)';
+        if (hint) hint.textContent = '(Required)';
     }
-    calcReqHours();
+    recalcHours();
 }
 
-function setQuickReason(text) {
-    const r = document.getElementById('req_reason');
-    if (r) r.value = text;
+function setReason(txt) {
+    const r = document.getElementById('form_reason');
+    if (r) r.value = txt;
 }
 
-function calcReqHours() {
-    const loginVal = document.getElementById('req_login').value;
-    const logoutVal = document.getElementById('req_logout').value;
-    const isNextDay = document.getElementById('is_next_day').checked;
-    const previewEl = document.getElementById('calc_hours_val');
-    if (!previewEl) return;
+function recalcHours() {
+    const inVal = document.getElementById('form_login').value;
+    const outVal = document.getElementById('form_logout').value;
+    const isNextDay = document.getElementById('form_next_day').checked;
+    const resEl = document.getElementById('form_calc_result');
+    if (!resEl) return;
 
-    if (!logoutVal) {
-        previewEl.textContent = '-- hrs';
+    if (!outVal) {
+        resEl.textContent = '-- hrs';
         return;
     }
 
-    const inTime = loginVal || '09:00';
-    const [ih, im] = inTime.split(':').map(Number);
-    const [oh, om] = logoutVal.split(':').map(Number);
+    const startStr = inVal || '09:00';
+    const [ih, im] = startStr.split(':').map(Number);
+    const [oh, om] = outVal.split(':').map(Number);
 
     let startMins = ih * 60 + im;
     let endMins = oh * 60 + om;
@@ -1376,35 +1335,37 @@ function calcReqHours() {
     }
 
     const diff = (endMins - startMins) / 60.0;
-    previewEl.textContent = diff > 0 ? `${diff.toFixed(2)} hrs` : '-- hrs';
+    resEl.textContent = diff > 0 ? `${diff.toFixed(2)} hrs` : '-- hrs';
 }
 
-// ── 30-Day Daily Hours Chart ──
-let chartLoaded = false;
-function loadChart() {
-    if (chartLoaded) return;
-    const container = document.getElementById('att-chart-container');
+// ── 30-Day Chart with 9h Reference Line ──
+let _chartReady = false;
+function initChart() {
+    if (_chartReady) return;
+    const container = document.getElementById('chart-mount');
     if (!container) return;
 
     fetch('/api/attendance/chart')
         .then(r => r.json())
         .then(data => {
-            chartLoaded = true;
+            _chartReady = true;
             if (!data || !data.length) {
                 container.innerHTML = '<div style="color:var(--muted);font-size:13px;width:100%;text-align:center;padding:40px 0">No attendance data recorded yet</div>';
                 return;
             }
             const maxH = Math.max(12, ...data.map(d => d.hours));
-            const targetBottom = Math.round((8.0 / maxH) * 120);
-            const line = document.getElementById('att-chart-target-line');
-            if (line) line.style.bottom = (targetBottom + 24) + 'px';
+            const targetHeightPx = Math.round((9.0 / maxH) * 120);
 
-            let html = line ? line.outerHTML : '';
+            let html = `
+                <div style="position:absolute;left:0;right:0;bottom:${targetHeightPx + 24}px;border-top:1px dashed var(--accent2);opacity:0.6;pointer-events:none;z-index:1">
+                    <span style="position:absolute;right:8px;top:-13px;font-size:10px;color:var(--accent2);font-family:var(--mono)">9.0h Target</span>
+                </div>`;
+
             data.forEach(d => {
                 const h = Math.max(4, Math.round((d.hours / maxH) * 120));
                 const dt = new Date(d.date);
                 const lbl = `${dt.getDate()}/${dt.getMonth() + 1}`;
-                const barColor = d.hours >= 8.0 ? 'var(--success)' : 'var(--accent)';
+                const barColor = d.hours >= 9.0 ? 'var(--success)' : 'var(--accent)';
                 html += `
                     <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;position:relative;z-index:2">
                         <div style="font-size:10px;font-weight:700;font-family:var(--mono);color:var(--text)">${d.hours.toFixed(1)}</div>
@@ -1422,38 +1383,38 @@ function loadChart() {
         });
 }
 
-// ── Toast Notifications ──
-let _tTimer = null;
-function attToast(msg, type='ok') {
-    const t = document.getElementById('att-toast');
-    if (!t) return;
-    t.textContent = msg;
-    t.className = 'att-toast show ' + type;
-    clearTimeout(_tTimer);
-    _tTimer = setTimeout(() => t.classList.remove('show'), 3200);
+// ── Toast System ──
+let _tHandle = null;
+function notify(msg, type='ok') {
+    const el = document.getElementById('att-toast-msg');
+    if (!el) return;
+    el.textContent = msg;
+    el.className = 'att-toast show ' + type;
+    clearTimeout(_tHandle);
+    _tHandle = setTimeout(() => el.classList.remove('show'), 3000);
 }
 
 // ── Admin Edit Modal ──
-let _editingLogId = null;
-function openEditLogModal(id, loginTime, logoutTime, hours) {
-    _editingLogId = id;
-    document.getElementById('log-edit-login').value = loginTime || '';
-    document.getElementById('log-edit-logout').value = logoutTime || '';
-    document.getElementById('log-edit-hours').value = hours || '';
-    document.getElementById('log-edit-err').style.display = 'none';
-    document.getElementById('log-edit-modal').style.display = 'flex';
+let _currEditId = null;
+function openAdminEditModal(id, inTime, outTime, hrs) {
+    _currEditId = id;
+    document.getElementById('admin-edit-login').value = inTime || '';
+    document.getElementById('admin-edit-logout').value = outTime || '';
+    document.getElementById('admin-edit-hours').value = hrs || '';
+    document.getElementById('admin-edit-error').style.display = 'none';
+    document.getElementById('modal-admin-edit').style.display = 'flex';
 }
-function closeLogEditModal() {
-    document.getElementById('log-edit-modal').style.display = 'none';
-    _editingLogId = null;
+function closeAdminEditModal() {
+    document.getElementById('modal-admin-edit').style.display = 'none';
+    _currEditId = null;
 }
-async function saveLogEdit() {
-    if (!_editingLogId) return;
-    const login = document.getElementById('log-edit-login').value;
-    const logout = document.getElementById('log-edit-logout').value;
-    const hours = document.getElementById('log-edit-hours').value;
-    const errEl = document.getElementById('log-edit-err');
-    errEl.style.display = 'none';
+async function saveAdminEdit() {
+    if (!_currEditId) return;
+    const login = document.getElementById('admin-edit-login').value;
+    const logout = document.getElementById('admin-edit-logout').value;
+    const hours = document.getElementById('admin-edit-hours').value;
+    const err = document.getElementById('admin-edit-error');
+    err.style.display = 'none';
 
     const payload = {};
     if (login) payload.loginTime = login;
@@ -1461,78 +1422,78 @@ async function saveLogEdit() {
     if (hours !== '') payload.hours = parseFloat(hours);
 
     try {
-        const res = await fetch(`/api/attendance/logs/${_editingLogId}/edit`, {
+        const res = await fetch(`/api/attendance/logs/${_currEditId}/edit`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         });
         const d = await res.json();
         if (!d.success) {
-            errEl.textContent = d.message || 'Save failed';
-            errEl.style.display = 'block';
+            err.textContent = d.message || 'Save failed';
+            err.style.display = 'block';
             return;
         }
-        closeLogEditModal();
-        attToast('Log updated successfully', 'ok');
+        closeAdminEditModal();
+        notify('Log updated successfully', 'ok');
         location.reload();
     } catch (e) {
-        errEl.textContent = 'Network error';
-        errEl.style.display = 'block';
+        err.textContent = 'Network error';
+        err.style.display = 'block';
     }
 }
 
-async function deleteLog(id) {
-    if (!confirm('Are you sure you want to delete this attendance log? This cannot be undone.')) return;
+async function deleteAttendanceLog(id) {
+    if (!confirm('Are you sure you want to delete this attendance record?')) return;
     try {
         const res = await fetch(`/api/attendance/logs/${id}/delete`, { method: 'POST' });
         const d = await res.json();
         if (d.success) {
-            attToast('Log deleted', 'ok');
+            notify('Log deleted', 'ok');
             location.reload();
         } else {
-            attToast(d.message || 'Delete failed', 'err');
+            notify(d.message || 'Delete failed', 'err');
         }
-    } catch (e) {
-        attToast('Network error', 'err');
+    } catch(e) {
+        notify('Network error', 'err');
     }
 }
 
 // ── Admin Tracker Functions ──
 {% if session.get('role') == 'admin' %}
-let TRK_USERS = [];
-function trackerInit() {
-    const sel = document.getElementById('trk-month');
+let ALL_USERS = [];
+function initTracker() {
+    const sel = document.getElementById('trk-month-select');
     if (!sel || sel.dataset.init) return;
     sel.dataset.init = '1';
     const now = new Date();
     let opts = '';
     for (let m = 0; m < 12; m++) {
         const d = new Date(now.getFullYear(), m + 1, 0);
-        const label = d.toLocaleString('en', { month: 'long' }) + ' ' + now.getFullYear();
-        opts += `<option value="${now.getFullYear()}-${String(m+1).padStart(2,'0')}" ${m === now.getMonth() ? 'selected' : ''}>${label}</option>`;
+        const lbl = d.toLocaleString('en', { month: 'long' }) + ' ' + now.getFullYear();
+        opts += `<option value="${now.getFullYear()}-${String(m+1).padStart(2,'0')}" ${m === now.getMonth() ? 'selected' : ''}>${lbl}</option>`;
     }
     sel.innerHTML = opts;
-    trackerLoadUsers();
-    trackerLoad();
+    loadTrackerUsers();
+    loadTrackerData();
 }
 
-async function trackerLoadUsers() {
-    const sel = document.getElementById('trk-user');
+async function loadTrackerUsers() {
+    const sel = document.getElementById('trk-user-select');
     if (!sel) return;
     try {
         const res = await fetch('/api/attendance/tracker/all-users');
-        TRK_USERS = await res.json();
+        ALL_USERS = await res.json();
         sel.innerHTML = '<option value="">All Users</option>' +
-            TRK_USERS.map(u => `<option value="${u.id}">${u.full_name} (${u.email})</option>`).join('');
+            ALL_USERS.map(u => `<option value="${u.id}">${u.full_name} (${u.email})</option>`).join('');
     } catch(e){}
 }
 
-async function trackerLoad() {
-    const monthVal = (document.getElementById('trk-month') || {}).value;
+async function loadTrackerData() {
+    const monthVal = (document.getElementById('trk-month-select') || {}).value;
     if (!monthVal) return;
     const [year, month] = monthVal.split('-').map(Number);
-    const userId = (document.getElementById('trk-user') || {}).value;
-    const body = document.getElementById('trk-body');
+    const userId = (document.getElementById('trk-user-select') || {}).value;
+    const body = document.getElementById('tracker-body');
     body.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--muted)">Loading...</td></tr>';
 
     try {
@@ -1547,21 +1508,21 @@ async function trackerLoad() {
         }
 
         body.innerHTML = logs.map(r => {
-            const loginDT = r.login_time ? r.login_time.substring(0, 16) : '';
-            const logoutDT = r.logout_time ? r.logout_time.substring(0, 16) : '';
+            const inDT = r.login_time ? r.login_time.substring(0, 16) : '';
+            const outDT = r.logout_time ? r.logout_time.substring(0, 16) : '';
             const hrs = r.hours_spent != null ? parseFloat(r.hours_spent).toFixed(2) : '—';
             const status = r.logout_time ? '<span class="badge badge-success">Completed</span>' : '<span class="badge badge-warning">Active</span>';
             return `
                 <tr data-log-id="${r.id}">
                     <td style="font-family:var(--mono);font-size:12px">${r.login_date}</td>
                     <td style="font-weight:600">${r.full_name}</td>
-                    <td><input type="datetime-local" class="form-control trk-login" value="${loginDT}" style="width:190px;font-size:12px;padding:4px 8px"></td>
-                    <td><input type="datetime-local" class="form-control trk-logout" value="${logoutDT}" style="width:190px;font-size:12px;padding:4px 8px"></td>
+                    <td><input type="datetime-local" class="form-control trk-row-in" value="${inDT}" style="width:190px;font-size:12px;padding:4px 8px"></td>
+                    <td><input type="datetime-local" class="form-control trk-row-out" value="${outDT}" style="width:190px;font-size:12px;padding:4px 8px"></td>
                     <td style="font-family:var(--mono);font-weight:700;color:var(--accent2)">${hrs}</td>
                     <td>${status}</td>
                     <td>
-                        <button class="btn btn-primary btn-sm" onclick="trackerSaveRow(${r.id})" title="Save"><i class="fa-solid fa-check"></i></button>
-                        <button class="btn btn-danger btn-sm" onclick="deleteLog(${r.id})" title="Delete"><i class="fa-solid fa-trash"></i></button>
+                        <button class="btn btn-primary btn-sm" onclick="saveTrackerRow(${r.id})" title="Save"><i class="fa-solid fa-check"></i></button>
+                        <button class="btn btn-danger btn-sm" onclick="deleteAttendanceLog(${r.id})" title="Delete"><i class="fa-solid fa-trash"></i></button>
                     </td>
                 </tr>`;
         }).join('');
@@ -1570,69 +1531,69 @@ async function trackerLoad() {
     }
 }
 
-async function trackerSaveRow(logId) {
+async function saveTrackerRow(logId) {
     const row = document.querySelector(`tr[data-log-id="${logId}"]`);
     if (!row) return;
-    const login = row.querySelector('.trk-login').value;
-    const logout = row.querySelector('.trk-logout').value;
+    const inVal = row.querySelector('.trk-row-in').value;
+    const outVal = row.querySelector('.trk-row-out').value;
     try {
         const res = await fetch(`/api/attendance/tracker/${logId}/set`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ loginTime: login, logoutTime: logout })
+            body: JSON.stringify({ loginTime: inVal, logoutTime: outVal })
         });
         const d = await res.json();
         if (d.success) {
-            attToast('Log updated', 'ok');
-            trackerLoad();
+            notify('Log updated', 'ok');
+            loadTrackerData();
         } else {
-            attToast(d.message || 'Save failed', 'err');
+            notify(d.message || 'Save failed', 'err');
         }
-    } catch(e) { attToast('Network error', 'err'); }
+    } catch(e) { notify('Network error', 'err'); }
 }
 
-function trackerOpenCreate() {
-    const sel = document.getElementById('trk-create-user');
-    if (sel && TRK_USERS.length) {
-        sel.innerHTML = TRK_USERS.map(u => `<option value="${u.id}">${u.full_name}</option>`).join('');
+function openTrackerCreate() {
+    const sel = document.getElementById('trk-create-user-id');
+    if (sel && ALL_USERS.length) {
+        sel.innerHTML = ALL_USERS.map(u => `<option value="${u.id}">${u.full_name}</option>`).join('');
     }
-    document.getElementById('trk-create-login').value = '';
-    document.getElementById('trk-create-logout').value = '';
-    document.getElementById('trk-create-err').style.display = 'none';
-    document.getElementById('trk-create-modal').style.display = 'flex';
+    document.getElementById('trk-create-in').value = '';
+    document.getElementById('trk-create-out').value = '';
+    document.getElementById('trk-create-error').style.display = 'none';
+    document.getElementById('modal-trk-create').style.display = 'flex';
 }
-function trackerCloseCreate() {
-    document.getElementById('trk-create-modal').style.display = 'none';
+function closeTrackerCreate() {
+    document.getElementById('modal-trk-create').style.display = 'none';
 }
-async function trackerSaveCreate() {
-    const userId = document.getElementById('trk-create-user').value;
-    const login = document.getElementById('trk-create-login').value;
-    const logout = document.getElementById('trk-create-logout').value;
-    const errEl = document.getElementById('trk-create-err');
-    errEl.style.display = 'none';
-    if (!userId || !login) {
-        errEl.textContent = 'User and login time required';
-        errEl.style.display = 'block';
+async function submitTrackerCreate() {
+    const uid = document.getElementById('trk-create-user-id').value;
+    const inVal = document.getElementById('trk-create-in').value;
+    const outVal = document.getElementById('trk-create-out').value;
+    const err = document.getElementById('trk-create-error');
+    err.style.display = 'none';
+    if (!uid || !inVal) {
+        err.textContent = 'User and login time are required';
+        err.style.display = 'block';
         return;
     }
     try {
         const res = await fetch('/api/attendance/tracker/create', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId: parseInt(userId), loginTime: login, logoutTime: logout || '' })
+            body: JSON.stringify({ userId: parseInt(uid), loginTime: inVal, logoutTime: outVal || '' })
         });
         const d = await res.json();
         if (d.success) {
-            trackerCloseCreate();
-            attToast('Log created', 'ok');
-            trackerLoad();
+            closeTrackerCreate();
+            notify('Log created', 'ok');
+            loadTrackerData();
         } else {
-            errEl.textContent = d.message || 'Create failed';
-            errEl.style.display = 'block';
+            err.textContent = d.message || 'Create failed';
+            err.style.display = 'block';
         }
     } catch(e) {
-        errEl.textContent = 'Network error';
-        errEl.style.display = 'block';
+        err.textContent = 'Network error';
+        err.style.display = 'block';
     }
 }
 {% endif %}

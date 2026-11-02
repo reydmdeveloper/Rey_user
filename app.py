@@ -2041,6 +2041,40 @@ def get_word_templates_dir():
     return os.path.join(sys_drive + os.sep, 'Users', system_name, 'AppData', 'Roaming', 'Microsoft', 'Templates')
 
 
+def get_word_startup_dir():
+    """Determine the active Microsoft Word STARTUP directory.
+    Uses the custom session directory if selected; otherwise defaults to %APPDATA%/Microsoft/Word/STARTUP."""
+    import platform
+    if platform.system() != 'Windows':
+        return "%APPDATA%\\Microsoft\\Word\\STARTUP"
+        
+    try:
+        from flask import session
+        custom_dir = session.get('custom_startup_dir')
+        if custom_dir:
+            return custom_dir
+    except RuntimeError:
+        pass
+    except Exception:
+        pass
+        
+    appdata_dir = os.environ.get('APPDATA')
+    if appdata_dir:
+        return os.path.join(appdata_dir, 'Microsoft', 'Word', 'STARTUP')
+        
+    # Manual fallback if APPDATA env var is not set
+    system_name = os.environ.get('USERNAME')
+    if not system_name:
+        try:
+            import getpass
+            system_name = getpass.getuser()
+        except Exception:
+            system_name = "Default"
+    sys_drive = os.environ.get('SystemDrive', 'C:')
+    return os.path.join(sys_drive + os.sep, 'Users', system_name, 'AppData', 'Roaming', 'Microsoft', 'Word', 'STARTUP')
+
+
+
 def get_admin_setting(key, default=None):
     """Helper to get a value from admin_settings table."""
     conn = get_db()
@@ -2306,6 +2340,10 @@ def macromanager():
     local_files = []
     system_name = None
     
+    startup_path = None
+    startup_exists = False
+    startup_files = []
+    
     templates_dir = get_word_templates_dir()
     if templates_dir:
         local_path = os.path.join(templates_dir, 'Normal.dotm').replace('/', '\\')
@@ -2353,11 +2391,49 @@ def macromanager():
                             pass
                 local_files.sort(key=lambda x: x['name'].lower())
 
+    # STARTUP directory processing (%appdata%\Microsoft\Word\STARTUP)
+    startup_dir = get_word_startup_dir()
+    if startup_dir:
+        startup_path = startup_dir.replace('/', '\\')
+        if is_windows and os.path.exists(startup_dir):
+            startup_exists = True
+            try:
+                for file in os.listdir(startup_dir):
+                    lower_file = file.lower()
+                    file_path = os.path.join(startup_dir, file)
+                    is_dir = os.path.isdir(file_path)
+                    
+                    if file.startswith('~$') or '.bak' in lower_file or 'startup_backup' in lower_file:
+                        continue
+                        
+                    try:
+                        stat_info = os.stat(file_path)
+                        size_bytes = stat_info.st_size
+                        modified_time = datetime.fromtimestamp(stat_info.st_mtime)
+                        startup_files.append({
+                            'name': file,
+                            'is_dir': is_dir,
+                            'size': f"{size_bytes / 1024:.1f} KB" if (not is_dir and size_bytes > 0) else "0 KB" if not is_dir else "--",
+                            'size_bytes': size_bytes if not is_dir else 0,
+                            'modified': modified_time.strftime("%b %d, %Y %I:%M %p")
+                        })
+                    except Exception:
+                        pass
+                startup_files.sort(key=lambda x: x['name'].lower())
+            except Exception as e:
+                print(f"[ERROR] Failed to list startup files: {e}")
+
     conn = get_db()
     cur = conn.cursor(dictionary=True)
     cur.execute("""
         SELECT mf.id, mf.filename, mf.uploaded_at, u.full_name as uploader_name, mf.uploaded_by,
-               (mf.ui_data IS NOT NULL AND LENGTH(mf.ui_data) > 0) AS has_ui
+               (mf.ui_data IS NOT NULL AND LENGTH(mf.ui_data) > 0) AS has_ui,
+               (mf.filename LIKE '%.zip' AND (
+                   LOCATE('STARTUP/', mf.file_data) > 0 OR 
+                   LOCATE('startup/', mf.file_data) > 0 OR 
+                   LOCATE('__STARTUP__/', mf.file_data) > 0 OR
+                   LOCATE('__startup__/', mf.file_data) > 0
+               )) AS has_startup
         FROM macro_files mf
         LEFT JOIN users u ON mf.uploaded_by = u.id
         ORDER BY mf.uploaded_at DESC
@@ -2400,6 +2476,9 @@ def macromanager():
         local_exists=local_exists,
         local_backup_exists=local_backup_exists,
         local_files=local_files,
+        startup_path=startup_path,
+        startup_exists=startup_exists,
+        startup_files=startup_files,
         files=files,
         word_running_id=word_running_id,
         user_requests=user_requests,
@@ -2449,6 +2528,46 @@ def macromanager_reset_path():
     flash("Templates directory path reset to system default / registry path.", "success")
     return redirect(url_for("macromanager"))
 
+@app.route("/macromanager/select_startup_path", methods=["POST"])
+@login_required
+@tool_required("macromanager")
+def macromanager_select_startup_path():
+    import platform
+    if platform.system() != 'Windows':
+        flash("Manual path selection is only supported on Windows.", "danger")
+        return redirect(url_for("macromanager"))
+        
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+        
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes("-topmost", True)
+        
+        selected_dir = filedialog.askdirectory(title="Select Microsoft Word STARTUP Directory")
+        root.destroy()
+        
+        if selected_dir:
+            selected_dir = os.path.abspath(selected_dir.replace('/', os.sep))
+            session['custom_startup_dir'] = selected_dir
+            flash(f"Successfully connected and updated STARTUP directory to '{selected_dir}'.", "success")
+        else:
+            flash("No directory selected. Using default STARTUP path.", "info")
+            
+    except Exception as e:
+        flash(f"Failed to open directory browser: {str(e)}", "danger")
+        
+    return redirect(url_for("macromanager"))
+
+@app.route("/macromanager/reset_startup_path", methods=["POST"])
+@login_required
+@tool_required("macromanager")
+def macromanager_reset_startup_path():
+    session.pop('custom_startup_dir', None)
+    flash("STARTUP directory path reset to system default path (%appdata%\\Microsoft\\Word\\STARTUP).", "success")
+    return redirect(url_for("macromanager"))
+
 @app.route("/macromanager/export", methods=["POST"])
 @login_required
 @tool_required("macromanager")
@@ -2475,6 +2594,10 @@ def macromanager_export():
     if not os.path.exists(local_path):
         flash("No local MS Word Normal.dotm template file was found. Please ensure you have customized your Word settings or created macros first.", "danger")
         return redirect(url_for("macromanager"))
+
+    startup_dir = get_word_startup_dir()
+    if startup_dir and os.path.exists(startup_dir):
+        grant_permissions_recursive(startup_dir)
         
     # Attempt to read Ribbon/Taskbar UI customizations
     ui_data = None
@@ -2495,7 +2618,9 @@ def macromanager_export():
         
         # Build the zip archive in-memory
         zip_buffer = io.BytesIO()
+        startup_file_count = 0
         with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            # 1. Package Templates folder files
             for root, dirs, files in os.walk(templates_dir):
                 # Modify dirs in-place to prevent traversing excluded directories (like LiveContent and backups)
                 dirs[:] = [d for d in dirs if d.lower() != 'livecontent' and 'templates_backup' not in d.lower()]
@@ -2514,8 +2639,25 @@ def macromanager_export():
                     if os.path.exists(file_path):
                         rel_path = os.path.relpath(file_path, templates_dir).replace('\\', '/')
                         zip_file.write(file_path, rel_path)
+
+            # 2. Package STARTUP folder files (%appdata%\Microsoft\Word\STARTUP)
+            if startup_dir and os.path.exists(startup_dir):
+                for root, dirs, files in os.walk(startup_dir):
+                    dirs[:] = [d for d in dirs if 'startup_backup' not in d.lower()]
+                    for d in dirs:
+                        dir_path = os.path.join(root, d)
+                        rel_dir_path = 'STARTUP/' + os.path.relpath(dir_path, startup_dir).replace('\\', '/') + '/'
+                        zip_file.write(dir_path, rel_dir_path)
+                    for file in files:
+                        if file.startswith('~$') or '.bak' in file.lower() or file.endswith('.zip') or 'startup_backup' in file.lower():
+                            continue
+                        file_path = os.path.join(root, file)
+                        if os.path.exists(file_path):
+                            rel_path = 'STARTUP/' + os.path.relpath(file_path, startup_dir).replace('\\', '/')
+                            zip_file.write(file_path, rel_path)
+                            startup_file_count += 1
             
-            # Package the Word.officeUI file into the zip under a special folder
+            # 3. Package the Word.officeUI file into the zip under a special folder
             if ui_path and os.path.exists(ui_path) and ui_data:
                 zip_file.writestr('__OfficeUI__/Word.officeUI', ui_data)
                 
@@ -2534,8 +2676,9 @@ def macromanager_export():
         cur.close()
         conn.close()
         
-        ui_msg = " and Ribbon customizations (Word.officeUI)" if ui_data else " (no custom ribbon UI file found)"
-        flash(f"Successfully compiled, zipped and exported your active Templates folder{ui_msg} as '{filename}' and added it to the library. Users can now import & replace this on their computers.", "success")
+        ui_msg = " and Ribbon customizations (Word.officeUI)" if ui_data else ""
+        startup_msg = f", {startup_file_count} STARTUP add-in(s)" if startup_file_count > 0 else ""
+        flash(f"Successfully compiled, zipped and exported your active Templates folder{startup_msg}{ui_msg} as '{filename}' and added it to the library. Users can now import & replace this on their computers.", "success")
     except Exception as e:
         flash(f"Error exporting Templates folder: {str(e)}", "danger")
         
@@ -2570,6 +2713,21 @@ def macromanager_upload():
         flash("Template file too large. Maximum size is 15MB.", "danger")
         return redirect(url_for("macromanager"))
 
+    # Check for STARTUP add-in file (Optional)
+    startup_data = None
+    startup_filename = None
+    startup_file = request.files.get('startup_file')
+    if startup_file and startup_file.filename != '':
+        s_lower = startup_file.filename.lower()
+        if not (s_lower.endswith('.dotm') or s_lower.endswith('.dot') or s_lower.endswith('.dotx')):
+            flash("Invalid STARTUP add-in file type. Only Word template files (.dotm, .dot, .dotx) are allowed.", "danger")
+            return redirect(url_for("macromanager"))
+        startup_data = startup_file.read()
+        startup_filename = os.path.basename(startup_file.filename)
+        if len(startup_data) > 15 * 1024 * 1024:
+            flash("STARTUP add-in file too large. Maximum size is 15MB.", "danger")
+            return redirect(url_for("macromanager"))
+
     # Check for Ribbon UI customization file
     ui_data = None
     ui_file = request.files.get('ui_file')
@@ -2583,8 +2741,11 @@ def macromanager_upload():
             flash("UI file too large. Maximum size is 5MB.", "danger")
             return redirect(url_for("macromanager"))
 
-        # If it's a zip file, merge the UI file into the zip under the __OfficeUI__ folder
-        if filename_lower.endswith('.zip'):
+    saved_filename = file.filename
+
+    # If it's a zip file, merge any uploaded UI and STARTUP files into the zip
+    if filename_lower.endswith('.zip'):
+        if ui_data or startup_data:
             try:
                 import zipfile
                 import io
@@ -2592,29 +2753,54 @@ def macromanager_upload():
                 zip_out = io.BytesIO()
                 with zipfile.ZipFile(zip_in, 'r') as yin:
                     with zipfile.ZipFile(zip_out, 'w', zipfile.ZIP_DEFLATED) as yout:
-                        # Copy existing zip files except __OfficeUI__/Word.officeUI
                         for item in yin.infolist():
-                            if not item.filename.lower().startswith('__officeui__/'):
-                                yout.writestr(item, yin.read(item.filename))
-                        # Add or replace the UI data
-                        yout.writestr('__OfficeUI__/Word.officeUI', ui_data)
+                            # Skip existing UI entry if replaced
+                            if ui_data and item.filename.lower().startswith('__officeui__/'):
+                                continue
+                            # Skip existing startup entry if same name
+                            if startup_data and item.filename.lower() == f"startup/{startup_filename.lower()}":
+                                continue
+                            yout.writestr(item, yin.read(item.filename))
+                        if ui_data:
+                            yout.writestr('__OfficeUI__/Word.officeUI', ui_data)
+                        if startup_data:
+                            yout.writestr(f'STARTUP/{startup_filename}', startup_data)
                 file_data = zip_out.getvalue()
             except Exception as e:
-                flash(f"Error packing UI customization into zip archive: {str(e)}", "danger")
+                flash(f"Error packing customization into zip archive: {str(e)}", "danger")
                 return redirect(url_for("macromanager"))
+    elif startup_data or ui_data:
+        # If the main file is a standalone .dotm but STARTUP or UI was also supplied, bundle into a zip package
+        try:
+            import zipfile
+            import io
+            zip_out = io.BytesIO()
+            with zipfile.ZipFile(zip_out, 'w', zipfile.ZIP_DEFLATED) as yout:
+                yout.writestr(file.filename, file_data)
+                if startup_data:
+                    yout.writestr(f'STARTUP/{startup_filename}', startup_data)
+                if ui_data:
+                    yout.writestr('__OfficeUI__/Word.officeUI', ui_data)
+            file_data = zip_out.getvalue()
+            base_name = os.path.splitext(file.filename)[0]
+            saved_filename = f"{base_name}_Package.zip"
+        except Exception as e:
+            flash(f"Error creating package zip archive: {str(e)}", "danger")
+            return redirect(url_for("macromanager"))
         
     conn = get_db()
     cur = conn.cursor()
     cur.execute(
         "INSERT INTO macro_files (filename, file_data, ui_data, uploaded_by) VALUES (%s, %s, %s, %s)",
-        (file.filename, file_data, ui_data, session.get('user_id'))
+        (saved_filename, file_data, ui_data, session.get('user_id'))
     )
     conn.commit()
     cur.close()
     conn.close()
     
     ui_msg = " and custom Ribbon UI customization" if ui_data else ""
-    flash(f"Macro file '{file.filename}'{ui_msg} uploaded and imported successfully.", "success")
+    startup_msg = f" with STARTUP add-in '{startup_filename}'" if startup_data else ""
+    flash(f"Macro package '{saved_filename}'{startup_msg}{ui_msg} uploaded and imported successfully.", "success")
     return redirect(url_for("macromanager"))
 
 @app.route("/macromanager/download/<int:file_id>")
@@ -2678,6 +2864,76 @@ def macromanager_download_ui(file_id):
         mimetype='text/xml'
     )
 
+@app.route("/macromanager/download_startup/<int:file_id>")
+@login_required
+@tool_required("macromanager")
+def macromanager_download_startup(file_id):
+    if session.get('role') != 'admin':
+        flash("Only administrators are allowed to download macro files.", "danger")
+        return redirect(url_for("macromanager"))
+        
+    conn = get_db()
+    cur = conn.cursor(dictionary=True)
+    cur.execute("SELECT filename, file_data FROM macro_files WHERE id = %s", (file_id,))
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    
+    if not row or not row['file_data']:
+        flash("File not found.", "danger")
+        return redirect(url_for("macromanager"))
+        
+    if not row['filename'].lower().endswith('.zip'):
+        flash("No STARTUP add-in files found in this package.", "info")
+        return redirect(url_for("macromanager"))
+        
+    import io
+    import zipfile
+    from flask import send_file
+    
+    try:
+        startup_items = []
+        with zipfile.ZipFile(io.BytesIO(row['file_data']), 'r') as zf:
+            for item in zf.infolist():
+                norm = item.filename.replace('\\', '/')
+                clean = norm
+                while clean.startswith('/') or clean.startswith('../') or clean.startswith('./'):
+                    clean = clean[1:] if clean.startswith('/') else clean[3:] if clean.startswith('../') else clean[2:]
+                lower = clean.lower()
+                if lower.startswith('startup/') or lower.startswith('__startup__/'):
+                    rel = clean[len('startup/'):] if lower.startswith('startup/') else clean[len('__startup__/'):]
+                    rel = rel.strip('/')
+                    if rel and not item.is_dir():
+                        startup_items.append((rel, zf.read(item.filename)))
+                        
+        if not startup_items:
+            flash("No STARTUP folder add-in files found in this package.", "info")
+            return redirect(url_for("macromanager"))
+            
+        if len(startup_items) == 1:
+            name, data = startup_items[0]
+            mimetype = 'application/vnd.ms-word.template.macroEnabled.12' if name.lower().endswith('.dotm') else 'application/octet-stream'
+            return send_file(
+                io.BytesIO(data),
+                as_attachment=True,
+                download_name=os.path.basename(name),
+                mimetype=mimetype
+            )
+        else:
+            out_buf = io.BytesIO()
+            with zipfile.ZipFile(out_buf, 'w', zipfile.ZIP_DEFLATED) as oz:
+                for name, data in startup_items:
+                    oz.writestr(name, data)
+            return send_file(
+                io.BytesIO(out_buf.getvalue()),
+                as_attachment=True,
+                download_name="Word_STARTUP_Files.zip",
+                mimetype='application/zip'
+            )
+    except Exception as e:
+        flash(f"Error extracting STARTUP files: {str(e)}", "danger")
+        return redirect(url_for("macromanager"))
+
 def grant_permissions_recursive(path):
     """Recursively grant write permissions to a file or folder and all its contents."""
     import stat
@@ -2732,6 +2988,34 @@ def clear_templates_directory(templates_dir):
         except Exception as e:
             print(f"Warning: failed to delete {item_path}: {e}")
 
+def clear_startup_directory(startup_dir):
+    r"""Clean the Word STARTUP directory (%appdata%\Microsoft\Word\STARTUP), skipping backups and temp lock files."""
+    import shutil
+    import stat
+    if not os.path.exists(startup_dir):
+        return
+    for item in os.listdir(startup_dir):
+        item_path = os.path.join(startup_dir, item)
+        if item.startswith('~$') or 'backup_' in item.lower() or '.bak' in item.lower():
+            continue
+        try:
+            if os.path.isdir(item_path):
+                def remove_readonly(func, path, excinfo):
+                    try:
+                        os.chmod(path, stat.S_IWRITE)
+                    except Exception:
+                        pass
+                    func(path)
+                shutil.rmtree(item_path, onerror=remove_readonly)
+            else:
+                try:
+                    os.chmod(item_path, stat.S_IWRITE)
+                except Exception:
+                    pass
+                os.remove(item_path)
+        except Exception as e:
+            print(f"Warning: failed to delete startup item {item_path}: {e}")
+
 @app.route("/macromanager/apply/<int:file_id>", methods=["POST"])
 @login_required
 @tool_required("macromanager")
@@ -2771,6 +3055,15 @@ def macromanager_apply(file_id):
         return redirect(url_for("macromanager"))
         
     grant_permissions_recursive(templates_dir)
+
+    startup_dir = get_word_startup_dir()
+    if startup_dir:
+        try:
+            if not os.path.exists(startup_dir):
+                os.makedirs(startup_dir, exist_ok=True)
+            grant_permissions_recursive(startup_dir)
+        except Exception as se:
+            print(f"[WARNING] Could not prepare startup directory: {se}")
 
     # Check if Microsoft Word is running (winword.exe)
     import subprocess
@@ -2813,12 +3106,12 @@ def macromanager_apply(file_id):
     try:
         # Create templates directory if it does not exist
         if not os.path.exists(templates_dir):
-            os.makedirs(templates_dir)
+            os.makedirs(templates_dir, exist_ok=True)
             
         is_zip = row['filename'].lower().endswith('.zip')
         
         if is_zip:
-            # 1. Back up existing templates directory
+            # 1. Back up existing templates directory AND STARTUP directory
             import zipfile
             import shutil
             import stat
@@ -2828,41 +3121,73 @@ def macromanager_apply(file_id):
             
             try:
                 with zipfile.ZipFile(backup_path, 'w', zipfile.ZIP_DEFLATED) as backup_zip:
+                    # Backup templates directory
                     for root, dirs, files in os.walk(templates_dir):
-                        # Modify dirs in-place to prevent traversing excluded directories (like LiveContent and backups)
                         dirs[:] = [d for d in dirs if d.lower() != 'livecontent' and 'templates_backup' not in d.lower()]
-                        
-                        # Write directory entries explicitly to preserve empty folders in backup
                         for d in dirs:
                             dir_path = os.path.join(root, d)
                             rel_dir_path = os.path.relpath(dir_path, templates_dir).replace('\\', '/') + '/'
                             backup_zip.write(dir_path, rel_dir_path)
                             
                         for file in files:
-                            # Exclude temp files, zip packages, and existing backups
                             if file.startswith('~$') or '.bak' in file or file.endswith('.zip') or 'templates_backup' in file.lower():
                                 continue
                             file_path = os.path.join(root, file)
                             if os.path.exists(file_path):
                                 rel_path = os.path.relpath(file_path, templates_dir).replace('\\', '/')
                                 backup_zip.write(file_path, rel_path)
-                backup_msg = f"A backup of your old templates folder was saved as 'Templates_Backup_{backup_timestamp}.zip'."
+
+                    # Backup STARTUP directory (%appdata%\Microsoft\Word\STARTUP)
+                    if startup_dir and os.path.exists(startup_dir):
+                        for root, dirs, files in os.walk(startup_dir):
+                            dirs[:] = [d for d in dirs if 'startup_backup' not in d.lower()]
+                            for d in dirs:
+                                dir_path = os.path.join(root, d)
+                                rel_dir_path = 'STARTUP/' + os.path.relpath(dir_path, startup_dir).replace('\\', '/') + '/'
+                                backup_zip.write(dir_path, rel_dir_path)
+                            for file in files:
+                                if file.startswith('~$') or '.bak' in file.lower() or file.endswith('.zip') or 'startup_backup' in file.lower():
+                                    continue
+                                file_path = os.path.join(root, file)
+                                if os.path.exists(file_path):
+                                    rel_path = 'STARTUP/' + os.path.relpath(file_path, startup_dir).replace('\\', '/')
+                                    backup_zip.write(file_path, rel_path)
+
+                backup_msg = f"A backup of your old templates and STARTUP folder was saved as 'Templates_Backup_{backup_timestamp}.zip'."
             except Exception as be:
-                backup_msg = f" (Warning: templates folder backup failed: {str(be)})"
+                backup_msg = f" (Warning: backup failed: {str(be)})"
                 
             # 2. Extract zip package
             zip_buffer = io.BytesIO(row['file_data'])
             ui_restore_msg = ""
+            startup_restore_msg = ""
+            startup_count = 0
             
+            # Check if zip contains STARTUP files
+            has_startup_in_zip = False
+            with zipfile.ZipFile(zip_buffer, 'r') as zip_check:
+                for member in zip_check.infolist():
+                    m_norm = member.filename.replace('\\', '/').strip('/')
+                    while m_norm.startswith('../') or m_norm.startswith('./'):
+                        m_norm = m_norm[3:] if m_norm.startswith('../') else m_norm[2:]
+                    m_lower = m_norm.lower()
+                    if m_lower.startswith('startup/') or m_lower.startswith('__startup__/') or '/startup/' in m_lower or '/__startup__/' in m_lower:
+                        has_startup_in_zip = True
+                        break
+
+            # If zip contains STARTUP files, clean old startup files (preserving lock and backup files)
+            if has_startup_in_zip and startup_dir and os.path.exists(startup_dir):
+                clear_startup_directory(startup_dir)
+
             # Clear old templates first (excluding LiveContent and backups)
             clear_templates_directory(templates_dir)
             
             ui_backed_up = False
             
             with zipfile.ZipFile(zip_buffer, 'r') as zip_file:
-                # First, find if there is a common top-level directory prefix for non-UI template files
+                # Find common top-level directory prefix for non-UI, non-STARTUP template files
                 members = zip_file.infolist()
-                non_ui_files = []
+                non_ui_startup_files = []
                 for member in members:
                     norm_name = member.filename.replace('\\', '/')
                     if norm_name.endswith('/') or member.is_dir():
@@ -2878,19 +3203,20 @@ def macromanager_apply(file_id):
                         elif clean_name.startswith('./'):
                             clean_name = clean_name[2:]
                             
-                    if not clean_name.lower().startswith('__officeui__/'):
-                        non_ui_files.append(clean_name)
+                    lower_clean = clean_name.lower()
+                    if not lower_clean.startswith('__officeui__/') and not lower_clean.startswith('startup/') and not lower_clean.startswith('__startup__/'):
+                        non_ui_startup_files.append(clean_name)
                 
                 common_prefix = ""
-                if non_ui_files:
-                    parts = non_ui_files[0].split('/')
+                if non_ui_startup_files:
+                    parts = non_ui_startup_files[0].split('/')
                     if len(parts) > 1:
                         first_seg = parts[0]
                         standard_folders = {'document themes', 'smartart graphics', 'livecontent', '1033'}
                         is_locale_folder = first_seg.isdigit() and len(first_seg) == 4
                         if first_seg.lower() not in standard_folders and not is_locale_folder:
                             all_share = True
-                            for f in non_ui_files:
+                            for f in non_ui_startup_files:
                                 if not f.startswith(first_seg + '/'):
                                     all_share = False
                                     break
@@ -2909,22 +3235,58 @@ def macromanager_apply(file_id):
                             clean_name = clean_name[3:]
                         elif clean_name.startswith('./'):
                             clean_name = clean_name[2:]
+
+                    inner_name = clean_name
+                    if common_prefix and inner_name.startswith(common_prefix):
+                        inner_name = inner_name[len(common_prefix):]
+                    lower_inner = inner_name.lower()
                             
-                    # Recreate directory entries (including empty folders)
+                    # Directory entries
                     if norm_name.endswith('/') or member.is_dir():
-                        rel_filename = clean_name
-                        if common_prefix and rel_filename.startswith(common_prefix):
-                            rel_filename = rel_filename[len(common_prefix):]
-                        rel_filename = rel_filename.rstrip('/')
-                        if rel_filename:
-                            target_dir = os.path.join(templates_dir, rel_filename.replace('/', os.sep))
-                            if not os.path.exists(target_dir):
-                                os.makedirs(target_dir)
+                        if lower_inner.startswith('startup/') or lower_inner.startswith('__startup__/'):
+                            if startup_dir:
+                                rel_dir = inner_name[len('startup/'):] if lower_inner.startswith('startup/') else inner_name[len('__startup__/'):]
+                                rel_dir = rel_dir.strip('/')
+                                if rel_dir:
+                                    target_dir = os.path.join(startup_dir, rel_dir.replace('/', os.sep))
+                                    if not os.path.exists(target_dir):
+                                        os.makedirs(target_dir, exist_ok=True)
+                        elif not lower_inner.startswith('__officeui__/'):
+                            rel_filename = inner_name.rstrip('/')
+                            if rel_filename:
+                                target_dir = os.path.join(templates_dir, rel_filename.replace('/', os.sep))
+                                if not os.path.exists(target_dir):
+                                    os.makedirs(target_dir, exist_ok=True)
+                        continue
+
+                    # STARTUP folder files (%appdata%\Microsoft\Word\STARTUP)
+                    if lower_inner.startswith('startup/') or lower_inner.startswith('__startup__/'):
+                        if not startup_dir:
+                            continue
+                        rel_filename = inner_name[len('startup/'):] if lower_inner.startswith('startup/') else inner_name[len('__startup__/'):]
+                        rel_filename = rel_filename.strip('/')
+                        if not rel_filename:
+                            continue
+                        target_path = os.path.join(startup_dir, rel_filename.replace('/', os.sep))
+                        target_d = os.path.dirname(target_path)
+                        if not os.path.exists(target_d):
+                            os.makedirs(target_d, exist_ok=True)
+                        member_data = zip_file.read(member.filename)
+                        if macro_password and member.filename.lower().endswith('.dotm'):
+                            member_data = protect_vba_project_in_dotm_bytes(member_data, macro_password)
+                        try:
+                            if os.path.exists(target_path):
+                                os.chmod(target_path, stat.S_IWRITE)
+                        except Exception:
+                            pass
+                        with open(target_path, 'wb') as sf:
+                            sf.write(member_data)
+                        startup_count += 1
                         continue
                         
                     # Check if this is the Word.officeUI file (case-insensitive)
-                    if clean_name.lower().startswith('__officeui__/'):
-                        ui_filename = clean_name[len('__officeui__/'):]
+                    if lower_inner.startswith('__officeui__/'):
+                        ui_filename = inner_name[len('__officeui__/'):]
                         if not ui_filename:
                             continue
                         localappdata = os.environ.get('LOCALAPPDATA')
@@ -2933,7 +3295,7 @@ def macromanager_apply(file_id):
                             ui_path = os.path.join(ui_dir, ui_filename)
                             try:
                                 if not os.path.exists(ui_dir):
-                                    os.makedirs(ui_dir)
+                                    os.makedirs(ui_dir, exist_ok=True)
                                 if os.path.exists(ui_path) and not ui_backed_up:
                                     try:
                                         os.chmod(ui_path, stat.S_IWRITE)
@@ -2955,22 +3317,24 @@ def macromanager_apply(file_id):
                                     ui_restore_msg += f" Ribbon and taskbar UI customizations ({ui_filename}) successfully restored."
                             except Exception as ue:
                                 ui_restore_msg = f" (Warning: failed to restore ribbon UI customizations: {str(ue)})"
-                    else:
-                        # Extract normal template folder files
-                        rel_filename = clean_name
-                        if common_prefix and clean_name.startswith(common_prefix):
-                            rel_filename = clean_name[len(common_prefix):]
+                        continue
+                    
+                    # Extract normal template folder files
+                    target_path = os.path.join(templates_dir, inner_name.replace('/', os.sep))
+                    target_dir = os.path.dirname(target_path)
+                    if not os.path.exists(target_dir):
+                        os.makedirs(target_dir, exist_ok=True)
                         
-                        target_path = os.path.join(templates_dir, rel_filename.replace('/', os.sep))
-                        target_dir = os.path.dirname(target_path)
-                        if not os.path.exists(target_dir):
-                            os.makedirs(target_dir)
-                            
-                        member_data = zip_file.read(member.filename)
-                        if macro_password and member.filename.lower().endswith('.dotm'):
-                            member_data = protect_vba_project_in_dotm_bytes(member_data, macro_password)
-                        with open(target_path, 'wb') as f:
-                            f.write(member_data)
+                    member_data = zip_file.read(member.filename)
+                    if macro_password and member.filename.lower().endswith('.dotm'):
+                        member_data = protect_vba_project_in_dotm_bytes(member_data, macro_password)
+                    try:
+                        if os.path.exists(target_path):
+                            os.chmod(target_path, stat.S_IWRITE)
+                    except Exception:
+                        pass
+                    with open(target_path, 'wb') as f:
+                        f.write(member_data)
                             
             if request_row_id:
                 conn = get_db()
@@ -2985,7 +3349,8 @@ def macromanager_apply(file_id):
                 conn.close()
                 
             session.pop("macro_word_running_id", None)
-            flash(f"Success! Imported and replaced the active Word templates folder using '{row['filename']}'. {backup_msg}{ui_restore_msg} Please restart Microsoft Word.", "success")
+            startup_restore_msg = f" and {startup_count} STARTUP add-in(s) restored" if startup_count > 0 else ""
+            flash(f"Success! Imported and replaced the active Word templates folder{startup_restore_msg} using '{row['filename']}'. {backup_msg}{ui_restore_msg} Please restart Microsoft Word.", "success")
             
         else:
             # Standard individual file replacement logic (.dotm)
@@ -3234,10 +3599,10 @@ def attendance():
         elapsed_hours = (now - active_session["login_time"]).total_seconds() / 3600.0
         if elapsed_hours >= 24:
             # Auto-close sessions that were abandoned past 24 hours
-            forced_logout = active_session["login_time"] + timedelta(hours=8)
+            forced_logout = active_session["login_time"] + timedelta(hours=9)
             cur.execute(
                 """UPDATE attendance_logs
-                   SET logout_time = %s, hours_spent = 8.0, status = 'forgot_logout',
+                   SET logout_time = %s, hours_spent = 9.0, status = 'forgot_logout',
                        notes = 'Auto-closed after 24h (Forgot logout)'
                    WHERE id = %s""",
                 (forced_logout, active_session["id"]),
@@ -3296,15 +3661,15 @@ def attendance():
     cur.close()
     conn.close()
 
-    # Standard shift target: 8 hours
+    # Standard shift target: 9 hours
     hours_elapsed = 0.0
-    hours_remaining = 8.0
+    hours_remaining = 9.0
     elapsed_seconds = 0
     if active_session:
         elapsed_seconds = max(0, int((now - active_session["login_time"]).total_seconds()))
         elapsed = elapsed_seconds / 3600.0
         hours_elapsed = round(elapsed, 2)
-        hours_remaining = round(max(0.0, 8.0 - elapsed), 2)
+        hours_remaining = round(max(0.0, 9.0 - elapsed), 2)
 
     return render_template(
         "attendance.html",
@@ -3332,7 +3697,7 @@ def attendance_login():
     Login / Punch-In:
       - If active session from today is still open: prompt already logged in.
       - If active session is from an earlier day (forgot to logout):
-        Auto-close the previous abandoned session with 8h / status 'forgot_logout',
+        Auto-close the previous abandoned session with 9h / status 'forgot_logout',
         allowing the user to punch in for today without being blocked!
       - If user already completed today's attendance: disallow duplicate punch.
       - Otherwise, create new attendance_logs row with login_date = today_ist(),
@@ -3353,10 +3718,10 @@ def attendance_login():
     if open_session:
         # Check if open session is from earlier date or very old (forgotten logout)
         if open_session["login_date"] < today or (now - open_session["login_time"]).total_seconds() > 57600:
-            prev_logout = open_session["login_time"] + timedelta(hours=8)
+            prev_logout = open_session["login_time"] + timedelta(hours=9)
             cur.execute(
                 """UPDATE attendance_logs
-                   SET logout_time = %s, hours_spent = 8.0, status = 'forgot_logout',
+                   SET logout_time = %s, hours_spent = 9.0, status = 'forgot_logout',
                        notes = 'Auto-closed on next shift login (Forgot logout)'
                    WHERE id = %s""",
                 (prev_logout, open_session["id"]),
@@ -3408,7 +3773,7 @@ def attendance_logout():
         Sets logout_time = now_ist(), calculates hours_spent = (logout_time - login_time).
         The attendance record's login_date remains the login date (e.g. today)!
         Attendance and hours are credited to the LOGIN DATE.
-      - Standard shift is 8 hours. No 9-hour block.
+      - Standard shift is 9 hours. Cross-midnight supported.
     """
     conn = get_db()
     cur = conn.cursor(dictionary=True)
