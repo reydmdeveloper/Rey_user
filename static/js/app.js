@@ -174,4 +174,28 @@ document.addEventListener('DOMContentLoaded', () => {
             if (e.target === modal) modal.classList.remove('show');
         });
     });
+// --- Device Verification (Laptop & PC Only) ---
+    function checkAndEnforceDevice() {
+        var ua = (navigator.userAgent || navigator.vendor || window.opera || '').toLowerCase();
+        var mobilePatterns = [
+            'android', 'webos', 'iphone', 'ipad', 'ipod', 'blackberry',
+            'iemobile', 'opera mini', 'mobile', 'tablet', 'silk', 'kindle',
+            'playbook', 'bb10', 'windows phone'
+        ];
+        var isMobileUA = mobilePatterns.some(function(p) { return ua.indexOf(p) !== -1; });
+        var isClientHintMobile = navigator.userAgentData && navigator.userAgentData.mobile;
+        var isIPad = (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        var hasTouch = (navigator.maxTouchPoints && navigator.maxTouchPoints > 0) || ('ontouchstart' in window);
+        var isCoarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+        var minDim = Math.min(window.screen.width, window.screen.height);
+        var maxDim = Math.max(window.screen.width, window.screen.height);
+
+        if (isMobileUA || isClientHintMobile || isIPad || (minDim > 0 && minDim < 600) || (hasTouch && isCoarse && maxDim <= 1180)) {
+            document.documentElement.classList.add('device-restricted-active');
+            window.__DEVICE_RESTRICTED__ = true;
+        }
+    }
+    checkAndEnforceDevice();
+    window.addEventListener('resize', checkAndEnforceDevice);
+    window.addEventListener('orientationchange', checkAndEnforceDevice);
 });

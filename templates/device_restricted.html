@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Access Restricted — REYDM</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            background: linear-gradient(135deg, #090d16 0%, #111827 50%, #0b1120 100%);
+            color: #f1f5f9;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            overflow-x: hidden;
+        }
+
+        .restricted-card {
+            background: rgba(17, 24, 39, 0.85);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(239, 68, 68, 0.35);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7),
+                        0 0 40px -10px rgba(239, 68, 68, 0.25);
+            border-radius: 20px;
+            max-width: 540px;
+            width: 100%;
+            padding: 40px 32px;
+            text-align: center;
+            position: relative;
+        }
+
+        .brand-logo-wrap {
+            margin-bottom: 24px;
+        }
+
+        .brand-logo {
+            max-height: 48px;
+            width: auto;
+            object-fit: contain;
+        }
+
+        .brand-text-fallback {
+            font-size: 28px;
+            font-weight: 800;
+            letter-spacing: 2px;
+            color: #3b82f6;
+        }
+
+        .restricted-icon-container {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 9999px;
+            padding: 16px 28px;
+            margin-bottom: 28px;
+            position: relative;
+        }
+
+        .device-icon-laptop {
+            font-size: 32px;
+            color: #10b981;
+        }
+
+        .divider-icon {
+            font-size: 16px;
+            color: #64748b;
+        }
+
+        .device-icon-mobile {
+            font-size: 32px;
+            color: #ef4444;
+            position: relative;
+        }
+
+        .ban-badge {
+            position: absolute;
+            top: -6px;
+            right: -8px;
+            background: #ef4444;
+            color: #ffffff;
+            border-radius: 50%;
+            width: 22px;
+            height: 22px;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+        }
+
+        .error-badge {
+            display: inline-block;
+            background: rgba(239, 68, 68, 0.15);
+            color: #f87171;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            padding: 6px 14px;
+            border-radius: 20px;
+            margin-bottom: 16px;
+        }
+
+        .error-title {
+            font-size: 24px;
+            font-weight: 800;
+            line-height: 1.3;
+            color: #ffffff;
+            margin-bottom: 16px;
+            letter-spacing: -0.5px;
+        }
+
+        .error-title .highlight {
+            color: #f87171;
+            display: block;
+            margin-top: 4px;
+        }
+
+        .error-message {
+            font-size: 15px;
+            line-height: 1.6;
+            color: #94a3b8;
+            margin-bottom: 28px;
+        }
+
+        .device-rules-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 28px;
+            text-align: left;
+        }
+
+        .rule-card {
+            padding: 14px 16px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .rule-card.allowed {
+            background: rgba(16, 185, 129, 0.08);
+            border: 1px solid rgba(16, 185, 129, 0.25);
+        }
+
+        .rule-card.allowed i {
+            color: #10b981;
+            font-size: 20px;
+        }
+
+        .rule-card.blocked {
+            background: rgba(239, 68, 68, 0.08);
+            border: 1px solid rgba(239, 68, 68, 0.25);
+        }
+
+        .rule-card.blocked i {
+            color: #ef4444;
+            font-size: 20px;
+        }
+
+        .rule-card-text strong {
+            display: block;
+            font-size: 13px;
+            color: #e2e8f0;
+        }
+
+        .rule-card-text span {
+            font-size: 12px;
+            color: #64748b;
+        }
+
+        .instruction-box {
+            background: rgba(30, 41, 59, 0.6);
+            border: 1px solid rgba(51, 65, 85, 0.7);
+            border-radius: 12px;
+            padding: 16px;
+            font-size: 13px;
+            color: #cbd5e1;
+            line-height: 1.5;
+        }
+
+        .instruction-box i {
+            color: #38bdf8;
+            margin-right: 6px;
+        }
+    </style>
+</head>
+<body>
+    <div class="restricted-card">
+        <div class="brand-logo-wrap">
+            <img src="{{ url_for('static', filename='Images/REYDM_LOGO.png') }}" 
+                 alt="REYDM" 
+                 class="brand-logo" 
+                 onerror="this.style.display='none'; document.getElementById('brandFallback').style.display='block';">
+            <div id="brandFallback" class="brand-text-fallback" style="display:none;">REYDM</div>
+        </div>
+
+        <div class="restricted-icon-container">
+            <i class="fa-solid fa-laptop device-icon-laptop" title="Laptop / PC Supported"></i>
+            <span class="divider-icon"><i class="fa-solid fa-arrows-split-up-and-left fa-rotate-90"></i></span>
+            <div style="position: relative; display: inline-block;">
+                <i class="fa-solid fa-mobile-screen device-icon-mobile" title="Mobile Blocked"></i>
+                <span class="ban-badge"><i class="fa-solid fa-ban"></i></span>
+            </div>
+        </div>
+
+        <div>
+            <span class="error-badge"><i class="fa-solid fa-shield-halved"></i> Device Restricted</span>
+        </div>
+
+        <h1 class="error-title">
+            developer not agree to visible in the moblie
+            <span class="highlight">Laptop &amp; PC Access Only</span>
+        </h1>
+
+        <p class="error-message">
+            Mobile and tablet access has been strictly disabled for this web application. Only desktop computers and laptops are permitted to access REYDM.
+        </p>
+
+        <div class="device-rules-grid">
+            <div class="rule-card allowed">
+                <i class="fa-solid fa-circle-check"></i>
+                <div class="rule-card-text">
+                    <strong>Laptop &amp; PC</strong>
+                    <span>Access Allowed</span>
+                </div>
+            </div>
+            <div class="rule-card blocked">
+                <i class="fa-solid fa-circle-xmark"></i>
+                <div class="rule-card-text">
+                    <strong>Mobile &amp; Tablet</strong>
+                    <span>Strictly Blocked</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="instruction-box">
+            <i class="fa-solid fa-circle-info"></i>
+            Please open this web application on your <strong>Laptop</strong> or <strong>Desktop PC</strong> browser to continue.
+        </div>
+    </div>
+</body>
+</html>

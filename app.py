@@ -58,6 +58,54 @@ app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max upload
 # ─── Document Trimmer tool (Word & PDF page exporter) ────────────────
 app.register_blueprint(doctrimmer_bp)
 
+# ─── Device Access Control (Strict Laptop & PC Only) ─────────────────
+MOBILE_TABLET_PATTERN = re_module.compile(
+    r"Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile|Tablet|Silk|Kindle|PlayBook|BB10|Windows Phone|Mobi",
+    re_module.IGNORECASE,
+)
+
+
+def is_mobile_or_tablet_request():
+    """Detect if the incoming HTTP request originates from a mobile or tablet device."""
+    # Check Client-Hints header sent by Chromium-based mobile browsers
+    ch_mobile = request.headers.get("Sec-CH-UA-Mobile")
+    if ch_mobile == "?1":
+        return True
+
+    user_agent = request.headers.get("User-Agent", "")
+    if MOBILE_TABLET_PATTERN.search(user_agent):
+        return True
+
+    return False
+
+
+@app.before_request
+def block_mobile_and_tablet_users():
+    """Strictly block mobile and tablet devices across the web app.
+
+    Only laptops and desktop PCs are permitted.
+    """
+    # Allow static assets and favicon so stylesheets, icons, and error assets load reliably
+    if request.path.startswith("/static/") or request.path == "/favicon.ico":
+        return None
+
+    if is_mobile_or_tablet_request():
+        if (
+            request.is_json
+            or request.path.startswith("/api/")
+            or request.headers.get("X-Requested-With") == "XMLHttpRequest"
+            or "application/json" in request.headers.get("Accept", "")
+        ):
+            return jsonify({
+                "status": "error",
+                "error": "developer not agree to visible in the moblie",
+                "message": "Access restricted. Only Laptop and PC are permitted.",
+                "allowed": False,
+            }), 403
+
+        return render_template("device_restricted.html"), 403
+
+
 # ─── Database Configuration ──────────────────────────────────────────
 DB_CONFIG = {
     "host": os.environ.get("DB_HOST", "mysql-21f1e29c-reydmdeveloper-2e13.i.aivencloud.com"),

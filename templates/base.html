@@ -6,6 +6,104 @@
     <title>{% block title %}REYDM{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    
+    <!-- Strict Device Guard: Disallow mobile and tablet devices -->
+    <script>
+    (function(){
+        function checkMobileOrTablet() {
+            var ua = (navigator.userAgent || navigator.vendor || window.opera || '').toLowerCase();
+            var mobilePatterns = [
+                'android', 'webos', 'iphone', 'ipad', 'ipod', 'blackberry',
+                'iemobile', 'opera mini', 'mobile', 'tablet', 'silk', 'kindle',
+                'playbook', 'bb10', 'windows phone'
+            ];
+            for (var i = 0; i < mobilePatterns.length; i++) {
+                if (ua.indexOf(mobilePatterns[i]) !== -1) return true;
+            }
+
+            // Client hints (Chromium mobile)
+            if (navigator.userAgentData && navigator.userAgentData.mobile) return true;
+
+            // Modern iPadOS (reports as MacIntel with touch points)
+            if (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) return true;
+
+            // Touch device heuristics (covers phone/tablet in desktop-mode)
+            var hasTouch = (navigator.maxTouchPoints && navigator.maxTouchPoints > 0) || ('ontouchstart' in window);
+            var isCoarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+            var minDim = Math.min(window.screen.width, window.screen.height);
+            var maxDim = Math.max(window.screen.width, window.screen.height);
+
+            // Small physical screen (phones)
+            if (minDim > 0 && minDim < 600) return true;
+
+            // Touch screen with coarse pointer and max dimension <= 1180 (tablets / iPads)
+            if (hasTouch && isCoarse && maxDim <= 1180) return true;
+
+            return false;
+        }
+
+        if (checkMobileOrTablet()) {
+            document.documentElement.classList.add('device-restricted-active');
+            window.__DEVICE_RESTRICTED__ = true;
+        }
+    })();
+    </script>
+
+    <!-- Critical Device Blocker Style Fallback -->
+    <style>
+        #device-blocker-overlay {
+            display: none;
+        }
+        html.device-restricted-active #device-blocker-overlay {
+            display: flex !important;
+            position: fixed !important;
+            inset: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            z-index: 2147483647 !important;
+            background: #090d16 !important;
+            color: #f1f5f9 !important;
+            align-items: center !important;
+            justify-content: center !important;
+            padding: 24px !important;
+            box-sizing: border-box !important;
+            overflow: hidden !important;
+        }
+        html.device-restricted-active body {
+            overflow: hidden !important;
+            height: 100vh !important;
+        }
+        html.device-restricted-active body > *:not(#device-blocker-overlay) {
+            display: none !important;
+        }
+        @media (max-width: 1024px) and (pointer: coarse), 
+               (max-device-width: 1024px) and (pointer: coarse),
+               (max-device-width: 600px) {
+            #device-blocker-overlay {
+                display: flex !important;
+                position: fixed !important;
+                inset: 0 !important;
+                width: 100vw !important;
+                height: 100vh !important;
+                z-index: 2147483647 !important;
+                background: #090d16 !important;
+                color: #f1f5f9 !important;
+                align-items: center !important;
+                justify-content: center !important;
+                padding: 24px !important;
+                box-sizing: border-box !important;
+                overflow: hidden !important;
+            }
+            body {
+                overflow: hidden !important;
+                height: 100vh !important;
+            }
+            body > *:not(#device-blocker-overlay) {
+                display: none !important;
+            }
+        }
+    </style>
+
     <!-- Theme init: runs before body paint to prevent flash -->
     <script>
     (function(){
@@ -17,6 +115,62 @@
     {% block head %}{% endblock %}
 </head>
 <body>
+    <!-- Device Blocker Overlay (Strict Laptop & PC Only) -->
+    <div id="device-blocker-overlay" class="device-blocker-overlay" role="alertdialog" aria-modal="true">
+        <div class="restricted-card" style="background: rgba(17, 24, 39, 0.95); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid rgba(239, 68, 68, 0.35); box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7), 0 0 40px -10px rgba(239, 68, 68, 0.25); border-radius: 20px; max-width: 520px; width: 100%; padding: 36px 28px; text-align: center; color: #f1f5f9; box-sizing: border-box;">
+            <div style="margin-bottom: 20px;">
+                <img src="{{ url_for('static', filename='Images/REYDM_LOGO.png') }}" alt="REYDM" style="max-height: 44px; width: auto; object-fit: contain;" onerror="this.style.display='none'; document.getElementById('baseBrandFallback').style.display='block';">
+                <div id="baseBrandFallback" style="display:none; font-size: 26px; font-weight: 800; letter-spacing: 2px; color: #3b82f6;">REYDM</div>
+            </div>
+
+            <div style="display: inline-flex; align-items: center; justify-content: center; gap: 16px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 9999px; padding: 14px 26px; margin-bottom: 24px;">
+                <i class="fa-solid fa-laptop" style="font-size: 28px; color: #10b981;" title="Laptop & PC Supported"></i>
+                <span style="font-size: 14px; color: #64748b;"><i class="fa-solid fa-arrows-split-up-and-left fa-rotate-90"></i></span>
+                <div style="position: relative; display: inline-block;">
+                    <i class="fa-solid fa-mobile-screen" style="font-size: 28px; color: #ef4444;" title="Mobile Blocked"></i>
+                    <span style="position: absolute; top: -6px; right: -8px; background: #ef4444; color: #ffffff; border-radius: 50%; width: 20px; height: 20px; font-size: 11px; display: flex; align-items: center; justify-content: center;"><i class="fa-solid fa-ban"></i></span>
+                </div>
+            </div>
+
+            <div>
+                <span style="display: inline-block; background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; padding: 5px 12px; border-radius: 20px; margin-bottom: 14px;">
+                    <i class="fa-solid fa-shield-halved"></i> Device Restricted
+                </span>
+            </div>
+
+            <h1 style="font-size: 22px; font-weight: 800; line-height: 1.35; color: #ffffff; margin-bottom: 14px;">
+                developer not agree to visible in the moblie
+                <span style="display: block; font-size: 15px; font-weight: 600; color: #f87171; margin-top: 6px;">Laptop &amp; PC Access Only</span>
+            </h1>
+
+            <p style="font-size: 14px; line-height: 1.55; color: #94a3b8; margin-bottom: 24px;">
+                Access to this web application is strictly restricted. The developer does not permit viewing or using this system on mobile or tablet devices.
+            </p>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 24px; text-align: left;">
+                <div style="padding: 12px 14px; border-radius: 10px; display: flex; align-items: center; gap: 10px; background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25);">
+                    <i class="fa-solid fa-circle-check" style="color: #10b981; font-size: 18px;"></i>
+                    <div>
+                        <strong style="display: block; font-size: 12px; color: #e2e8f0;">Laptop &amp; PC</strong>
+                        <span style="font-size: 11px; color: #64748b;">Allowed</span>
+                    </div>
+                </div>
+                <div style="padding: 12px 14px; border-radius: 10px; display: flex; align-items: center; gap: 10px; background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.25);">
+                    <i class="fa-solid fa-circle-xmark" style="color: #ef4444; font-size: 18px;"></i>
+                    <div>
+                        <strong style="display: block; font-size: 12px; color: #e2e8f0;">Mobile &amp; Tablet</strong>
+                        <span style="font-size: 11px; color: #64748b;">Prohibited</span>
+                    </div>
+                </div>
+            </div>
+
+            <div style="background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(51, 65, 85, 0.7); border-radius: 10px; padding: 14px; font-size: 13px; color: #cbd5e1; line-height: 1.5;">
+                <i class="fa-solid fa-circle-info" style="color: #38bdf8; margin-right: 6px;"></i>
+                Please open this site using a <strong>Laptop</strong> or <strong>Desktop PC</strong>.
+            </div>
+        </div>
+    </div>
+
     {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
     <div class="flash-container">
