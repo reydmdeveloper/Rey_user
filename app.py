@@ -14,6 +14,7 @@ import threading
 import time
 import re as re_module
 from datetime import datetime, timedelta, date
+from decimal import Decimal, InvalidOperation
 from functools import wraps
 
 from flask import (
@@ -49,8 +50,47 @@ def today_ist():
     return now_ist().date()
 
 
+# ─── Attendance Overtime Helper ────────────────────────────────────────
+STANDARD_SHIFT_HOURS = Decimal("9")
+
+
+def calculate_ot_hours(hours_spent):
+    """Calculate whole-hour overtime (OT) after a 9-hour standard shift.
+
+    Only full hours are counted (no minutes):
+      - <= 9.00 hours -> 0 OT
+      - Fractional part <= 0.50 rounds down (e.g. 9.25 -> 9 -> 0 OT, 9.50 -> 9 -> 0 OT)
+      - Fractional part > 0.50 rounds up   (e.g. 9.75 -> 10 -> 1 OT, 10.75 -> 11 -> 2 OT)
+    """
+    if hours_spent is None:
+        return 0
+    try:
+        total = Decimal(str(round(float(hours_spent), 2)))
+    except (TypeError, ValueError, InvalidOperation):
+        return 0
+    if total <= STANDARD_SHIFT_HOURS:
+        return 0
+    ot_raw = total - STANDARD_SHIFT_HOURS
+    whole = int(ot_raw)
+    frac = ot_raw - whole
+    return whole + (1 if frac > Decimal("0.5") else 0)
+
+
+def enrich_attendance_log(row):
+    """Attach computed whole-hour OT to an attendance_logs row without mutating DB data."""
+    if row is not None:
+        if row.get("logout_time") is not None and row.get("hours_spent") is not None:
+            row["ot_hours"] = calculate_ot_hours(row.get("hours_spent"))
+        elif row.get("ot_hours") is not None:
+            row["ot_hours"] = int(row["ot_hours"])
+        else:
+            row["ot_hours"] = 0
+    return row
+
+
 # ─── App Configuration ───────────────────────────────────────────────
 app = Flask(__name__)
+app.jinja_env.globals["calculate_ot_hours"] = calculate_ot_hours
 app.secret_key = os.environ.get("SECRET_KEY", "change-this-to-a-random-secret-key")
 app.permanent_session_lifetime = timedelta(hours=8)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max upload
@@ -352,6 +392,7 @@ def init_db():
                 login_time DATETIME NOT NULL,
                 logout_time DATETIME DEFAULT NULL,
                 hours_spent DECIMAL(5,2) DEFAULT NULL,
+                ot_hours INT DEFAULT NULL,
                 status VARCHAR(30) DEFAULT 'completed',
                 notes VARCHAR(255) DEFAULT '',
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -381,6 +422,11 @@ def init_db():
 
         try:
             cur.execute("ALTER TABLE attendance_logs ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP")
+        except mysql.connector.Error:
+            pass
+
+        try:
+            cur.execute("ALTER TABLE attendance_logs ADD COLUMN ot_hours INT DEFAULT NULL")
         except mysql.connector.Error:
             pass
 
@@ -1158,7 +1204,7 @@ def dashboard():
                ORDER BY login_time DESC LIMIT 1""",
             (session["user_id"],),
         )
-        today_log = cur.fetchone()
+        today_log = enrich_attendance_log(cur.fetchone())
         if not today_log:
             cur.execute(
                 """SELECT * FROM attendance_logs
@@ -1166,7 +1212,7 @@ def dashboard():
                    ORDER BY login_time DESC LIMIT 1""",
                 (session["user_id"],),
             )
-            today_log = cur.fetchone()
+            today_log = enrich_attendance_log(cur.fetchone())
 
         cur.execute(
             """SELECT COUNT(*) AS days, COALESCE(SUM(hours_spent), 0) AS hrs
@@ -1177,11 +1223,27 @@ def dashboard():
             (session["user_id"],),
         )
         month_stats = cur.fetchone()
+        enrich_attendance_log(today_log)
+        cur.execute(
+            """SELECT hours_spent, ot_hours
+               FROM attendance_logs
+               WHERE user_id = %s
+                 AND YEAR(login_date) = YEAR(CURDATE())
+                 AND MONTH(login_date) = MONTH(CURDATE())
+                 AND logout_time IS NOT NULL""",
+            (session["user_id"],),
+        )
+        month_ot_rows = cur.fetchall()
+        month_ot_hours = sum(
+            calculate_ot_hours(r.get("hours_spent")) if r.get("hours_spent") is not None else int(r.get("ot_hours") or 0)
+            for r in month_ot_rows
+        )
 
         attendance_data = {
             "today_log": today_log,
             "month_days": month_stats["days"] if month_stats else 0,
             "month_hours": float(month_stats["hrs"] or 0) if month_stats else 0,
+            "month_ot_hours": month_ot_hours,
         }
 
     # 2) User login info
@@ -1245,14 +1307,14 @@ def dashboard():
     if is_admin:
         cur.execute("""
             SELECT u.id, u.full_name, u.email, u.last_active,
-                   al.login_time, al.logout_time, al.hours_spent
+                   al.login_time, al.logout_time, al.hours_spent, al.ot_hours
             FROM users u
             LEFT JOIN attendance_logs al
               ON al.user_id = u.id AND (al.login_date = CURDATE() OR (al.logout_time IS NULL AND al.login_date >= DATE_SUB(CURDATE(), INTERVAL 1 DAY)))
             WHERE u.is_approved = 1 AND u.is_active = 1
             ORDER BY u.full_name ASC
         """)
-        all_users_today = cur.fetchall()
+        all_users_today = [enrich_attendance_log(r) for r in cur.fetchall()]
 
     cur.close()
     conn.close()
@@ -3650,7 +3712,7 @@ def attendance():
             forced_logout = active_session["login_time"] + timedelta(hours=9)
             cur.execute(
                 """UPDATE attendance_logs
-                   SET logout_time = %s, hours_spent = 9.0, status = 'forgot_logout',
+                   SET logout_time = %s, hours_spent = 9.0, ot_hours = 0, status = 'forgot_logout',
                        notes = 'Auto-closed after 24h (Forgot logout)'
                    WHERE id = %s""",
                 (forced_logout, active_session["id"]),
@@ -3667,7 +3729,7 @@ def attendance():
            ORDER BY login_time DESC LIMIT 1""",
         (session["user_id"], today),
     )
-    today_log = cur.fetchone()
+    today_log = enrich_attendance_log(cur.fetchone())
 
     # Recent attendance logs (last 60 days)
     cur.execute(
@@ -3676,7 +3738,7 @@ def attendance():
            ORDER BY login_date DESC, login_time DESC""",
         (session["user_id"],),
     )
-    recent_logs = cur.fetchall()
+    recent_logs = [enrich_attendance_log(r) for r in cur.fetchall()]
 
     # Monthly stats
     cur.execute(
@@ -3691,6 +3753,20 @@ def attendance():
     month_stats = cur.fetchone()
     month_days = month_stats["days"] if month_stats else 0
     month_hours = round(float(month_stats["hrs"]), 2) if month_stats else 0.0
+    cur.execute(
+        """SELECT hours_spent, ot_hours
+           FROM attendance_logs
+           WHERE user_id = %s
+             AND YEAR(login_date) = YEAR(CURDATE())
+             AND MONTH(login_date) = MONTH(CURDATE())
+             AND logout_time IS NOT NULL""",
+        (session["user_id"],),
+    )
+    month_ot_rows = cur.fetchall()
+    month_ot_hours = sum(
+        calculate_ot_hours(r.get("hours_spent")) if r.get("hours_spent") is not None else int(r.get("ot_hours") or 0)
+        for r in month_ot_rows
+    )
 
     # User's requests
     cur.execute(
@@ -3726,10 +3802,12 @@ def attendance():
         recent_logs=recent_logs,
         month_days=month_days,
         month_hours=month_hours,
+        month_ot_hours=month_ot_hours,
         pending_requests=pending_requests,
         my_requests=my_requests,
         hours_elapsed=hours_elapsed,
         hours_remaining=hours_remaining,
+        live_ot_hours=calculate_ot_hours(hours_elapsed) if active_session else 0,
         elapsed_seconds=elapsed_seconds,
         is_forgotten_session=is_forgotten_session,
         today=today,
@@ -3769,7 +3847,7 @@ def attendance_login():
             prev_logout = open_session["login_time"] + timedelta(hours=9)
             cur.execute(
                 """UPDATE attendance_logs
-                   SET logout_time = %s, hours_spent = 9.0, status = 'forgot_logout',
+                   SET logout_time = %s, hours_spent = 9.0, ot_hours = 0, status = 'forgot_logout',
                        notes = 'Auto-closed on next shift login (Forgot logout)'
                    WHERE id = %s""",
                 (prev_logout, open_session["id"]),
@@ -3852,13 +3930,14 @@ def attendance_logout():
         logout_time = now
 
     hours_spent = round(diff_hours, 2)
+    ot_hours = calculate_ot_hours(hours_spent)
     status = "completed"
 
     cur.execute(
         """UPDATE attendance_logs
-           SET logout_time = %s, hours_spent = %s, status = %s
+           SET logout_time = %s, hours_spent = %s, ot_hours = %s, status = %s
            WHERE id = %s""",
-        (logout_time, hours_spent, status, active["id"]),
+        (logout_time, hours_spent, ot_hours, status, active["id"]),
     )
     conn.commit()
     cur.close()
@@ -3866,7 +3945,9 @@ def attendance_logout():
 
     flash(
         f"Punched out at {logout_time.strftime('%I:%M %p')} (IST). "
-        f"Shift: {hours_spent} hrs (Credited to {login_date.strftime('%b %d, %Y')}).",
+        f"Shift: {hours_spent} hrs"
+        + (f" · OT: {ot_hours} hr{'s' if ot_hours != 1 else ''}" if ot_hours > 0 else "")
+        + f" (Credited to {login_date.strftime('%b %d, %Y')}).",
         "success",
     )
     return redirect(url_for("attendance"))
@@ -4014,6 +4095,7 @@ def handle_attendance_request(req_id, action):
         logout_dt = req["requested_logout"]
         diff = (logout_dt - login_dt).total_seconds() / 3600.0
         hours_spent = round(diff, 2)
+        ot_hours = calculate_ot_hours(hours_spent)
 
         # Upsert: reuse row if exists for that date
         cur.execute(
@@ -4024,16 +4106,18 @@ def handle_attendance_request(req_id, action):
         if existing:
             cur.execute(
                 """UPDATE attendance_logs
-                   SET login_time = %s, logout_time = %s, hours_spent = %s, status = 'completed',
+                   SET login_time = %s, logout_time = %s, hours_spent = %s, ot_hours = %s, status = 'completed',
                        notes = 'Regularized via approved request'
                    WHERE id = %s""",
-                (login_dt, logout_dt, hours_spent, existing["id"]),
+                (login_dt, logout_dt, hours_spent, ot_hours, existing["id"]),
             )
         else:
             cur.execute(
-                """INSERT INTO attendance_logs (user_id, login_date, login_time, logout_time, hours_spent, status, notes)
-                   VALUES (%s, %s, %s, %s, %s, 'completed', 'Added via approved request')""",
-                (req["user_id"], req["request_date"], login_dt, logout_dt, hours_spent),
+                """INSERT INTO attendance_logs (user_id, login_date, login_time, logout_time, hours_spent, ot_hours, status, notes)
+                   VALUES (%s, %s, %s, %s, %s, %s, 'completed', 'Added via approved request')""",
+                (req["user_id"], req["request_date"], login_dt, logout_dt, hours_spent, ot_hours),
+
+
             )
 
         cur.execute(
@@ -4087,10 +4171,11 @@ def api_attendance_history():
            LIMIT 200""",
         (target_user_id,),
     )
-    rows = cur.fetchall()
+    rows = [enrich_attendance_log(r) for r in cur.fetchall()]
     cur.close()
     conn.close()
     return jsonify(rows)
+
 
 
 # ── ATTENDANCE LOG EDIT (admin) ──
@@ -4150,11 +4235,13 @@ def api_attendance_log_edit(log_id):
     if new_logout and new_login and new_hours is None:
         new_hours = round((new_logout - new_login).total_seconds() / 3600.0, 2)
 
+    new_ot = calculate_ot_hours(new_hours) if (new_logout and new_hours is not None) else None
+
     cur.execute(
         """UPDATE attendance_logs
-           SET login_time = %s, logout_time = %s, hours_spent = %s
+           SET login_time = %s, logout_time = %s, hours_spent = %s, ot_hours = %s
            WHERE id = %s""",
-        (new_login, new_logout, new_hours, log_id),
+        (new_login, new_logout, new_hours, new_ot, log_id),
     )
     conn.commit()
     cur.close()
@@ -4247,6 +4334,7 @@ def api_attendance_tracker():
     cur.close()
     conn.close()
 
+    rows = [enrich_attendance_log(r) for r in rows]
     return jsonify({"logs": rows, "pending_requests": pending})
 
 
@@ -4296,6 +4384,9 @@ def api_attendance_tracker_set(log_id):
         new_logout = None
         new_hours = None
 
+    if new_logout and new_login and (login_str or logout_str) and (hours is None or hours == ""):
+        new_hours = round((new_logout - new_login).total_seconds() / 3600.0, 2)
+
     if hours is not None and hours != "":
         try:
             new_hours = float(hours)
@@ -4310,11 +4401,13 @@ def api_attendance_tracker_set(log_id):
     if new_logout and new_login and new_hours is None:
         new_hours = round((new_logout - new_login).total_seconds() / 3600.0, 2)
 
+    new_ot = calculate_ot_hours(new_hours) if (new_logout and new_hours is not None) else None
+
     cur.execute(
         """UPDATE attendance_logs
-           SET login_time = %s, logout_time = %s, hours_spent = %s
+           SET login_time = %s, logout_time = %s, hours_spent = %s, ot_hours = %s
            WHERE id = %s""",
-        (new_login, new_logout, new_hours, log_id),
+        (new_login, new_logout, new_hours, new_ot, log_id),
     )
     conn.commit()
     cur.close()
@@ -4366,9 +4459,11 @@ def api_attendance_tracker_create():
         return jsonify({"success": False, "message": "A log already exists for this user on this date. Edit it instead."}), 409
 
     cur.execute(
-        """INSERT INTO attendance_logs (user_id, login_date, login_time, logout_time, hours_spent)
-           VALUES (%s, %s, %s, %s, %s)""",
-        (user_id, login_dt.date(), login_dt, logout_dt, hours),
+        """INSERT INTO attendance_logs (user_id, login_date, login_time, logout_time, hours_spent, ot_hours)
+           VALUES (%s, %s, %s, %s, %s, %s)""",
+        (user_id, login_dt.date(), login_dt, logout_dt, hours, calculate_ot_hours(hours) if logout_dt is not None else None),
+
+
     )
     conn.commit()
     new_id = cur.lastrowid
@@ -4414,7 +4509,8 @@ def api_attendance_tracker_summary():
         """SELECT al.user_id, u.full_name,
                   COUNT(*) AS total_days,
                   COALESCE(SUM(al.hours_spent), 0) AS total_hours,
-                  SUM(CASE WHEN al.logout_time IS NULL THEN 1 ELSE 0 END) AS active_count
+                  SUM(CASE WHEN al.logout_time IS NULL THEN 1 ELSE 0 END) AS active_count,
+                  COALESCE(SUM(CASE WHEN al.logout_time IS NOT NULL AND al.hours_spent > 9 THEN FLOOR(al.hours_spent - 9) + CASE WHEN (al.hours_spent - 9) - FLOOR(al.hours_spent - 9) > 0.5 THEN 1 ELSE 0 END ELSE 0 END), 0) AS total_ot_hours
            FROM attendance_logs al
            JOIN users u ON al.user_id = u.id
            WHERE YEAR(al.login_date) = %s AND MONTH(al.login_date) = %s
@@ -4456,6 +4552,474 @@ def api_attendance_tracker_delete_month():
     cur.close()
     conn.close()
     return jsonify({"success": True, "deleted": deleted})
+
+
+def _attendance_shift_type(log):
+    login_time = log.get("login_time")
+    logout_time = log.get("logout_time")
+    login_date = log.get("login_date")
+    if not login_time:
+        return "Day Shift"
+    crossed = bool(logout_time and login_date and logout_time.date() > login_date)
+    if login_time.hour >= 17 or login_time.hour <= 5 or crossed:
+        return "Night Shift"
+    return "Day Shift"
+
+
+def _attendance_status_label(log):
+    if not log.get("logout_time"):
+        return "In Progress"
+    status = log.get("status") or ""
+    notes = log.get("notes") or ""
+    if status == "forgot_logout":
+        return "Forgot Logout"
+    if status == "regularized" or "Regularized" in notes:
+        return "Regularized"
+    return "Completed"
+
+
+def _style_attendance_sheet_banner(ws, max_col, title, subtitle):
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=max_col)
+    ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=max_col)
+    title_cell = ws.cell(row=1, column=1, value=title)
+    title_cell.font = Font(name="Calibri", size=14, bold=True, color="FFFFFF")
+    title_cell.fill = PatternFill("solid", fgColor="1E293B")
+    title_cell.alignment = Alignment(horizontal="left", vertical="center", indent=1)
+    ws.row_dimensions[1].height = 30
+
+    sub_cell = ws.cell(row=2, column=1, value=subtitle)
+    sub_cell.font = Font(name="Calibri", size=10, italic=True, color="334155")
+    sub_cell.fill = PatternFill("solid", fgColor="F1F5F9")
+    sub_cell.alignment = Alignment(horizontal="left", vertical="center", indent=1)
+    ws.row_dimensions[2].height = 22
+    ws.row_dimensions[3].height = 8
+
+
+def _autofit_attendance_sheet(ws, min_row, max_col, max_widths=None):
+    max_widths = max_widths or {}
+    for col_idx in range(1, max_col + 1):
+        letter = get_column_letter(col_idx)
+        longest = 0
+        for row_idx in range(min_row, ws.max_row + 1):
+            val = ws.cell(row=row_idx, column=col_idx).value
+            if val is None:
+                continue
+            text = str(val)
+            if text.startswith("="):
+                text = "0000.00"
+            longest = max(longest, len(text))
+        cap = max_widths.get(col_idx, 38)
+        ws.column_dimensions[letter].width = min(max(longest + 4, 10), cap)
+
+
+def build_attendance_excel(logs, title, subtitle, include_user_cols=True):
+    """Build a cleanly formatted Attendance + OT Excel workbook with Logs and Summary sheets."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Attendance Logs"
+
+    thin = Side(style="thin", color="CBD5E1")
+    med = Side(style="medium", color="64748B")
+    cell_border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    total_border = Border(left=thin, right=thin, top=med, bottom=med)
+
+    header_fill = PatternFill("solid", fgColor="1F2937")
+    header_font = Font(name="Calibri", size=10.5, bold=True, color="FFFFFF")
+    zebra_even = PatternFill("solid", fgColor="F8FAFC")
+    zebra_odd = PatternFill("solid", fgColor="FFFFFF")
+    total_fill = PatternFill("solid", fgColor="E2E8F0")
+    total_font = Font(name="Calibri", size=10.5, bold=True, color="0F172A")
+    ot_fill = PatternFill("solid", fgColor="F3E8FF")
+    ot_font = Font(name="Calibri", size=10, bold=True, color="6D28D9")
+    muted_font = Font(name="Calibri", size=10, color="64748B")
+    ok_font = Font(name="Calibri", size=10, bold=True, color="15803D")
+    warn_font = Font(name="Calibri", size=10, bold=True, color="B45309")
+    info_font = Font(name="Calibri", size=10, bold=True, color="1D4ED8")
+    body_font = Font(name="Calibri", size=10, color="0F172A")
+
+    if include_user_cols:
+        headers = [
+            "#", "Employee Name", "Email", "Shift Date", "Day", "Shift Type",
+            "Punch In (IST)", "Punch Out (IST)", "Worked Hours", "OT (Hrs)", "Status", "Notes"
+        ]
+        worked_col = 9
+        ot_col = 10
+        status_col = 11
+        notes_col = 12
+    else:
+        headers = [
+            "#", "Shift Date", "Day", "Shift Type",
+            "Punch In (IST)", "Punch Out (IST)", "Worked Hours", "OT (Hrs)", "Status", "Notes"
+        ]
+        worked_col = 7
+        ot_col = 8
+        status_col = 9
+        notes_col = 10
+
+    max_col = len(headers)
+    _style_attendance_sheet_banner(ws, max_col, title, subtitle)
+
+    header_row = 4
+    ws.row_dimensions[header_row].height = 26
+    for col_idx, h_text in enumerate(headers, start=1):
+        c = ws.cell(row=header_row, column=col_idx, value=h_text)
+        c.fill = header_fill
+        c.font = header_font
+        c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        c.border = cell_border
+
+    first_data_row = 5
+    if logs:
+        for idx, log in enumerate(logs, start=1):
+            enrich_attendance_log(log)
+            r = first_data_row + idx - 1
+            ws.row_dimensions[r].height = 21
+            row_fill = zebra_even if idx % 2 == 0 else zebra_odd
+
+            login_dt = log.get("login_time")
+            logout_dt = log.get("logout_time")
+            login_date = log.get("login_date")
+            crossed = bool(logout_dt and login_date and logout_dt.date() > login_date)
+
+            in_str = login_dt.strftime("%I:%M %p") if login_dt else "-"
+            if logout_dt:
+                out_str = logout_dt.strftime("%I:%M %p") + (" (+1 Day)" if crossed else "")
+            else:
+                out_str = "Active"
+
+            hours_val = float(log["hours_spent"]) if log.get("hours_spent") is not None else None
+            ot_val = int(log.get("ot_hours") or 0) if logout_dt else 0
+            shift_type = _attendance_shift_type(log)
+            status_label = _attendance_status_label(log)
+            notes_val = (log.get("notes") or "").strip() or "-"
+
+            if include_user_cols:
+                vals = [
+                    idx,
+                    log.get("full_name") or "",
+                    log.get("email") or "",
+                    login_date,
+                    login_date.strftime("%A") if login_date else "",
+                    shift_type,
+                    in_str,
+                    out_str,
+                    hours_val if hours_val is not None else "-",
+                    ot_val,
+                    status_label,
+                    notes_val,
+                ]
+                center_cols = {1, 4, 5, 6, 7, 8, 9, 10, 11}
+                date_col = 4
+            else:
+                vals = [
+                    idx,
+                    login_date,
+                    login_date.strftime("%A") if login_date else "",
+                    shift_type,
+                    in_str,
+                    out_str,
+                    hours_val if hours_val is not None else "-",
+                    ot_val,
+                    status_label,
+                    notes_val,
+                ]
+                center_cols = {1, 2, 3, 4, 5, 6, 7, 8, 9}
+                date_col = 2
+
+            for col_idx, val in enumerate(vals, start=1):
+                c = ws.cell(row=r, column=col_idx, value=val)
+                c.fill = row_fill
+                c.border = cell_border
+                c.font = body_font
+                if col_idx == notes_col:
+                    c.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+                elif col_idx in center_cols:
+                    c.alignment = Alignment(horizontal="center", vertical="center")
+                else:
+                    c.alignment = Alignment(horizontal="left", vertical="center")
+
+                if col_idx == date_col and login_date is not None:
+                    c.number_format = "dd-mmm-yyyy"
+                elif col_idx == worked_col and hours_val is not None:
+                    c.number_format = "0.00"
+                    c.font = ok_font if hours_val >= 9.0 else warn_font
+                elif col_idx == ot_col:
+                    c.number_format = "0"
+                    if ot_val > 0:
+                        c.fill = ot_fill
+                        c.font = ot_font
+                    else:
+                        c.font = muted_font
+                elif col_idx == status_col:
+                    if status_label == "Completed":
+                        c.font = ok_font
+                    elif status_label == "Regularized":
+                        c.font = info_font
+                    else:
+                        c.font = warn_font
+
+        last_data_row = first_data_row + len(logs) - 1
+        total_row = last_data_row + 1
+        ws.row_dimensions[total_row].height = 24
+        worked_letter = get_column_letter(worked_col)
+        ot_letter = get_column_letter(ot_col)
+        for col_idx in range(1, max_col + 1):
+            c = ws.cell(row=total_row, column=col_idx)
+            c.fill = total_fill
+            c.font = total_font
+            c.border = total_border
+            c.alignment = Alignment(horizontal="center", vertical="center")
+
+        ws.cell(row=total_row, column=1, value="TOTAL")
+        ws.cell(row=total_row, column=2, value=f"{len(logs)} Shift{'s' if len(logs) != 1 else ''}")
+        worked_sum = ws.cell(row=total_row, column=worked_col, value=f"=SUM({worked_letter}{first_data_row}:{worked_letter}{last_data_row})")
+        worked_sum.number_format = "0.00"
+        ot_sum = ws.cell(row=total_row, column=ot_col, value=f"=SUM({ot_letter}{first_data_row}:{ot_letter}{last_data_row})")
+        ot_sum.number_format = "0"
+        ws.auto_filter.ref = f"A{header_row}:{get_column_letter(max_col)}{last_data_row}"
+    else:
+        ws.merge_cells(start_row=first_data_row, start_column=1, end_row=first_data_row, end_column=max_col)
+        empty_c = ws.cell(row=first_data_row, column=1, value="No attendance records found for the selected period.")
+        empty_c.font = Font(name="Calibri", size=10.5, italic=True, color="64748B")
+        empty_c.alignment = Alignment(horizontal="center", vertical="center")
+        ws.row_dimensions[first_data_row].height = 28
+
+    ws.freeze_panes = "A5"
+    ws.views.sheetView[0].showGridLines = True
+    ws.page_setup.orientation = ws.ORIENTATION_LANDSCAPE
+    ws.page_setup.paperSize = ws.PAPERSIZE_A4
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 0
+    _autofit_attendance_sheet(ws, header_row, max_col, max_widths={1: 7, notes_col: 42})
+
+    # ── Sheet 2: Monthly / Employee Summary ──────────────────────────
+    ws_sum = wb.create_sheet(title="Summary")
+    sum_headers = [
+        "#", "Employee Name", "Email", "Month", "Total Shifts",
+        "Completed", "Regularized", "Forgot Logout", "Active",
+        "Total Worked (Hrs)", "Total OT (Hrs)"
+    ]
+    sum_max_col = len(sum_headers)
+    _style_attendance_sheet_banner(ws_sum, sum_max_col, f"{title} — Summary", subtitle)
+
+    ws_sum.row_dimensions[4].height = 26
+    for col_idx, h_text in enumerate(sum_headers, start=1):
+        c = ws_sum.cell(row=4, column=col_idx, value=h_text)
+        c.fill = header_fill
+        c.font = header_font
+        c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        c.border = cell_border
+
+    summary_map = {}
+    for log in logs:
+        login_date = log.get("login_date")
+        month_key = login_date.strftime("%Y-%m") if login_date else "Unknown"
+        month_label = login_date.strftime("%B %Y") if login_date else "Unknown"
+        key = (log.get("full_name") or "", log.get("email") or "", month_key)
+        bucket = summary_map.setdefault(key, {
+            "name": log.get("full_name") or "",
+            "email": log.get("email") or "",
+            "month_label": month_label,
+            "shifts": 0,
+            "completed": 0,
+            "regularized": 0,
+            "forgot": 0,
+            "active": 0,
+            "hours": 0.0,
+            "ot": 0,
+        })
+        bucket["shifts"] += 1
+        st_lbl = _attendance_status_label(log)
+        if st_lbl == "Completed":
+            bucket["completed"] += 1
+        elif st_lbl == "Regularized":
+            bucket["regularized"] += 1
+        elif st_lbl == "Forgot Logout":
+            bucket["forgot"] += 1
+        else:
+            bucket["active"] += 1
+        if log.get("hours_spent") is not None:
+            bucket["hours"] += float(log["hours_spent"])
+        if log.get("logout_time") is not None:
+            bucket["ot"] += int(log.get("ot_hours") or 0)
+
+    sum_rows = [summary_map[k] for k in sorted(summary_map.keys(), key=lambda item: (item[0].lower(), item[2]))]
+    if sum_rows:
+        for idx, s in enumerate(sum_rows, start=1):
+            r = 5 + idx - 1
+            ws_sum.row_dimensions[r].height = 21
+            row_fill = zebra_even if idx % 2 == 0 else zebra_odd
+            vals = [
+                idx, s["name"], s["email"], s["month_label"], s["shifts"],
+                s["completed"], s["regularized"], s["forgot"], s["active"],
+                round(s["hours"], 2), s["ot"]
+            ]
+            for col_idx, val in enumerate(vals, start=1):
+                c = ws_sum.cell(row=r, column=col_idx, value=val)
+                c.fill = row_fill
+                c.border = cell_border
+                c.font = body_font
+                c.alignment = Alignment(
+                    horizontal="left" if col_idx in (2, 3) else "center",
+                    vertical="center",
+                )
+                if col_idx == 10:
+                    c.number_format = "0.00"
+                    c.font = ok_font
+                elif col_idx == 11:
+                    c.number_format = "0"
+                    if val > 0:
+                        c.fill = ot_fill
+                        c.font = ot_font
+                    else:
+                        c.font = muted_font
+
+        last_sum_row = 5 + len(sum_rows) - 1
+        gt_row = last_sum_row + 1
+        ws_sum.row_dimensions[gt_row].height = 24
+        for col_idx in range(1, sum_max_col + 1):
+            c = ws_sum.cell(row=gt_row, column=col_idx)
+            c.fill = total_fill
+            c.font = total_font
+            c.border = total_border
+            c.alignment = Alignment(horizontal="center", vertical="center")
+        ws_sum.cell(row=gt_row, column=1, value="TOTAL")
+        ws_sum.cell(row=gt_row, column=2, value=f"{len(sum_rows)} Row{'s' if len(sum_rows) != 1 else ''}")
+        for col_idx in range(5, 12):
+            ltr = get_column_letter(col_idx)
+            sc = ws_sum.cell(row=gt_row, column=col_idx, value=f"=SUM({ltr}5:{ltr}{last_sum_row})")
+            sc.number_format = "0.00" if col_idx == 10 else "0"
+        ws_sum.auto_filter.ref = f"A4:{get_column_letter(sum_max_col)}{last_sum_row}"
+    else:
+        ws_sum.merge_cells(start_row=5, start_column=1, end_row=5, end_column=sum_max_col)
+        empty_c = ws_sum.cell(row=5, column=1, value="No summary data available.")
+        empty_c.font = Font(name="Calibri", size=10.5, italic=True, color="64748B")
+        empty_c.alignment = Alignment(horizontal="center", vertical="center")
+        ws_sum.row_dimensions[5].height = 28
+
+    ws_sum.freeze_panes = "A5"
+    ws_sum.views.sheetView[0].showGridLines = True
+    ws_sum.page_setup.orientation = ws_sum.ORIENTATION_LANDSCAPE
+    ws_sum.page_setup.paperSize = ws_sum.PAPERSIZE_A4
+    ws_sum.sheet_properties.pageSetUpPr.fitToPage = True
+    ws_sum.page_setup.fitToWidth = 1
+    ws_sum.page_setup.fitToHeight = 0
+    _autofit_attendance_sheet(ws_sum, 4, sum_max_col, max_widths={1: 7})
+
+    return wb
+
+
+@app.route("/attendance/export")
+@login_required
+@tool_required("attendance")
+def attendance_export():
+    """Export attendance logs and OT summary to a formatted Excel workbook."""
+    scope = (request.args.get("scope") or "me").strip().lower()
+    year_str = (request.args.get("year") or "").strip()
+    month_str = (request.args.get("month") or "").strip()
+    user_id_str = (request.args.get("user_id") or "").strip()
+
+    now = now_ist()
+    conn = get_db()
+    cur = conn.cursor(dictionary=True)
+
+    if scope == "tracker":
+        if session.get("role") != "admin":
+            cur.close()
+            conn.close()
+            return jsonify({"success": False, "message": "Admin only"}), 403
+        try:
+            year = int(year_str) if year_str else now.year
+            month = int(month_str) if month_str else now.month
+            if not (1 <= month <= 12):
+                raise ValueError
+        except ValueError:
+            year, month = now.year, now.month
+
+        sql = """
+            SELECT al.*, u.full_name, u.email
+            FROM attendance_logs al
+            JOIN users u ON al.user_id = u.id
+            WHERE YEAR(al.login_date) = %s AND MONTH(al.login_date) = %s
+        """
+        params = [year, month]
+        target_label = "All Employees"
+        if user_id_str.isdigit():
+            sql += " AND al.user_id = %s"
+            params.append(int(user_id_str))
+            cur.execute("SELECT full_name FROM users WHERE id = %s", (int(user_id_str),))
+            u_row = cur.fetchone()
+            if u_row:
+                target_label = u_row["full_name"]
+
+        sql += " ORDER BY u.full_name ASC, al.login_date ASC, al.login_time ASC"
+        cur.execute(sql, tuple(params))
+        logs = cur.fetchall()
+        cur.close()
+        conn.close()
+
+        period_label = date(year, month, 1).strftime("%B %Y")
+        title = "REYDM Organization Attendance & OT Report"
+        subtitle = (
+            f"Scope: {target_label}  |  Period: {period_label}  |  "
+            f"Standard Shift: 9.00 hrs  |  OT: Whole hrs after 9h  |  "
+            f"Generated: {now.strftime('%d-%b-%Y %I:%M %p IST')}"
+        )
+        wb = build_attendance_excel(logs, title, subtitle, include_user_cols=True)
+        fname_prefix = f"attendance_tracker_{year}_{month:02d}"
+    else:
+        cur.execute("SELECT full_name, email FROM users WHERE id = %s", (session["user_id"],))
+        me = cur.fetchone() or {"full_name": session.get("full_name", "User"), "email": ""}
+
+        if year_str.isdigit() and month_str.isdigit() and 1 <= int(month_str) <= 12:
+            year, month = int(year_str), int(month_str)
+            cur.execute(
+                """SELECT al.*, u.full_name, u.email
+                   FROM attendance_logs al
+                   JOIN users u ON al.user_id = u.id
+                   WHERE al.user_id = %s AND YEAR(al.login_date) = %s AND MONTH(al.login_date) = %s
+                   ORDER BY al.login_date DESC, al.login_time DESC""",
+                (session["user_id"], year, month),
+            )
+            period_label = date(year, month, 1).strftime("%B %Y")
+            fname_suffix = f"{year}_{month:02d}"
+        else:
+            cur.execute(
+                """SELECT al.*, u.full_name, u.email
+                   FROM attendance_logs al
+                   JOIN users u ON al.user_id = u.id
+                   WHERE al.user_id = %s
+                   ORDER BY al.login_date DESC, al.login_time DESC""",
+                (session["user_id"],),
+            )
+            period_label = "All Records"
+            fname_suffix = "all"
+
+        logs = cur.fetchall()
+        cur.close()
+        conn.close()
+
+        title = f"REYDM Attendance & OT Report — {me['full_name']}"
+        subtitle = (
+            f"Employee: {me['full_name']} ({me['email']})  |  Period: {period_label}  |  "
+            f"Standard Shift: 9.00 hrs  |  OT: Whole hrs after 9h  |  "
+            f"Generated: {now.strftime('%d-%b-%Y %I:%M %p IST')}"
+        )
+        wb = build_attendance_excel(logs, title, subtitle, include_user_cols=False)
+        safe_user = re_module.sub(r"[^A-Za-z0-9_-]+", "_", me["full_name"]).strip("_") or "user"
+        fname_prefix = f"attendance_{safe_user}_{fname_suffix}"
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    stamp = now.strftime("%Y%m%d_%H%M%S")
+    return send_file(
+        buf,
+        as_attachment=True,
+        download_name=f"{fname_prefix}_{stamp}.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════

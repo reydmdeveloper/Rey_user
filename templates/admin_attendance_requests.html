@@ -27,6 +27,7 @@
                     <th>Punch In</th>
                     <th>Punch Out</th>
                     <th>Duration</th>
+                    <th>OT</th>
                     <th>Reason</th>
                     <th>Status</th>
                     <th>Submitted</th>
@@ -63,6 +64,10 @@
                     </td>
                     <td style="font-family:var(--mono);font-weight:700;color:var(--accent2)">
                         {{ "%.2f"|format(diff_hrs) }} hrs
+                    </td>
+                    {% set req_ot = calculate_ot_hours(diff_hrs) %}
+                    <td style="font-family:var(--mono);font-weight:700;color:#a371f7">
+                        {% if req_ot > 0 %}+{{ req_ot }} hr{% if req_ot != 1 %}s{% endif %}{% else %}<span class="text-muted">0</span>{% endif %}
                     </td>
                     <td style="max-width:220px;color:var(--text-secondary);font-size:12px">{{ req.reason or '—' }}</td>
                     <td>

@@ -83,6 +83,7 @@ CREATE TABLE IF NOT EXISTS attendance_logs (
     login_time DATETIME NOT NULL,
     logout_time DATETIME DEFAULT NULL,
     hours_spent DECIMAL(5,2) DEFAULT NULL,
+    ot_hours INT DEFAULT NULL,
     status VARCHAR(30) DEFAULT 'completed',
     notes VARCHAR(255) DEFAULT '',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,

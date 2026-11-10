@@ -546,6 +546,7 @@
 }
 .hours-green { background: var(--success-soft); color: var(--success); }
 .hours-amber { background: var(--warning-soft); color: var(--warning); }
+.ot-pill { background: rgba(163, 113, 247, 0.14); color: #a371f7; }
 .badge-nextday {
     font-size: 10px;
     background: rgba(163, 113, 247, 0.15);
@@ -621,7 +622,7 @@
             {% if active_session %}
                 Punched in at {{ active_session.login_time.strftime('%I:%M %p') }}
             {% elif today_log %}
-                Shift: {{ "%.2f"|format(today_log.hours_spent) }} hrs
+                Shift: {{ "%.2f"|format(today_log.hours_spent) }} hrs{% if today_log.ot_hours %} · OT: {{ today_log.ot_hours }} hr{% if today_log.ot_hours != 1 %}s{% endif %}{% endif %}
             {% else %}
                 Ready for shift
             {% endif %}
@@ -650,10 +651,10 @@
                 {% if hours_remaining > 0 %}
                     {{ "%.2f"|format(hours_remaining) }} hrs to 9h target
                 {% else %}
-                    ✓ 9h Target Reached
+                    ✓ 9h Target Reached{% if live_ot_hours %} · OT: {{ live_ot_hours }} hr{% if live_ot_hours != 1 %}s{% endif %}{% endif %}
                 {% endif %}
             {% elif today_log %}
-                Completed for today
+                Completed for today{% if today_log.ot_hours %} · OT: {{ today_log.ot_hours }} hr{% if today_log.ot_hours != 1 %}s{% endif %}{% endif %}
             {% else %}
                 Shift not started
             {% endif %}
@@ -663,7 +664,7 @@
     <div class="att-kpi-card month-kpi">
         <div class="att-kpi-label"><i class="fa-solid fa-calendar-check"></i> Month Total</div>
         <div class="att-kpi-value" style="color:#a371f7">{{ month_days }} <small>days</small></div>
-        <div class="att-kpi-footer">{{ "%.1f"|format(month_hours) }} hrs worked this month</div>
+        <div class="att-kpi-footer">{{ "%.1f"|format(month_hours) }} hrs worked · {{ month_ot_hours or 0 }} OT hrs</div>
     </div>
 </div>
 
@@ -777,6 +778,7 @@
                             <span>In: <b style="color:var(--text);font-family:var(--mono)">{{ today_log.login_time.strftime('%I:%M %p') }}</b></span>
                             <span>Out: <b style="color:var(--text);font-family:var(--mono)">{{ today_log.logout_time.strftime('%I:%M %p') }}</b></span>
                             <span>Hours: <b style="color:var(--accent2);font-family:var(--mono)">{{ "%.2f"|format(today_log.hours_spent) }} hrs</b></span>
+                            <span>OT: <b style="color:#a371f7;font-family:var(--mono)">{{ today_log.ot_hours or 0 }} hr{% if (today_log.ot_hours or 0) != 1 %}s{% endif %}</b></span>
                         </div>
                     </div>
                     {% endif %}
@@ -899,8 +901,12 @@
         {% endif %}
     </div>
 
-    <!-- Quick Search -->
-    <div>
+    <!-- Quick Search & Export -->
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <select id="my-export-month" class="form-control" style="font-size:12px;padding:6px 10px;width:155px" title="Filter period for Excel export"></select>
+        <button type="button" class="btn btn-success btn-sm" onclick="exportMyAttendance()" style="height:32px;display:inline-flex;align-items:center;gap:6px">
+            <i class="fa-solid fa-file-excel"></i> Export Excel
+        </button>
         <input type="text" id="table-search-input" placeholder="Search date or status..." class="form-control"
                style="font-size:12px;padding:6px 12px;width:190px" onkeyup="filterTable()">
     </div>
@@ -921,6 +927,7 @@
                         <th>Punch In (IST)</th>
                         <th>Punch Out (IST)</th>
                         <th>Duration</th>
+                        <th>OT</th>
                         <th>Status</th>
                         <th>Notes</th>
                         {% if session.get('role') == 'admin' %}
@@ -959,6 +966,17 @@
                                 <span class="badge-hours-pill {% if log.hours_spent >= 9.0 %}hours-green{% else %}hours-amber{% endif %}">
                                     {{ "%.2f"|format(log.hours_spent) }} hrs
                                 </span>
+                            {% else %}
+                                <span style="color:var(--muted)">—</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if log.logout_time and log.hours_spent is not none %}
+                                {% if log.ot_hours and log.ot_hours > 0 %}
+                                    <span class="badge-hours-pill ot-pill">+{{ log.ot_hours }} hr{% if log.ot_hours != 1 %}s{% endif %}</span>
+                                {% else %}
+                                    <span style="color:var(--muted);font-family:var(--mono)">0</span>
+                                {% endif %}
                             {% else %}
                                 <span style="color:var(--muted)">—</span>
                             {% endif %}
@@ -1016,6 +1034,7 @@
                         <th>Requested In</th>
                         <th>Requested Out</th>
                         <th>Duration</th>
+                        <th>OT</th>
                         <th>Reason</th>
                         <th>Status</th>
                         <th>Submitted At</th>
@@ -1036,6 +1055,14 @@
                             {% endif %}
                         </td>
                         <td style="font-family:var(--mono);font-weight:700;color:var(--accent2)">{{ "%.2f"|format(diff) }} hrs</td>
+                        <td>
+                            {% set req_ot = calculate_ot_hours(diff) %}
+                            {% if req_ot > 0 %}
+                                <span class="badge-hours-pill ot-pill">+{{ req_ot }} hr{% if req_ot != 1 %}s{% endif %}</span>
+                            {% else %}
+                                <span style="color:var(--muted);font-family:var(--mono)">0</span>
+                            {% endif %}
+                        </td>
                         <td style="color:var(--text-secondary);max-width:200px">{{ req.reason or '—' }}</td>
                         <td>
                             {% if req.status == 'pending' %}
@@ -1103,6 +1130,9 @@
             <a href="{{ url_for('admin_attendance_requests') }}" class="btn btn-secondary btn-sm" style="height:36px">
                 <i class="fa-solid fa-clipboard-check"></i> Review Requests ({{ pending_requests }})
             </a>
+            <button type="button" class="btn btn-success btn-sm" onclick="exportTrackerExcel()" style="height:36px">
+                <i class="fa-solid fa-file-excel"></i> Export Excel
+            </button>
         </div>
 
         <div class="att-table-container">
@@ -1114,12 +1144,13 @@
                         <th>Punch In (IST)</th>
                         <th>Punch Out (IST)</th>
                         <th>Duration</th>
+                        <th>OT</th>
                         <th>Status</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody id="tracker-body">
-                    <tr><td colspan="7" style="text-align:center;padding:30px;color:var(--muted)">Loading...</td></tr>
+                    <tr><td colspan="8" style="text-align:center;padding:30px;color:var(--muted)">Loading...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -1214,6 +1245,16 @@ function refreshClock() {
 setInterval(refreshClock, 1000);
 refreshClock();
 
+function calcOtHours(hours) {
+    if (!hours || isNaN(hours) || hours <= 9.0) return 0;
+    const total = Math.round(hours * 100) / 100;
+    if (total <= 9.0) return 0;
+    const otRaw = Math.round((total - 9.0) * 100) / 100;
+    const whole = Math.floor(otRaw);
+    const frac = Math.round((otRaw - whole) * 100) / 100;
+    return whole + (frac > 0.5 ? 1 : 0);
+}
+
 // ── Live Stopwatch for Active 9h Session ──
 (function(){
     const sw = document.getElementById('stopwatch-display');
@@ -1240,7 +1281,8 @@ refreshClock();
         const rem = Math.max(0, 9.0 - curHrs);
         if (metaRemaining) metaRemaining.textContent = rem.toFixed(2) + ' hrs';
         if (kpiSub) {
-            kpiSub.textContent = rem > 0 ? `${rem.toFixed(2)} hrs to 9h target` : '✓ 9h Target Reached';
+            const liveOt = calcOtHours(curHrs);
+            kpiSub.textContent = rem > 0 ? `${rem.toFixed(2)} hrs to 9h target` : `✓ 9h Target Reached${liveOt > 0 ? ` · OT: ${liveOt} hr${liveOt === 1 ? '' : 's'}` : ''}`;
         }
 
         const percentage = Math.min(100, Math.round((curHrs / 9.0) * 100));
@@ -1285,6 +1327,30 @@ function filterTable() {
     rows.forEach(r => {
         r.style.display = r.innerText.toLowerCase().includes(q) ? '' : 'none';
     });
+}
+
+(function initMyExportMonths() {
+    const sel = document.getElementById('my-export-month');
+    if (!sel) return;
+    const now = new Date();
+    let html = '<option value="">All Records</option>';
+    for (let i = 0; i < 12; i++) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        const lbl = d.toLocaleString('en', { month: 'long', year: 'numeric' });
+        html += `<option value="${val}">${lbl}</option>`;
+    }
+    sel.innerHTML = html;
+})();
+
+function exportMyAttendance() {
+    const monthVal = (document.getElementById('my-export-month') || {}).value || '';
+    let url = '/attendance/export?scope=me';
+    if (monthVal) {
+        const [year, month] = monthVal.split('-');
+        url += `&year=${encodeURIComponent(year)}&month=${encodeURIComponent(month)}`;
+    }
+    window.location.href = url;
 }
 
 // ── Regularization Form Mode ──
@@ -1335,7 +1401,8 @@ function recalcHours() {
     }
 
     const diff = (endMins - startMins) / 60.0;
-    resEl.textContent = diff > 0 ? `${diff.toFixed(2)} hrs` : '-- hrs';
+    const ot = calcOtHours(diff);
+    resEl.textContent = diff > 0 ? `${diff.toFixed(2)} hrs (OT: ${ot} hr${ot === 1 ? '' : 's'})` : '-- hrs';
 }
 
 // ── 30-Day Chart with 9h Reference Line ──
@@ -1402,6 +1469,17 @@ function openAdminEditModal(id, inTime, outTime, hrs) {
     document.getElementById('admin-edit-logout').value = outTime || '';
     document.getElementById('admin-edit-hours').value = hrs || '';
     document.getElementById('admin-edit-error').style.display = 'none';
+    const inEl = document.getElementById('admin-edit-login');
+    const outEl = document.getElementById('admin-edit-logout');
+    const hrsEl = document.getElementById('admin-edit-hours');
+    const recalcEditHrs = () => {
+        if (inEl.value && outEl.value) {
+            const d = (new Date(outEl.value) - new Date(inEl.value)) / 3600000;
+            if (d >= 0) hrsEl.value = d.toFixed(2);
+        }
+    };
+    inEl.onchange = recalcEditHrs;
+    outEl.onchange = recalcEditHrs;
     document.getElementById('modal-admin-edit').style.display = 'flex';
 }
 function closeAdminEditModal() {
@@ -1494,7 +1572,7 @@ async function loadTrackerData() {
     const [year, month] = monthVal.split('-').map(Number);
     const userId = (document.getElementById('trk-user-select') || {}).value;
     const body = document.getElementById('tracker-body');
-    body.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--muted)">Loading...</td></tr>';
+    body.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--muted)">Loading...</td></tr>';
 
     try {
         const res = await fetch(`/api/attendance/tracker?year=${year}&month=${month}`);
@@ -1503,7 +1581,7 @@ async function loadTrackerData() {
         if (userId) logs = logs.filter(l => l.user_id == userId);
 
         if (!logs.length) {
-            body.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:30px;color:var(--muted)">No records found for this period</td></tr>';
+            body.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--muted)">No records found for this period</td></tr>';
             return;
         }
 
@@ -1511,6 +1589,10 @@ async function loadTrackerData() {
             const inDT = r.login_time ? r.login_time.substring(0, 16) : '';
             const outDT = r.logout_time ? r.logout_time.substring(0, 16) : '';
             const hrs = r.hours_spent != null ? parseFloat(r.hours_spent).toFixed(2) : '—';
+            const otNum = r.ot_hours != null ? parseInt(r.ot_hours, 10) : 0;
+            const otCell = r.logout_time
+                ? (otNum > 0 ? `<span class="badge-hours-pill ot-pill">+${otNum} hr${otNum === 1 ? '' : 's'}</span>` : '<span style="color:var(--muted);font-family:var(--mono)">0</span>')
+                : '<span style="color:var(--muted)">—</span>';
             const status = r.logout_time ? '<span class="badge badge-success">Completed</span>' : '<span class="badge badge-warning">Active</span>';
             return `
                 <tr data-log-id="${r.id}">
@@ -1519,6 +1601,7 @@ async function loadTrackerData() {
                     <td><input type="datetime-local" class="form-control trk-row-in" value="${inDT}" style="width:190px;font-size:12px;padding:4px 8px"></td>
                     <td><input type="datetime-local" class="form-control trk-row-out" value="${outDT}" style="width:190px;font-size:12px;padding:4px 8px"></td>
                     <td style="font-family:var(--mono);font-weight:700;color:var(--accent2)">${hrs}</td>
+                    <td>${otCell}</td>
                     <td>${status}</td>
                     <td>
                         <button class="btn btn-primary btn-sm" onclick="saveTrackerRow(${r.id})" title="Save"><i class="fa-solid fa-check"></i></button>
@@ -1527,7 +1610,7 @@ async function loadTrackerData() {
                 </tr>`;
         }).join('');
     } catch(e) {
-        body.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:30px;color:var(--danger)">Failed to load tracker</td></tr>';
+        body.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--danger)">Failed to load tracker</td></tr>';
     }
 }
 
@@ -1561,6 +1644,19 @@ function openTrackerCreate() {
     document.getElementById('trk-create-out').value = '';
     document.getElementById('trk-create-error').style.display = 'none';
     document.getElementById('modal-trk-create').style.display = 'flex';
+}
+function exportTrackerExcel() {
+    const monthVal = (document.getElementById('trk-month-select') || {}).value || '';
+    const userId = (document.getElementById('trk-user-select') || {}).value || '';
+    let url = '/attendance/export?scope=tracker';
+    if (monthVal) {
+        const [year, month] = monthVal.split('-');
+        url += `&year=${encodeURIComponent(year)}&month=${encodeURIComponent(month)}`;
+    }
+    if (userId) {
+        url += `&user_id=${encodeURIComponent(userId)}`;
+    }
+    window.location.href = url;
 }
 function closeTrackerCreate() {
     document.getElementById('modal-trk-create').style.display = 'none';

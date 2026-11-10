@@ -72,6 +72,10 @@
             <span class="l">This Month — Hours</span>
             <span class="v blue">{{ '%.2f'|format(attendance_data.month_hours) }} hrs</span>
         </div>
+        <div class="dash-stat">
+            <span class="l">This Month - OT</span>
+            <span class="v" style="color:#a371f7">{{ attendance_data.month_ot_hours or 0 }} hrs</span>
+        </div>
         <a href="{{ url_for('attendance') }}" class="btn btn-secondary btn-sm" style="margin-top:10px;width:100%;justify-content:center">
             <i class="fa-solid fa-right-to-bracket"></i> Open Attendance
         </a>
@@ -172,7 +176,7 @@
     <div style="overflow-x:auto">
         <table class="recent-tbl">
             <thead>
-                <tr><th>User</th><th>Email</th><th>Login</th><th>Logout</th><th>Hours</th><th>Last Active</th></tr>
+                <tr><th>User</th><th>Email</th><th>Login</th><th>Logout</th><th>Hours</th><th>OT</th><th>Last Active</th></tr>
             </thead>
             <tbody>
                 {% for u in all_users_today %}
@@ -187,6 +191,9 @@
                     </td>
                     <td class="mono" style="color:var(--accent2);font-weight:600">
                         {% if u.hours_spent %}{{ '%.2f'|format(u.hours_spent) }}{% else %}—{% endif %}
+                    </td>
+                    <td class="mono" style="color:#a371f7;font-weight:600">
+                        {% if u.logout_time and u.hours_spent %}{{ u.ot_hours or 0 }} hr{% if (u.ot_hours or 0) != 1 %}s{% endif %}{% else %}—{% endif %}
                     </td>
                     <td class="mono" style="font-size:11px;color:var(--muted)">
                         {% if u.last_active %}{{ u.last_active.strftime('%b %d %I:%M %p') }}{% else %}—{% endif %}
